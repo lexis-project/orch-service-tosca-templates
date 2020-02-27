@@ -12,6 +12,9 @@ on a Virtual Machine:
 * GEOGData, component downloading geographical files from a web site
 * CopyToJob, component copying pre-processing results to a Job input directory
 * CopyFromJob, component copying Job computation results to the compute instance
+
+And a job:
+
 * WRF, HEAppE Job performing a computation on the HPC infrastructure    
 
 ![App template](images/risico_app.png)
