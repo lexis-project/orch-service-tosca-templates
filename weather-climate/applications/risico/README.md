@@ -26,7 +26,7 @@ Docker is then installed on the Virtual Machine and the WPS GFS pre-processing c
 ![Workflow ](images/risico_preprocessing.png)
 
 Once done, the workflow goes on creating a HEAppE job on the HPC infrastructure.
-Next step, enables file transfers for this job.
+Next step enables file transfers for this job.
 Then, WPS GFS pre-processing results are copied to the job (component CopyToJob operation).
 The Job is then submitted, and the orchestrator waits until it ends.
 Once done, Job results are copied to the Virtual Machine (component CopyFromJob operation).
