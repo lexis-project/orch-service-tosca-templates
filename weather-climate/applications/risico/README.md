@@ -7,7 +7,7 @@ on a Virtual Machine:
 * Docker, to run containers
 * WFS_GFS, container performing the pre-processing (see [CIMA WPS model](https://github.com/cima-lexis/wps.docker))
 * RISICO, container performing the post-processing (see [CIMA RISICO model](https://github.com/cima-lexis/risico-docker))
-* CreateDirs, component creating directories exepcted by containers
+* CreateDirs, component creating directories expected by containers
 * GFSData, component downloading Global Forecast System files from a web site
 * GEOGData, component downloading geographical files from a web site
 * CopyToJob, component copying pre-processing results to a Job input directory
