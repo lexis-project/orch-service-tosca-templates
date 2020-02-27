@@ -1,4 +1,4 @@
-# RISICO application
+# RISICO Application Template
 
 First draft for RISICO application template.
 The graphical view of the application template shows the following components hosted
