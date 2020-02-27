@@ -1,0 +1,61 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: org.lexis.weather.wps
+  template_version: 0.1.0
+  template_author: lexis
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - yorc-types:1.1.0
+node_types:
+  org.lexis.nodes.GFSData:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      left_longitude:
+        type: string
+        description: Left longitude
+      right_longitude:
+        type: string
+        description: Right longitude
+      top_latitude:
+        type: string
+        description: Top latitude
+      bottom_latitude:
+        type: string
+        description: Bottom latitude
+      output_directory:
+        type: string
+        description: Absolute path to directory where to store donwloaded data
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+      custom:
+        download:
+          inputs:
+            LEFT_LONGITUDE: {get_property: [SELF, left_longitude]}
+            RIGHT_LONGITUDE: {get_property: [SELF, right_longitude]}
+            TOP_LATITUDE: {get_property: [SELF, top_latitude]}
+            BOTTOM_LATITUDE: {get_property: [SELF, bottom_latitude]}
+            OUTPUT_DIRECTORY: {get_property: [SELF, output_directory]}
+          implementation: playbooks/download_gfs.yaml
+    tags:
+      icon: /images/GFS.png
+  org.lexis.nodes.GEOGData:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+     output_directory:
+        type: string
+        description: Absolute path to directory where to store donwloaded data
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+      custom:
+        download:
+          inputs:
+            OUTPUT_DIRECTORY: {get_property: [SELF, output_directory]}
+          implementation: playbooks/download_geog.yaml
+    tags:
+      icon: /images/GEOG.png

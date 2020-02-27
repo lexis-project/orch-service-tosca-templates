@@ -1,0 +1,724 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: Risico
+  template_version: 0.1.0-SNAPSHOT
+  template_author: lexis
+
+description: ""
+
+imports:
+  - yorc-types:1.1.0
+  - tosca-normative-types:1.0.0-ALIEN20
+  - docker-types:2.2.0-SM10
+  - alien-base-types:2.2.0-SM10
+  - heappe-types:0.1.0
+  - org.ystia.docker.containers.docker.generic:2.2.0-SNAPSHOT
+  - org.ystia.docker.ansible:2.2.0-SNAPSHOT
+  - org.lexis.common.datatransfer:0.1.0
+  - org.lexis.weather.wps:0.1.0
+
+topology_template:
+  inputs:
+    preprocessing_volumes:
+      type: list
+      entry_schema:
+        type: string
+      description: |
+        List of volumes to mount within the pre-processing container.
+        Use docker CLI-style syntax: /host:/container[:mode]
+      default: ["/wps_data/gfs:/input", "/wps_data/output:/output", "/wps_data/geog/WPS_GEOG:/geogrid"]
+    preprocessing_environment_variables:
+      type: map
+      entry_schema:
+        type: string
+      description: |
+        Environment variables for the pre-processing container.
+      default: { WPS_START_DATE: "2020022612", WPS_END_DATE: "2020022615"}
+    preprocessing_output_directory:
+      type: string
+      description: Directory where preprocessing results will be stored
+      default: /wps_data/output
+    preprocessing_image:
+      type: string
+      description: Container repository path
+      default: "laurentg/wps.gfs"
+    postprocessing_input_directory:
+      type: string
+      description: Directory where postprocessing data will be stored
+      default: /risico_data/
+  node_templates:
+    PublicNet:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+    VirtualMachine:
+      type: tosca.nodes.Compute
+      requirements:
+        - networkPublicNetConnection:
+            type_requirement: network
+            node: PublicNet
+            capability: tosca.capabilities.Connectivity
+            relationship: tosca.relationships.Network
+      capabilities:
+        host:
+          properties:
+            num_cpus: 10
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        endpoint:
+          properties:
+            secure: true
+            protocol: tcp
+            network_name: PRIVATE
+            initiator: source
+    Docker:
+      type: org.ystia.docker.ansible.nodes.Docker
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: VirtualMachine
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    CreateDirs:
+      type: org.lexis.datatransfer.nodes.CreateDirectories
+      properties:
+        directories: {get_input: preprocessing_volumes}
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: VirtualMachine
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    WPS_GFS:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: preprocessing_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        mem_share: "128 MB"
+        volumes: {get_input: preprocessing_volumes}
+        docker_env_vars:  {get_input: preprocessing_environment_variables}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+    GFSData:
+      type: org.lexis.nodes.GFSData
+      properties:
+        left_longitude: "-19.0"
+        right_longitude: "48.0"
+        top_latitude: "64.0"
+        bottom_latitude: "24.0"
+        output_directory: "/wps_data/gfs"
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: VirtualMachine
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    GEOGData:
+      type: org.lexis.nodes.GEOGData
+      properties:
+        output_directory: "/wps_data/geog"
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: VirtualMachine
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    WRF:
+      type: org.heappe.nodes.Job
+      properties:
+        jobSpecification: 
+          name: testJobName
+          project: testProjectName
+          clusterNodeTypeId: 1
+          priority: 4
+          minCores: 1
+          maxCores: 1
+          waitingLimit: 600
+          walltimeLimit: 600
+          tasks: 
+            - name: testTaskName
+              commandTemplateId: 1
+              templateParameterValues: 
+                - commandParameterIdentifier: inputParam
+                  parameterValue: inputParam
+              minCores: 1
+              maxCores: 1
+              walltimeLimit: 600
+              standardOutputFile: "console_Stdout"
+              standardErrorFile: "console_Stderr"
+              progressFile: "console_Stdprog"
+              logFile: "console_Stdlog"
+    CopyToJob:
+      type: org.lexis.datatransfer.nodes.CopyToJob
+      properties:
+        source_directory: {get_input: preprocessing_output_directory}
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: VirtualMachine
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - job:
+            type_requirement: job
+            node: WRF
+            capability: org.heappe.capabilities.HeappeJob
+            relationship: org.heappe.relationships.SendInputsToJob
+    CopyFromJob:
+      type: org.lexis.datatransfer.nodes.CopyFromJob
+      properties:
+        source_files_pattern: "auxhist*"
+        destination_directory:  { concat: [get_input: postprocessing_input_directory, "/wrf"] }
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: VirtualMachine
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - job:
+            type_requirement: job
+            node: WRF
+            capability: org.heappe.capabilities.HeappeJob
+            relationship: org.heappe.relationships.GetResultsFromJob
+    RISICO:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: "laurentg/risico"
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        mem_share: "128 MB"
+        volumes:
+            - /risico_data/:/home/risico/data
+        docker_env_vars:
+          RISICO_RUN_DATE: "202002260000"
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+  workflows:
+    install:
+      steps:
+        Network_install:
+          target: PublicNet
+          activities:
+            - delegate: install
+    uninstall:
+      steps:
+        Compute_uninstall:
+          target: VirtualMachine
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: PublicNet
+          activities:
+            - delegate: uninstall
+    Run:
+      steps:
+        Compute_install:
+          target: VirtualMachine
+          activities:
+            - delegate: install
+          on_success:
+            - CreateDirs_start
+        CreateDirs_start:
+          target: CreateDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateDirs_started
+        CreateDirs_started:
+          target: CreateDirs
+          activities:
+            - set_state: started
+          on_success:
+            - GFSData_download
+            - GEOGData_download
+        GFSData_download:
+          target: GFSData
+          activities:
+            - call_operation: custom.download
+          on_success:
+            - GFSData_done
+        GFSData_done:
+          target: GFSData
+          activities:
+            - set_state: started
+          on_success:
+            - Docker_create
+        GEOGData_download:
+          target: GEOGData
+          activities:
+            - call_operation: custom.download
+          on_success:
+            - GEOGData_done
+        GEOGData_done:
+          target: GEOGData
+          activities:
+            - set_state: started
+          on_success:
+            - Docker_create
+        Docker_create:
+          target: Docker
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Docker_configure
+        Docker_configure:
+          target: Docker
+          activities:
+            - call_operation: Standard.configure
+          on_success:
+            - Docker_start
+        Docker_start:
+          target: Docker
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Docker_started
+        Docker_started:
+          target: Docker
+          activities:
+            - set_state: started
+          on_success:
+            - WPS_GFS_create
+        WPS_GFS_create:
+          target: WPS_GFS
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - WPS_GFS_start
+        WPS_GFS_start:
+          target: WPS_GFS
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - WPS_GFS_started
+        WPS_GFS_started:
+          target: WPS_GFS
+          activities:
+            - set_state: started
+          on_success:
+            - WRF_create
+        WRF_create:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - WRF_enable_file_transfer
+        WRF_enable_file_transfer:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - CopyToJob_start
+        CopyToJob_start:
+          target: CopyToJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyToJob_started
+        CopyToJob_started:
+          target: CopyToJob
+          activities:
+            - set_state: started
+          on_success:
+            - WRF_submit
+        WRF_submit:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - WRF_submitted
+        WRF_submitted:
+          target: WRF
+          activities:
+            - set_state: submitted
+          on_success:
+            - WRF_run
+        WRF_run:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - WRF_executed
+        WRF_executed:
+          target: WRF
+          activities:
+            - set_state: executed
+          on_success:
+            - CopyFromJob_start
+        CopyFromJob_start:
+          target: CopyFromJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyFromJob_started
+        CopyFromJob_started:
+          target: CopyFromJob
+          activities:
+            - set_state: started
+          on_success:
+            - RISICO_create
+            - WRF_disable_file_transfer
+        WRF_disable_file_transfer:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - WRF_delete
+        WRF_delete:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_deleted
+        WRF_deleted:
+          target: WRF
+          activities:
+            - set_state: deleted
+        RISICO_create:
+          target: RISICO
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - RISICO_start
+        RISICO_start:
+          target: RISICO
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RISICO_started
+        RISICO_started:
+          target: RISICO
+          activities:
+            - set_state: started
+    testafterinput:
+      steps:
+        WPS_GFS_create:
+          target: WPS_GFS
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - WPS_GFS_start
+        WPS_GFS_start:
+          target: WPS_GFS
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - WPS_GFS_started
+        WPS_GFS_started:
+          target: WPS_GFS
+          activities:
+            - set_state: started
+          on_success:
+            - WRF_create
+        WRF_create:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - WRF_enable_file_transfer
+        WRF_enable_file_transfer:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - CopyToJob_start
+        CopyToJob_start:
+          target: CopyToJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyToJob_started
+        CopyToJob_started:
+          target: CopyToJob
+          activities:
+            - set_state: started
+          on_success:
+            - WRF_submit
+        WRF_submit:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - WRF_submitted
+        WRF_submitted:
+          target: WRF
+          activities:
+            - set_state: submitted
+          on_success:
+            - WRF_run
+        WRF_run:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - WRF_executed
+        WRF_executed:
+          target: WRF
+          activities:
+            - set_state: executed
+          on_success:
+            - CopyFromJob_start
+        CopyFromJob_start:
+          target: CopyFromJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyFromJob_started
+        CopyFromJob_started:
+          target: CopyFromJob
+          activities:
+            - set_state: started
+          on_success:
+            - RISICO_create
+            - WRF_disable_file_transfer
+        WRF_disable_file_transfer:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - WRF_delete
+        WRF_delete:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_deleted
+        WRF_deleted:
+          target: WRF
+          activities:
+            - set_state: deleted
+        RISICO_create:
+          target: RISICO
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - RISICO_start
+        RISICO_start:
+          target: RISICO
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RISICO_started
+        RISICO_started:
+          target: RISICO
+          activities:
+            - set_state: started
+    testcontainercreatestart:
+      steps:
+        WPS_GFS_create:
+          target: WPS_GFS
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - WPS_GFS_start
+        WPS_GFS_start:
+          target: WPS_GFS
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - WPS_GFS_started
+        WPS_GFS_started:
+          target: WPS_GFS
+          activities:
+            - set_state: started
+    testcopy:
+      steps:
+        WRF_enable_file_transfer:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - CopyToJob_start        
+        CopyToJob_start:
+          target: CopyToJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyToJob_started
+        CopyToJob_started:
+          target: CopyToJob
+          activities:
+            - set_state: started
+          on_success:
+            - WRF_submit
+        WRF_submit:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - WRF_submitted
+        WRF_submitted:
+          target: WRF
+          activities:
+            - set_state: submitted
+          on_success:
+            - WRF_run
+        WRF_run:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - WRF_executed
+        WRF_executed:
+          target: WRF
+          activities:
+            - set_state: executed
+    testpostprocess:
+      steps:
+        CopyFromJob_start:
+          target: CopyFromJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyFromJob_started
+        CopyFromJob_started:
+          target: CopyFromJob
+          activities:
+            - set_state: started
+          on_success:
+            - RISICO_create
+            - WRF_disable_file_transfer
+        WRF_disable_file_transfer:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - WRF_delete
+        WRF_delete:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_deleted
+        WRF_deleted:
+          target: WRF
+          activities:
+            - set_state: deleted
+        RISICO_create:
+          target: RISICO
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - RISICO_start
+        RISICO_start:
+          target: RISICO
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RISICO_started
+        RISICO_started:
+          target: RISICO
+          activities:
+            - set_state: started
+    testcomputeuninstall:
+      steps:
+        Compute_uninstall:
+          target: VirtualMachine
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: PublicNet
+          activities:
+            - delegate: uninstall
+    testdeletewrf:
+      steps:
+        WRF_delete:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_deleted
+        WRF_deleted:
+          target: WRF
+          activities:
+            - set_state: deleted
+    testrisico:
+      steps:
+        RISICO_create:
+          target: RISICO
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - RISICO_start
+        RISICO_start:
+          target: RISICO
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RISICO_started
+        RISICO_started:
+          target: RISICO
+          activities:
+            - set_state: started
+    start:
+      steps:
+        start_step:
+          target: PublicNet
+          activities:
+            - set_state: started
+    stop:
+      steps:
+        stop_step:
+          target: PublicNet
+          activities:
+            - set_state: stopped
+    cancel:
+      steps:
+        start_step:
+          target: PublicNet
+          activities:
+            - set_state: canceled

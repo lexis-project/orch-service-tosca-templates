@@ -1,0 +1,23 @@
+- name: Copying files to job input directory
+  hosts: all
+  strategy: linear
+  tasks:
+    - name: create temporary file
+      tempfile:
+        state: file
+        suffix: temp
+      register: privatekeyfile
+    - name: Add private key content
+      copy:
+        content: "{{ private_key }}"
+        dest: "{{ privatekeyfile.path }}"
+    - name: Change file ownership
+      file:
+        path: "{{ privatekeyfile.path }}"
+        mode: '0400'    
+    - name: "Copying directory {{source_directory}} content to job inputs"
+      shell: "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {{ privatekeyfile.path }} {{ source_directory }}/* {{ user }}@{{ server }}:{{ destination_directory }}"
+    - name: Remove private key
+      file:
+        path: "{{ privatekeyfile.path }}"
+        state: absent

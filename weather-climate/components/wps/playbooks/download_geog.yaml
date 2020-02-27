@@ -1,0 +1,101 @@
+- name: Prequisites
+  hosts: all
+  strategy: free
+  become: true
+  become_method: sudo
+  tasks:
+    - name: Ubuntu - install unzip and bzip2 (acl needed by Ansible to become an unprivileged user)
+      apt:
+        name:
+          - acl
+          - unzip
+          - bzip2
+        state: present
+        update_cache: yes
+      register: apt_res
+      retries: 3
+      until: apt_res is success
+      when: ansible_distribution == 'Ubuntu'
+    - name: RedHat - install unzip and bzip2
+      yum:
+        name:
+          - unzip
+          - bzip2
+        state: present
+        update_cache: yes
+      when: ansible_os_family == 'RedHat'
+    - name: Debian - install unzip and bzip2
+      apt:
+        name:
+          - unzip
+          - bzip2
+        state: present
+        update_cache: yes
+      when: ansible_os_family == 'Debian'
+    - name: Create output directory
+      file:
+        path: "{{ OUTPUT_DIRECTORY }}"
+        state: directory
+        recurse: yes
+        mode: 0777
+
+- name: Get GEOG data
+  hosts: all
+  strategy: free
+  tasks:
+    - name: Download GEOG data
+      get_url:
+        url: "https://www2.mmm.ucar.edu/wrf/src/wps_files/geog_high_res_mandatory.tar.gz"
+        dest: "{{ OUTPUT_DIRECTORY }}"
+        mode: 0755
+    - name: Extract archive
+      unarchive:
+        src: "{{ OUTPUT_DIRECTORY }}/geog_high_res_mandatory.tar.gz"
+        dest: "{{ OUTPUT_DIRECTORY }}"
+        remote_src: yes
+    - name: Remove archive
+      file:
+        path: "{{ OUTPUT_DIRECTORY }}/geog_high_res_mandatory.tar.gz"
+        state: absent
+    - name: Download additional dataset albedo modis
+      get_url:
+        url: "https://www2.mmm.ucar.edu/wrf/src/wps_files/albedo_modis.tar.bz2"
+        dest: "{{ OUTPUT_DIRECTORY }}"
+        mode: 0755
+    - name: Extract archive
+      unarchive:
+        src: "{{ OUTPUT_DIRECTORY }}/albedo_modis.tar.bz2"
+        dest: "{{ OUTPUT_DIRECTORY }}/WPS_GEOG/"
+        remote_src: yes
+    - name: Remove archive
+      file:
+        path: "{{ OUTPUT_DIRECTORY }}/albedo_modis.tar.bz2"
+        state: absent
+    - name: Download additional dataset maxsnowalb modis
+      get_url:
+        url: "https://www2.mmm.ucar.edu/wrf/src/wps_files/maxsnowalb_modis.tar.bz2"
+        dest: "{{ OUTPUT_DIRECTORY }}"
+        mode: 0755
+    - name: Extract archive
+      unarchive:
+        src: "{{ OUTPUT_DIRECTORY }}/maxsnowalb_modis.tar.bz2"
+        dest: "{{ OUTPUT_DIRECTORY }}/WPS_GEOG/"
+        remote_src: yes
+    - name: Remove archive
+      file:
+        path: "{{ OUTPUT_DIRECTORY }}/maxsnowalb_modis.tar.bz2"
+        state: absent
+    - name: Download additional dataset modis landuse 21class 30s
+      get_url:
+        url: "https://www2.mmm.ucar.edu/wrf/src/wps_files/modis_landuse_21class_30s.tar.bz2"
+        dest: "{{ OUTPUT_DIRECTORY }}"
+        mode: 0755
+    - name: Extract archive
+      unarchive:
+        src: "{{ OUTPUT_DIRECTORY }}/modis_landuse_21class_30s.tar.bz2"
+        dest: "{{ OUTPUT_DIRECTORY }}/WPS_GEOG/"
+        remote_src: yes
+    - name: Remove archive
+      file:
+        path: "{{ OUTPUT_DIRECTORY }}/modis_landuse_21class_30s.tar.bz2"
+        state: absent

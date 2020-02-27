@@ -1,0 +1,92 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: org.lexis.common.datatransfer
+  template_version: 0.1.0
+  template_author: lexis
+
+imports:
+  - heappe-types:0.1.0
+  - yorc-types:1.1.0
+node_types:
+  org.lexis.datatransfer.nodes.CopyToJob:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+      Copy files to a HEAppE Job input directory
+    properties:
+      source_directory:
+        description: Directory containing files to copy
+        type: string
+        required: true
+    requirements:
+      - job:
+          capability: org.heappe.capabilities.HeappeJob
+          node: org.heappe.nodes.Job
+          relationship: org.heappe.relationships.SendInputsToJob
+          occurrences: [1, 1]
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            user: {get_attribute: [REQ_TARGET, job, file_transfer, user]}
+            private_key: {get_attribute: [REQ_TARGET, job, file_transfer, key]}
+            server: {get_attribute: [REQ_TARGET, job, file_transfer, server]}
+            destination_directory: {get_attribute: [REQ_TARGET, job, file_transfer, path]}
+            source_directory: {get_property: [SELF, source_directory]}
+          implementation: playbooks/copytojob.yaml
+    tags:
+      icon: images/copytojob.png
+  org.lexis.datatransfer.nodes.CopyFromJob:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+      Copy files from a HEAppE Job output directory
+    properties:
+      source_files_pattern:
+        description: Pattern of files to copy from job output directory
+        type: string
+        default: "*"
+      destination_directory:
+        description: Directory where to copy files
+        type: string
+        required: true
+    requirements:
+      - job:
+          capability: org.heappe.capabilities.HeappeJob
+          node: org.heappe.nodes.Job
+          relationship: org.heappe.relationships.GetResultsFromJob
+          occurrences: [1, 1]
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            user: {get_attribute: [REQ_TARGET, job, file_transfer, user]}
+            private_key: {get_attribute: [REQ_TARGET, job, file_transfer, key]}
+            server: {get_attribute: [REQ_TARGET, job, file_transfer, server]}
+            source_directory: {get_attribute: [REQ_TARGET, job, file_transfer, path]}
+            source_files_pattern: {get_property: [SELF, source_files_pattern]}
+            destination_directory: {get_property: [SELF, destination_directory]}
+          implementation: playbooks/copyfromjob.yaml
+    tags:
+      icon: images/copyfromjob.png
+  org.lexis.datatransfer.nodes.CreateDirectories:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: Create directories on a target
+    properties:
+      directories:
+        type: list
+        entry_schema:
+          type: string
+        description: List of directory to create
+        required: true
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            dirs_to_create: {get_property: [SELF, directories]}
+          implementation: playbooks/createdirs.yaml
