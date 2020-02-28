@@ -1,4 +1,4 @@
-- name: Prequisites
+- name: Prerequisites
   hosts: all
   strategy: free
   become: true
@@ -14,16 +14,19 @@
   hosts: all
   strategy: free
   tasks:
-    - set_fact:
-        today: "{{ lookup('pipe', 'date +%Y%M%d') }}"
+    - name: Set GFS files start date and number of downloads
+      set_fact:
+        gfsDay: "{{START_DATE[:8]}}"
+        gfsHour: "{{START_DATE[8:]}}"
+        nbHours: "{{ (END_DATE|int) - (START_DATE|int) }}"
     - name: Download GFS analysis of initial atmospheric conditions file
       get_url:
-        url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=gfs.t12z.pgrb2.0p25.anl&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.20200226%2F12"
+        url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=gfs.t12z.pgrb2.0p25.anl&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ gfsDay }}%2F{{ gfsHour }}"
         dest: "{{ OUTPUT_DIRECTORY }}"
         mode: 0755
     - name: Download GFS data files for each hour
       get_url:
-        url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file={{ item }}&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.20200226%2F12"
+        url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file={{ item }}&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ gfsDay }}%2F{{ gfsHour }}"
         dest: "{{ OUTPUT_DIRECTORY }}/{{ item }}.grb"
         mode: 0755
-      with_sequence: start=0 end=3 format=gfs.t12z.pgrb2.0p25.f0%02d
+      with_sequence: start=0 end={{nbHours|int}} format=gfs.t12z.pgrb2.0p25.f0%02d

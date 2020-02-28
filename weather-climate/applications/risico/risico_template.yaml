@@ -20,6 +20,18 @@ imports:
 
 topology_template:
   inputs:
+    preprocessing_gfs_files_start_date:
+      type: string
+      description: Download GFS files from this date, format YYYYMMDDHH
+      default: "2020022612"
+    preprocessing_gfs_files_end_date:
+      type: string
+      description: Download GFS files up to this date, format YYYYMMDDHH
+      default: "2020022615"
+    preprocessing_image:
+      type: string
+      description: Pre-processing container repository path
+      default: "laurentg/wps.gfs"
     preprocessing_volumes:
       type: list
       entry_schema:
@@ -34,19 +46,34 @@ topology_template:
         type: string
       description: |
         Environment variables for the pre-processing container.
-      default: { WPS_START_DATE: "2020022612", WPS_END_DATE: "2020022615"}
+      default: {WPS_START_DATE: "2020022612", WPS_END_DATE: "2020022615"}
     preprocessing_output_directory:
       type: string
       description: Directory where preprocessing results will be stored
       default: /wps_data/output
-    preprocessing_image:
+    postprocessing_image:
       type: string
-      description: Container repository path
-      default: "laurentg/wps.gfs"
+      description: Post-processing container repository path
+      default: "laurentg/risico"
     postprocessing_input_directory:
       type: string
       description: Directory where postprocessing data will be stored
       default: /risico_data/
+    postprocessing_volumes:
+      type: list
+      entry_schema:
+        type: string
+      description: |
+        List of volumes to mount within the post-processing container.
+        Use docker CLI-style syntax: /host:/container[:mode]
+      default: ["/risico_data/:/home/risico/data"]
+    postprocessing_environment_variables:
+      type: map
+      entry_schema:
+        type: string
+      description: |
+        Environment variables for the pre-processing container.
+      default: { RISICO_RUN_DATE: "202002260000" }
   node_templates:
     PublicNet:
       type: tosca.nodes.Network
@@ -121,6 +148,8 @@ topology_template:
     GFSData:
       type: org.lexis.nodes.GFSData
       properties:
+        start_date: {get_input: preprocessing_gfs_files_start_date}
+        end_date: {get_input: preprocessing_gfs_files_end_date}
         left_longitude: "-19.0"
         right_longitude: "48.0"
         top_latitude: "64.0"
@@ -204,15 +233,13 @@ topology_template:
         auto_remove: false
         cleanup: false
         detach: false
-        image: "laurentg/risico"
+        image: {get_input: postprocessing_image}
         keep_volumes: true
         restart_policy: no
         cpu_share: 1.0
         mem_share: "128 MB"
-        volumes:
-            - /risico_data/:/home/risico/data
-        docker_env_vars:
-          RISICO_RUN_DATE: "202002260000"
+        volumes: {get_input: postprocessing_volumes}
+        docker_env_vars:  {get_input: postprocessing_environment_variables}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host

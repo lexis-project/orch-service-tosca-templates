@@ -12,6 +12,14 @@ node_types:
   org.lexis.nodes.GFSData:
     derived_from: tosca.nodes.SoftwareComponent
     properties:
+      start_date:
+        type: string
+        description: Download GFS files from this date, format YYYYMMDDHH
+        required: true
+      end_date:
+        type: string
+        description: Download GFS files up to this date, format YYYYMMDDHH
+        required: true
       left_longitude:
         type: string
         description: Left longitude
@@ -34,6 +42,8 @@ node_types:
       custom:
         download:
           inputs:
+            START_DATE: {get_property: [SELF, start_date]}
+            END_DATE: {get_property: [SELF, end_date]}
             LEFT_LONGITUDE: {get_property: [SELF, left_longitude]}
             RIGHT_LONGITUDE: {get_property: [SELF, right_longitude]}
             TOP_LATITUDE: {get_property: [SELF, top_latitude]}
