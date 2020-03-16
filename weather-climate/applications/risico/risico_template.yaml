@@ -23,11 +23,11 @@ topology_template:
     preprocessing_gfs_files_start_date:
       type: string
       description: Download GFS files from this date, format YYYYMMDDHH
-      default: "2020022612"
+      required: true
     preprocessing_gfs_files_end_date:
       type: string
       description: Download GFS files up to this date, format YYYYMMDDHH
-      default: "2020022615"
+      required: true
     preprocessing_image:
       type: string
       description: Pre-processing container repository path
@@ -46,7 +46,8 @@ topology_template:
         type: string
       description: |
         Environment variables for the pre-processing container.
-      default: {WPS_START_DATE: "2020022612", WPS_END_DATE: "2020022615"}
+      # default: {WPS_START_DATE: "2020030112", WPS_END_DATE: "2020030115"}
+      required: false
     preprocessing_output_directory:
       type: string
       description: Directory where preprocessing results will be stored
@@ -73,7 +74,12 @@ topology_template:
         type: string
       description: |
         Environment variables for the pre-processing container.
-      default: { RISICO_RUN_DATE: "202002260000" }
+      # default: { RISICO_RUN_DATE: "202003010000" }
+      required: false
+    postprocessing_risico_run_date:
+      type: string
+      description: RISICO run date, format YYYYMMDD
+      required: true
   node_templates:
     PublicNet:
       type: tosca.nodes.Network
@@ -132,7 +138,8 @@ topology_template:
         cpu_share: 1.0
         mem_share: "128 MB"
         volumes: {get_input: preprocessing_volumes}
-        docker_env_vars:  {get_input: preprocessing_environment_variables}
+        # docker_env_vars:  {get_input: preprocessing_environment_variables}
+        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_gfs_files_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_gfs_files_end_date, "\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
@@ -239,7 +246,8 @@ topology_template:
         cpu_share: 1.0
         mem_share: "128 MB"
         volumes: {get_input: postprocessing_volumes}
-        docker_env_vars:  {get_input: postprocessing_environment_variables}
+        # docker_env_vars:  {get_input: postprocessing_environment_variables}
+        docker_env_vars:  {concat: ["{\"RISICO_RUN_DATE\": \"", get_input: postprocessing_risico_run_date, "0000\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
@@ -292,6 +300,173 @@ topology_template:
           on_success:
             - GFSData_download
             - GEOGData_download
+        GFSData_download:
+          target: GFSData
+          activities:
+            - call_operation: custom.download
+          on_success:
+            - GFSData_done
+        GFSData_done:
+          target: GFSData
+          activities:
+            - set_state: started
+          on_success:
+            - Docker_create
+        GEOGData_download:
+          target: GEOGData
+          activities:
+            - call_operation: custom.download
+          on_success:
+            - GEOGData_done
+        GEOGData_done:
+          target: GEOGData
+          activities:
+            - set_state: started
+          on_success:
+            - Docker_create
+        Docker_create:
+          target: Docker
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Docker_configure
+        Docker_configure:
+          target: Docker
+          activities:
+            - call_operation: Standard.configure
+          on_success:
+            - Docker_start
+        Docker_start:
+          target: Docker
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Docker_started
+        Docker_started:
+          target: Docker
+          activities:
+            - set_state: started
+          on_success:
+            - WPS_GFS_create
+        WPS_GFS_create:
+          target: WPS_GFS
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - WPS_GFS_start
+        WPS_GFS_start:
+          target: WPS_GFS
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - WPS_GFS_started
+        WPS_GFS_started:
+          target: WPS_GFS
+          activities:
+            - set_state: started
+          on_success:
+            - WRF_create
+        WRF_create:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - WRF_enable_file_transfer
+        WRF_enable_file_transfer:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - CopyToJob_start
+        CopyToJob_start:
+          target: CopyToJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyToJob_started
+        CopyToJob_started:
+          target: CopyToJob
+          activities:
+            - set_state: started
+          on_success:
+            - WRF_submit
+        WRF_submit:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - WRF_submitted
+        WRF_submitted:
+          target: WRF
+          activities:
+            - set_state: submitted
+          on_success:
+            - WRF_run
+        WRF_run:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - WRF_executed
+        WRF_executed:
+          target: WRF
+          activities:
+            - set_state: executed
+          on_success:
+            - CopyFromJob_start
+        CopyFromJob_start:
+          target: CopyFromJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyFromJob_started
+        CopyFromJob_started:
+          target: CopyFromJob
+          activities:
+            - set_state: started
+          on_success:
+            - RISICO_create
+            - WRF_disable_file_transfer
+        WRF_disable_file_transfer:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - WRF_delete
+        WRF_delete:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_deleted
+        WRF_deleted:
+          target: WRF
+          activities:
+            - set_state: deleted
+        RISICO_create:
+          target: RISICO
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - RISICO_start
+        RISICO_start:
+          target: RISICO
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RISICO_started
+        RISICO_started:
+          target: RISICO
+          activities:
+            - set_state: started
+    testRun:
+      steps:
         GFSData_download:
           target: GFSData
           activities:
