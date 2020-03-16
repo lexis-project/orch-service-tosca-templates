@@ -57,45 +57,37 @@
       file:
         path: "{{ OUTPUT_DIRECTORY }}/geog_high_res_mandatory.tar.gz"
         state: absent
-    - name: Download additional dataset albedo modis
+- name: Get additional data
+  hosts: all
+  strategy: free
+  vars:
+    geog_files:
+      - albedo_modis.tar.bz2
+      - maxsnowalb_modis.tar.bz2
+      - modis_landuse_21class_30s.tar.bz2
+      - lake_depth.tar.bz2
+      - NUDAPT44_1km.tar.bz2
+      - urbfrac_nlcd2011.tar.bz2
+      - nlcd2011_imp_ll_9s.tar.bz2
+      - nlcd2011_can_ll_9s.tar.bz2
+      - erod.tar.bz2
+      - clayfrac_5m.tar.bz2
+      - sandfrac_5m.tar.bz2
+  tasks:
+    - name: Download GEOG data
       get_url:
-        url: "https://www2.mmm.ucar.edu/wrf/src/wps_files/albedo_modis.tar.bz2"
+        url: "https://www2.mmm.ucar.edu/wrf/src/wps_files/{{ item }}"
         dest: "{{ OUTPUT_DIRECTORY }}"
         mode: 0755
+      with_items: "{{ geog_files }}"
     - name: Extract archive
       unarchive:
-        src: "{{ OUTPUT_DIRECTORY }}/albedo_modis.tar.bz2"
+        src: "{{ OUTPUT_DIRECTORY }}/{{ item }}"
         dest: "{{ OUTPUT_DIRECTORY }}/WPS_GEOG/"
         remote_src: yes
+      with_items: "{{ geog_files }}"
     - name: Remove archive
       file:
-        path: "{{ OUTPUT_DIRECTORY }}/albedo_modis.tar.bz2"
+        path: "{{ OUTPUT_DIRECTORY }}/{{ item }}"
         state: absent
-    - name: Download additional dataset maxsnowalb modis
-      get_url:
-        url: "https://www2.mmm.ucar.edu/wrf/src/wps_files/maxsnowalb_modis.tar.bz2"
-        dest: "{{ OUTPUT_DIRECTORY }}"
-        mode: 0755
-    - name: Extract archive
-      unarchive:
-        src: "{{ OUTPUT_DIRECTORY }}/maxsnowalb_modis.tar.bz2"
-        dest: "{{ OUTPUT_DIRECTORY }}/WPS_GEOG/"
-        remote_src: yes
-    - name: Remove archive
-      file:
-        path: "{{ OUTPUT_DIRECTORY }}/maxsnowalb_modis.tar.bz2"
-        state: absent
-    - name: Download additional dataset modis landuse 21class 30s
-      get_url:
-        url: "https://www2.mmm.ucar.edu/wrf/src/wps_files/modis_landuse_21class_30s.tar.bz2"
-        dest: "{{ OUTPUT_DIRECTORY }}"
-        mode: 0755
-    - name: Extract archive
-      unarchive:
-        src: "{{ OUTPUT_DIRECTORY }}/modis_landuse_21class_30s.tar.bz2"
-        dest: "{{ OUTPUT_DIRECTORY }}/WPS_GEOG/"
-        remote_src: yes
-    - name: Remove archive
-      file:
-        path: "{{ OUTPUT_DIRECTORY }}/modis_landuse_21class_30s.tar.bz2"
-        state: absent
+      with_items: "{{ geog_files }}"
