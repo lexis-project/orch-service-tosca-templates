@@ -90,3 +90,5 @@ node_types:
           inputs:
             dirs_to_create: {get_property: [SELF, directories]}
           implementation: playbooks/createdirs.yaml
+    tags:
+      icon: images/createDirs.png

@@ -11,7 +11,7 @@
       file:
         # accepted input for containers: volumes with format path:mountpoint
         # in which case, only the first element has to be created
-        path: item.split(':')[0]
+        path: "{{ item.split(':')[0] }}"
         state: directory
         recurse: yes
         mode: 0777
