@@ -1,0 +1,38 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: org.lexis.weather.continuum
+  template_version: 0.1.0
+  template_author: lexis
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - yorc-types:1.1.0
+node_types:
+  org.lexis.nodes.ContinuumTestData:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      url:
+        type: string
+        description: URL where to find datasets
+        required: true
+      dataset:
+        type: string
+        description: zip file containing test data
+        required: true
+      destination:
+        type: string
+        description: Destination directory where to unzip test data
+        required: true
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            URL: {get_property: [SELF, url]}
+            DATASET: {get_property: [SELF, dataset]}
+            DESTINATION: {get_property: [SELF, destination]}
+          implementation: playbooks/download_testdata.yaml
+    tags:
+      icon: images/testsData.png

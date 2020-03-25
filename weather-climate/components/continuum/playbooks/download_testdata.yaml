@@ -1,0 +1,49 @@
+- name: Prequisites
+  hosts: all
+  strategy: free
+  become: true
+  become_method: sudo
+  tasks:
+    - name: Ubuntu - install unzip (acl needed by Ansible to become an unprivileged user)
+      apt:
+        name:
+          - acl
+          - unzip
+        state: present
+        update_cache: yes
+      register: apt_res
+      retries: 3
+      until: apt_res is success
+      when: ansible_distribution == 'Ubuntu'
+    - name: RedHat - install unzip
+      yum:
+        name:
+          - unzip
+        state: present
+        update_cache: yes
+      when: ansible_os_family == 'RedHat'
+    - name: Debian - install unzip
+      apt:
+        name:
+          - unzip
+        state: present
+        update_cache: yes
+      when: ansible_os_family == 'Debian'
+- name: Get test data
+  hosts: all
+  strategy: free
+  tasks:
+    - name: Download test data
+      get_url:
+        url: "{{ URL }}/{{ DATASET }}"
+        dest: "{{ DESTINATION }}"
+        mode: 0755
+    - name: Extract archive
+      unarchive:
+        src: "{{ DESTINATION }}/{{ DATASET }}"
+        dest: "{{ DESTINATION }}"
+        remote_src: yes
+    - name: Remove archive
+      file:
+        path: "{{ DESTINATION }}/{{ DATASET }}"
+        state: absent
