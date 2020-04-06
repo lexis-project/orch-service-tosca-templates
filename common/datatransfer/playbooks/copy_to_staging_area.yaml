@@ -1,0 +1,23 @@
+- name: Copy directory to staging area
+  hosts: all
+  strategy: free
+  become: true
+  become_user: "{{ user_name }}"
+  become_method: sudo
+  tasks:
+    - name: Get staging area destination directory
+      set_fact:
+        STAGING_AREA_DIRECTORY: "{{ mount_point }}/{{ destination_directory }}"
+      when: not create_timestamp_destination_subdirectory
+    - name: Compute staging area destination directory 
+      set_fact:
+        STAGING_AREA_DIRECTORY: "{{ mount_point }}/{{ destination_directory }}/{{ '%Y-%m-%d-%H:%M:%S' | strftime(ansible_date_time.epoch) }}"
+      when: create_timestamp_destination_subdirectory
+    - name: "Create destination directory {{ STAGING_AREA_DIRECTORY }}"
+      file:
+        path: "{{ STAGING_AREA_DIRECTORY }}"
+        state: directory
+        recurse: yes
+        mode: 0744
+    - name: "Copying source directory {{ source_directory }} content to staging area"
+      command: "/bin/cp -R {{ source_directory }}/* {{ STAGING_AREA_DIRECTORY }}"

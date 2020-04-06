@@ -1,0 +1,30 @@
+- name: Create mount point and mount file system
+  hosts: all
+  strategy: free
+  become: true
+  become_method: sudo
+  tasks:
+    - name: "Create mount point {{ mount_point }}"
+      file:
+        path: "{{ mount_point }}"
+        state: directory
+        recurse: yes
+        mode: 0777
+    - name: "Mount remote file system"
+      mount:
+        fstype: "{{ mount_type }}"
+        opts: "{{ mount_options }}"
+        state: mounted
+        src: "{{ remote_file_system }}"
+        path: "{{ mount_point }}"
+    - name: "Create group {{ group_name }}"
+      group:
+        name: "{{ group_name }}"
+        gid: "{{ group_id }}"
+        state: present
+    - name: "Create user {{ user_name }}"
+      user:
+        name: "{{ user_name }}"
+        uid: "{{ user_id }}"
+        group: "{{ group_name }}"
+        state: present
