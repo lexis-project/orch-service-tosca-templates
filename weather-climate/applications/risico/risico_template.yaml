@@ -116,10 +116,20 @@ topology_template:
             node: VirtualMachine
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
-    CreateDirs:
+    CreatePreProcessDirs:
       type: org.lexis.datatransfer.nodes.CreateDirectories
       properties:
         directories: {get_input: preprocessing_volumes}
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: VirtualMachine
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    CreatePostProcessDirs:
+      type: org.lexis.datatransfer.nodes.CreateDirectories
+      properties:
+        directories: {concat: ["[\"", get_input: postprocessing_input_directory, "/wrf\", \"", get_input: postprocessing_input_directory, "/output\"]"]}
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -182,27 +192,52 @@ topology_template:
       type: org.heappe.nodes.Job
       properties:
         jobSpecification: 
-          name: testJobName
-          project: testProjectName
-          clusterNodeTypeId: 1
+          name: WRFJob
+          project: WP7
+          clusterNodeTypeId: 6
           priority: 4
-          minCores: 1
-          maxCores: 1
-          waitingLimit: 600
-          walltimeLimit: 600
+          minCores: 48
+          maxCores: 48
+          waitingLimit: 0
+          walltimeLimit: 7200
           tasks: 
-            - name: testTaskName
-              commandTemplateId: 1
+            - name: WRFTask
+              commandTemplateId: 4
               templateParameterValues: 
-                - commandParameterIdentifier: inputParam
-                  parameterValue: inputParam
-              minCores: 1
-              maxCores: 1
-              walltimeLimit: 600
-              standardOutputFile: "console_Stdout"
-              standardErrorFile: "console_Stderr"
-              progressFile: "console_Stdprog"
-              logFile: "console_Stdlog"
+                - commandParameterIdentifier: MPICores
+                  parameterValue: "48"
+              environmentVariables:
+                - name: HDF5
+                  value: "./deps"
+                - name: NETCDF
+                  value: "./deps"
+                - name: CPPFLAGS
+                  value: "-I./deps/include"
+                - name: CFLAGS
+                  value: "-I./deps/include"
+                - name: CXXFLAGS
+                  value: "-I./deps/include"
+                - name: FCFLAGS
+                  value: "-I./deps/include"
+                - name: FFLAGS
+                  value: "-I./deps/include"
+                - name: LDFLAGS
+                  value: "-L./deps/lib"
+                - name: WRFIO_NCD_LARGE_FILE_SUPPORT
+                  value: "1"
+                - name: LD_LIBRARY_PATH
+                  value: "$LD_LIBRARY_PATH:./deps/lib"
+                - name: JASPERLIB
+                  value: "./deps/lib"
+                - name: JASPERINC
+                  value: "./deps/include"
+              minCores: 48
+              maxCores: 48
+              walltimeLimit: 7200
+              standardOutputFile: "stdout"
+              standardErrorFile: "stderr"
+              progressFile: "stdprog"
+              logFile: "stdlog"
     CopyToJob:
       type: org.lexis.datatransfer.nodes.CopyToJob
       properties:
@@ -286,15 +321,15 @@ topology_template:
           activities:
             - delegate: install
           on_success:
-            - CreateDirs_start
-        CreateDirs_start:
-          target: CreateDirs
+            - CreatePreProcessDirs_start
+        CreatePreProcessDirs_start:
+          target: CreatePreProcessDirs
           activities:
             - call_operation: Standard.start
           on_success:
-            - CreateDirs_started
-        CreateDirs_started:
-          target: CreateDirs
+            - CreatePreProcessDirs_started
+        CreatePreProcessDirs_started:
+          target: CreatePreProcessDirs
           activities:
             - set_state: started
           on_success:
@@ -416,6 +451,18 @@ topology_template:
           target: WRF
           activities:
             - set_state: executed
+          on_success:
+            - CreatePostProcessDirs_start
+        CreatePostProcessDirs_start:
+          target: CreatePostProcessDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreatePostProcessDirs_started
+        CreatePostProcessDirs_started:
+          target: CreatePostProcessDirs
+          activities:
+            - set_state: started
           on_success:
             - CopyFromJob_start
         CopyFromJob_start:
@@ -584,6 +631,18 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - CreatePostProcessDirs_start
+        CreatePostProcessDirs_start:
+          target: CreatePostProcessDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreatePostProcessDirs_started
+        CreatePostProcessDirs_started:
+          target: CreatePostProcessDirs
+          activities:
+            - set_state: started
+          on_success:
             - CopyFromJob_start
         CopyFromJob_start:
           target: CopyFromJob
@@ -703,6 +762,18 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - CreatePostProcessDirs_start
+        CreatePostProcessDirs_start:
+          target: CreatePostProcessDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreatePostProcessDirs_started
+        CreatePostProcessDirs_started:
+          target: CreatePostProcessDirs
+          activities:
+            - set_state: started
+          on_success:
             - CopyFromJob_start
         CopyFromJob_start:
           target: CopyFromJob
@@ -816,6 +887,18 @@ topology_template:
             - set_state: executed
     testpostprocess:
       steps:
+        CreatePostProcessDirs_start:
+          target: CreatePostProcessDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreatePostProcessDirs_started
+        CreatePostProcessDirs_started:
+          target: CreatePostProcessDirs
+          activities:
+            - set_state: started
+          on_success:
+            - CopyFromJob_start
         CopyFromJob_start:
           target: CopyFromJob
           activities:
