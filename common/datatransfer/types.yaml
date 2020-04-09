@@ -151,7 +151,10 @@ node_types:
         type: boolean
         default: false
     attributes:
-      staging_area_directory: {get_operation_output: [SELF, Standard, start, STAGING_AREA_DIRECTORY]}
+      dataset_path: {get_operation_output: [SELF, Standard, start, STAGING_AREA_DIRECTORY]}
+    capabilities:
+      dataset_provider:
+        type: org.ddi.capabilities.CloudAreaDatasetProvider
     requirements:
       - mounted_staging_area:
           capability: org.lexis.datatransfer.MountedStagingAreaAccess
