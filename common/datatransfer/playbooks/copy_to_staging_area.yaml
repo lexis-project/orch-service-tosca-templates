@@ -20,4 +20,4 @@
         recurse: yes
         mode: 0744
     - name: "Copying source directory {{ source_directory }} content to staging area"
-      command: "/bin/cp -R {{ source_directory }}/* {{ STAGING_AREA_DIRECTORY }}"
+      command: "/bin/cp -R {{ source_directory }}/. {{ STAGING_AREA_DIRECTORY }}"
