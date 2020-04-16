@@ -145,7 +145,7 @@ node_types:
       destination_directory:
         description: destination directory in staging area (relative path, will be created if it does not exist)
         type: string
-        default: ""
+        required: true
       create_timestamp_destination_subdirectory:
         description: If true, a subdirectory will be created under the destination directory
         type: boolean
