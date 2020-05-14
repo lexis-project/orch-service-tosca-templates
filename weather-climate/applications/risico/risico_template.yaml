@@ -25,11 +25,11 @@ topology_template:
       type: string
       required: true
       description: "Access token"
-    preprocessing_gfs_files_start_date:
+    preprocessing_start_date:
       type: string
       description: Download GFS files from this date, format YYYYMMDDHH
       required: true
-    preprocessing_gfs_files_end_date:
+    preprocessing_end_date:
       type: string
       description: Download GFS files up to this date, format YYYYMMDDHH
       required: true
@@ -160,7 +160,7 @@ topology_template:
         mem_share: "128 MB"
         volumes: {get_input: preprocessing_volumes}
         # docker_env_vars:  {get_input: preprocessing_environment_variables}
-        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_gfs_files_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_gfs_files_end_date, "\"}"]}
+        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_end_date, "\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
@@ -176,8 +176,8 @@ topology_template:
     GFSData:
       type: org.lexis.nodes.GFSData
       properties:
-        start_date: {get_input: preprocessing_gfs_files_start_date}
-        end_date: {get_input: preprocessing_gfs_files_end_date}
+        start_date: {get_input: preprocessing_start_date}
+        end_date: {get_input: preprocessing_end_date}
         left_longitude: "-19.0"
         right_longitude: "48.0"
         top_latitude: "64.0"

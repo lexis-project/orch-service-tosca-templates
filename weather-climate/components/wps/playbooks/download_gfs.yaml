@@ -18,10 +18,10 @@
       set_fact:
         gfsDay: "{{START_DATE[:8]}}"
         gfsHour: "{{START_DATE[8:]}}"
-        nbHours: "{{ (END_DATE|int) - (START_DATE|int) }}"
+        nbHours: "{{ (((END_DATE|to_datetime('%Y%m%d%H')) - (START_DATE|to_datetime('%Y%m%d%H'))).total_seconds() / 3600) | int }}"
     - name: Download GFS analysis of initial atmospheric conditions file
       get_url:
-        url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=gfs.t12z.pgrb2.0p25.anl&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ gfsDay }}%2F{{ gfsHour }}"
+        url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=gfs.t{{ gfsHour }}z.pgrb2.0p25.anl&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ gfsDay }}%2F{{ gfsHour }}"
         dest: "{{ OUTPUT_DIRECTORY }}"
         mode: 0755
     - name: Download GFS data files for each hour
@@ -29,4 +29,4 @@
         url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file={{ item }}&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ gfsDay }}%2F{{ gfsHour }}"
         dest: "{{ OUTPUT_DIRECTORY }}/{{ item }}.grb"
         mode: 0755
-      with_sequence: start=0 end={{nbHours|int}} format=gfs.t12z.pgrb2.0p25.f0%02d
+      with_sequence: start=0 end={{nbHours|int}} format=gfs.t{{ gfsHour }}z.pgrb2.0p25.f0%02d
