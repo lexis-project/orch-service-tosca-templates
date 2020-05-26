@@ -29,6 +29,13 @@
         state: present
         update_cache: yes
       when: ansible_os_family == 'Debian'
+    - name: "Create destination directory {{ DESTINATION }}"
+      file:
+        path: "{{ DESTINATION }}"
+        state: directory
+        recurse: yes
+        mode: 0777
+
 - name: Get test data
   hosts: all
   strategy: free
