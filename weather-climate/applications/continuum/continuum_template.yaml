@@ -10,30 +10,34 @@ description: ""
 imports:
   - yorc-types:1.1.0
   - tosca-normative-types:1.0.0-ALIEN20
-  - docker-types:2.2.0-SM10
-  - alien-base-types:2.2.0-SM10
+  - docker-types:2.2.0
+  - alien-base-types:2.2.0
   - heappe-types:0.1.0
-  - org.ystia.docker.containers.docker.generic:2.2.0-SNAPSHOT
-  - org.ystia.docker.ansible:2.2.0-SNAPSHOT
+  - org.ystia.docker.containers.docker.generic:2.3.0-SNAPSHOT
+  - org.ystia.docker.ansible:2.3.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.0
   - org.lexis.weather.wps:0.1.0
   - org.lexis.weather.continuum:0.1.0
 
 topology_template:
   inputs:
-    preprocessing_GFSData_files_start_date:
+    preprocessing_start_date:
       type: string
       description: Download GFS files from this date, format YYYYMMDDHH
       required: true
-    preprocessing_GFSData_files_end_date:
+    preprocessing_end_date:
       type: string
       description: Download GFS files up to this date, format YYYYMMDDHH
       required: true
-    preprocessing_WPSGFS_image:
+    postprocessing_run_date:
+      type: string
+      description: Continuum run date, format YYYY-MM-DD HH:MM
+      required: true
+    preprocessing_image:
       type: string
       description: Pre-processing container repository path
       default: "laurentg/wps.gfs"
-    preprocessing_WPSGFS_volumes:
+    preprocessing_volumes:
       type: list
       entry_schema:
         type: string
@@ -41,7 +45,7 @@ topology_template:
         List of volumes to mount within the pre-processing container.
         Use docker CLI-style syntax: /host:/container[:mode]
       default: ["/wps_data/gfs:/input", "/wps_data/output:/output", "/wps_data/geog/WPS_GEOG:/geogrid"]
-    preprocessing_WPSGFS_environment_variables:
+    preprocessing_environment_variables:
       type: map
       entry_schema:
         type: string
@@ -49,33 +53,44 @@ topology_template:
         Environment variables for the pre-processing container.
       # default: {WPS_START_DATE: "2020030112", WPS_END_DATE: "2020030115"}
       required: false
-    preprocessing_CopyToJob_source_directory:
+    preprocessing_output_directory:
       type: string
       description: Directory where preprocessing results are stored
       default: /wps_data/output
-    postprocessing_Continuum_image:
+    postprocessing_hyde_image:
       type: string
-      description: Post-processing container repository path
-      default: "laurentg/fp_framework"
-    postprocessing_CopyFromJob_destination_directory:
+      description: Hyde post-processing container repository path 
+      default: "laurentg/fp_framework_hyde:1.0.2"
+    postprocessing_hyde_inputs_directory:
       type: string
       description: |
-        Directory where postprocessing input data will be stored
-        (temporary, this continuum version works on test data and not yet on WRF results)
-      default: /continuum/data
-    postprocessing_Continuum_volumes:
+        Directory where hyde postprocessing input data will be stored
+      default: /continuum/datasets_hyde
+    postprocessing_hyde_volumes:
       type: list
       entry_schema:
         type: string
       description: |
-        List of volumes to mount within the post-processing container.
+        List of volumes to mount within the Hyde post-processing container.
         Use docker CLI-style syntax: /host:/container[:mode]
-      default: ["/continuum/data/static_data/:/home/fp/fp_mount/data/static/","/continuum/data/dynamic_data/observation/:/home/fp/fp_mount/data/forcing/obs/","/continuum/data/dynamic_data/nwp/:/home/fp/fp_mount/data/forcing/for/","/continuum/results/:/home/fp/fp_mount/archive"]
-    postprocessing_Continuum_run_date:
+      default: ["/continuum/datasets_hyde/static_data/land:/home/fp/fp_mount/datasets_hyde/static", "/continuum/datasets_hyde/dynamic_data/nwp/:/home/fp/fp_mount/datasets_hyde/dynamic_raw", "/continuum/datasets_hyde/docker_data:/home/fp/fp_mount/datasets_hyde/dynamic_processed"]
+    postprocessing_hmc_image:
       type: string
-      description: Continuum run date, format YYYY-MM-DD HH:MM
-      default: "2019-05-12 11:00"
-      required: true
+      description: HMC post-processing container repository path
+      default: "laurentg/fp_framework_hmc:1.0.2"
+    postprocessing_hmc_inputs_directory:
+      type: string
+      description: |
+        Directory where HMC postprocessing input data will be stored
+      default: /continuum/datasets_hmc
+    postprocessing_hmc_volumes:
+      type: list
+      entry_schema:
+        type: string
+      description: |
+        List of volumes to mount within the HMC post-processing container.
+        Use docker CLI-style syntax: /host:/container[:mode]
+      default: ["/continuum/datasets_hmc/static_data/land:/home/fp/fp_mount/datasets_hmc/static_land", "/continuum/datasets_hmc/static_data/point:/home/fp/fp_mount/datasets_hmc/static_point", "/continuum/datasets_hyde/docker_data:/home/fp/fp_mount/datasets_hmc/dynamic_source", "/continuum/datasets_hmc/docker_data/:/home/fp/fp_mount/datasets_hmc/dynamic_archive"]
   node_templates:
     PublicNet:
       type: tosca.nodes.Network
@@ -115,37 +130,47 @@ topology_template:
     CreatePreProcessDirs:
       type: org.lexis.datatransfer.nodes.CreateDirectories
       properties:
-        directories: {get_input: preprocessing_WPSGFS_volumes}
+        directories: {get_input: preprocessing_volumes}
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
             node: VirtualMachine
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
-    CreatePostProcessDirs:
+    CreatePostProcessHydeDirs:
       type: org.lexis.datatransfer.nodes.CreateDirectories
       properties:
-        directories: {get_input: postprocessing_Continuum_volumes}
+        directories: {get_input: postprocessing_hyde_volumes}
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
             node: VirtualMachine
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
-    WPSGFS:
+    CreatePostProcessHMCDirs:
+      type: org.lexis.datatransfer.nodes.CreateDirectories
+      properties:
+        directories: {get_input: postprocessing_hmc_volumes}
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: VirtualMachine
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    WPS_GFS:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
       properties:
         auto_remove: false
         cleanup: false
         detach: false
-        image: {get_input: preprocessing_WPSGFS_image}
+        image: {get_input: preprocessing_image}
         keep_volumes: true
         restart_policy: no
         cpu_share: 1.0
-        mem_share: "128 MB"
-        volumes: {get_input: preprocessing_WPSGFS_volumes}
-        # docker_env_vars:  {get_input: preprocessing_WPSGFS_environment_variables}
-        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_GFSData_files_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_GFSData_files_end_date, "\"}"]}
+        shm_size: "1024 MB"
+        volumes: {get_input: preprocessing_volumes}
+        # docker_env_vars:  {get_input: preprocessing_environment_variables}
+        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_end_date, "\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
@@ -161,8 +186,8 @@ topology_template:
     GFSData:
       type: org.lexis.nodes.GFSData
       properties:
-        start_date: {get_input: preprocessing_GFSData_files_start_date}
-        end_date: {get_input: preprocessing_GFSData_files_end_date}
+        start_date: {get_input: preprocessing_start_date}
+        end_date: {get_input: preprocessing_end_date}
         left_longitude: "-19.0"
         right_longitude: "48.0"
         top_latitude: "64.0"
@@ -186,33 +211,60 @@ topology_template:
             relationship: tosca.relationships.HostedOn
     WRF:
       type: org.heappe.nodes.Job
+      metadata:
+        task: computation
       properties:
         jobSpecification: 
-          name: testJobName
-          project: testProjectName
-          clusterNodeTypeId: 1
+          name: WRFJob
+          project: WP7
+          clusterNodeTypeId: 6
           priority: 4
-          minCores: 1
-          maxCores: 1
-          waitingLimit: 600
-          walltimeLimit: 600
+          minCores: 48
+          maxCores: 48
+          waitingLimit: 0
+          walltimeLimit: 86400
           tasks: 
-            - name: testTaskName
-              commandTemplateId: 1
+            - name: WRFTask
+              commandTemplateId: 4
               templateParameterValues: 
-                - commandParameterIdentifier: inputParam
-                  parameterValue: inputParam
-              minCores: 1
-              maxCores: 1
-              walltimeLimit: 600
-              standardOutputFile: "console_Stdout"
-              standardErrorFile: "console_Stderr"
-              progressFile: "console_Stdprog"
-              logFile: "console_Stdlog"
+                - commandParameterIdentifier: MPICores
+                  parameterValue: "48"
+              environmentVariables:
+                - name: HDF5
+                  value: "./deps"
+                - name: NETCDF
+                  value: "./deps"
+                - name: CPPFLAGS
+                  value: "-I./deps/include"
+                - name: CFLAGS
+                  value: "-I./deps/include"
+                - name: CXXFLAGS
+                  value: "-I./deps/include"
+                - name: FCFLAGS
+                  value: "-I./deps/include"
+                - name: FFLAGS
+                  value: "-I./deps/include"
+                - name: LDFLAGS
+                  value: "-L./deps/lib"
+                - name: WRFIO_NCD_LARGE_FILE_SUPPORT
+                  value: "1"
+                - name: LD_LIBRARY_PATH
+                  value: "$LD_LIBRARY_PATH:./deps/lib"
+                - name: JASPERLIB
+                  value: "./deps/lib"
+                - name: JASPERINC
+                  value: "./deps/include"
+              minCores: 48
+              maxCores: 48
+              walltimeLimit: 86400
+              standardOutputFile: "stdout"
+              standardErrorFile: "stderr"
+              progressFile: "stdprog"
+              logFile: "stdlog"
     CopyToJob:
       type: org.lexis.datatransfer.nodes.CopyToJob
       properties:
-        source_directory: {get_input: preprocessing_CopyToJob_source_directory}
+        source_directory: {get_input: preprocessing_output_directory}
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -228,7 +280,7 @@ topology_template:
       type: org.lexis.datatransfer.nodes.CopyFromJob
       properties:
         source_files_pattern: "auxhist*"
-        destination_directory:  { concat: [get_input: postprocessing_CopyFromJob_destination_directory, "/wrf"] }
+        destination_directory:  { concat: [get_input: postprocessing_hyde_inputs_directory, "/dynamic_data/nwp"] }
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -240,32 +292,68 @@ topology_template:
             node: WRF
             capability: org.heappe.capabilities.HeappeJob
             relationship: org.heappe.relationships.GetResultsFromJob
-    ContinuumTestData:
-      type: org.lexis.nodes.ContinuumTestData
+    Continuum_Hyde_StaticData:
+      type: org.lexis.nodes.ContinuumStaticData
       properties:
         url: https://storage.googleapis.com/test-laurent/lexis
-        dataset: continuum_testdata.zip
-        destination: {get_input: postprocessing_CopyFromJob_destination_directory}
+        dataset: continuum_hyde_static_data_1.0.2.zip
+        destination: { concat: [get_input: postprocessing_hyde_inputs_directory, "/static_data"] }
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
             node: VirtualMachine
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
-    Continuum:
+    Continuum_HMC_StaticData:
+      type: org.lexis.nodes.ContinuumStaticData
+      properties:
+        url: https://storage.googleapis.com/test-laurent/lexis
+        dataset: continuum_hmc_static_data_1.0.2.zip
+        destination: { concat: [get_input: postprocessing_hmc_inputs_directory, "/static_data"] }
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: VirtualMachine
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    Continuum_Hyde:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
       properties:
         auto_remove: false
         cleanup: false
         detach: false
-        image: {get_input: postprocessing_Continuum_image}
+        image: {get_input: postprocessing_hyde_image}
         keep_volumes: true
         restart_policy: no
         cpu_share: 1.0
-        mem_share: "128 MB"
         workdir: "/home/fp/fp_entrypoint/"
-        volumes: {get_input: postprocessing_Continuum_volumes}
-        docker_env_vars:  {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_Continuum_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/data/static/\",\"TARGET_DATA_RESTART\": \"/home/fp/fp_mount/data/restart/\",\"TARGET_DATA_DYNAMIC_OBS\": \"/home/fp/fp_mount/data/forcing/obs/\",\"TARGET_DATA_DYNAMIC_FOR\": \"/home/fp/fp_mount/data/forcing/for/\",\"TARGET_DATA_ARCHIVE\": \"/home/fp/fp_mount/archive/\",\"RUN_TIME_STEPS_OBS\": \"4\",\"RUN_TIME_STEPS_FOR\": \"0\",\"RUN_NAME\": \"fp_run\",\"RUN_ENS\": \"false\"}"]}
+        volumes: {get_input: postprocessing_hyde_volumes}
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"10\",\"RUN_TIME_STEPS_FOR\": \"20\",\"RUN_NAME\": \"fp_hyde_wrf\",\"RUN_DOMAIN\": \"marche\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+    Continuum_HMC:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hmc_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes: {get_input: postprocessing_hmc_volumes}
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hmc.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hmc.json\",\"TARGET_DATA_STATIC_LAND\": \"/home/fp/fp_mount/datasets_hmc/static_land/\",\"TARGET_DATA_STATIC_POINT\": \"/home/fp/fp_mount/datasets_hmc/static_point/\",\"TARGET_DATA_DYNAMIC_RESTART\": \"/home/fp/fp_mount/datasets_hmc/dynamic_restart/\",\"TARGET_DATA_DYNAMIC_SOURCE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_source/\",\"TARGET_DATA_DYNAMIC_ARCHIVE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_archive/\",\"RUN_TIME_STEPS_OBS\": \"10\",\"RUN_TIME_STEPS_FOR\": \"15\",\"RUN_NAME\": \"fp_run\",\"RUN_ENS\": \"false\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
@@ -365,25 +453,36 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - WPSGFS_create
-        WPSGFS_create:
-          target: WPSGFS
+            - WPS_GFS_create
+        WPS_GFS_create:
+          target: WPS_GFS
           activities:
             - call_operation: Standard.create
           on_success:
-            - WPSGFS_start
-        WPSGFS_start:
-          target: WPSGFS
+            - WPS_GFS_start
+        WPS_GFS_start:
+          target: WPS_GFS
           activities:
             - call_operation: Standard.start
           on_success:
-            - WPSGFS_started
-        WPSGFS_started:
-          target: WPSGFS
+            - WPS_GFS_started
+        WPS_GFS_started:
+          target: WPS_GFS
           activities:
             - set_state: started
           on_success:
             - WRF_create
+            - WPS_GFS_delete
+        WPS_GFS_delete:
+          target: WPS_GFS
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WPS_GFS_deleted
+            WPS_GFS_deleted:
+          target: WPS_GFS
+          activities:
+            - set_state: deleted
         WRF_create:
           target: WRF
           operation_host: ORCHESTRATOR
@@ -435,15 +534,28 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - CreatePostProcessDirs_start
-        CreatePostProcessDirs_start:
-          target: CreatePostProcessDirs
+            - CreatePostProcessHydeDirs_start
+            - CreatePostProcessHMCDirs_start
+        CreatePostProcessHydeDirs_start:
+          target: CreatePostProcessHydeDirs
           activities:
             - call_operation: Standard.start
           on_success:
-            - CreatePostProcessDirs_started
-        CreatePostProcessDirs_started:
-          target: CreatePostProcessDirs
+            - CreatePostProcessHydeDirs_started
+        CreatePostProcessHydeDirs_started:
+          target: CreatePostProcessHydeDirs
+          activities:
+            - set_state: started
+          on_success:
+            - CopyFromJob_start
+        CreatePostProcessHMCDirs_start:
+          target: CreatePostProcessHMCDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreatePostProcessHMCDirs_started
+        CreatePostProcessHMCDirs_started:
+          target: CreatePostProcessHMCDirs
           activities:
             - set_state: started
           on_success:
@@ -459,7 +571,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - ContinuumTestData_start
+            - Continuum_Hyde_StaticData_start
             - WRF_disable_file_transfer
         WRF_disable_file_transfer:
           target: WRF
@@ -479,134 +591,275 @@ topology_template:
           target: WRF
           activities:
             - set_state: deleted
-        ContinuumTestData_start:
-          target: ContinuumTestData
+        Continuum_Hyde_StaticData_start:
+          target: Continuum_Hyde_StaticData
           activities:
             - call_operation: Standard.start
           on_success:
-            - Continuum_create
-        Continuum_create:
-          target: Continuum
+            - Continuum_Hyde_create
+        Continuum_Hyde_create:
+          target: Continuum_Hyde
           activities:
             - call_operation: Standard.create
           on_success:
-            - Continuum_start
-        Continuum_start:
-          target: Continuum
+            - Continuum_Hyde_start
+            - Continuum_HMC_StaticData_start
+        Continuum_Hyde_start:
+          target: Continuum_Hyde
           activities:
             - call_operation: Standard.start
           on_success:
-            - Continuum_started
-        Continuum_started:
-          target: Continuum
+            - Continuum_Hyde_started
+        Continuum_Hyde_started:
+          target: Continuum_Hyde
           activities:
             - set_state: started
-    RunContinuumWithTestData:
+          on_success:
+            - Continuum_HMC_start
+        Continuum_HMC_StaticData_start:
+          target: Continuum_HMC_StaticData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_create
+        Continuum_HMC_create:
+          target: Continuum_HMC
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_start
+        Continuum_HMC_start:
+          target: Continuum_HMC
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_started
+        Continuum_HMC_started:
+          target: Continuum_HMC
+          activities:
+            - set_state: started
+    RunAfterPreProcess:
       steps:
-        Compute_install:
-          target: VirtualMachine
-          activities:
-            - delegate: install
-          on_success:
-            - CreatePostProcessDirs_start
-        CreatePostProcessDirs_start:
-          target: CreatePostProcessDirs
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CreatePostProcessDirs_started
-        CreatePostProcessDirs_started:
-          target: CreatePostProcessDirs
-          activities:
-            - set_state: started
-          on_success:
-            - Docker_create
-        Docker_create:
-          target: Docker
+        WRF_create:
+          target: WRF
+          operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
           on_success:
-            - Docker_configure
+            - WRF_enable_file_transfer
+        WRF_enable_file_transfer:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - CopyToJob_start
+        CopyToJob_start:
+          target: CopyToJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyToJob_started
+        CopyToJob_started:
+          target: CopyToJob
+          activities:
+            - set_state: started
+          on_success:
+            - WRF_submit
+        WRF_submit:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - WRF_submitted
+        WRF_submitted:
+          target: WRF
+          activities:
+            - set_state: submitted
+          on_success:
+            - WRF_run
+        WRF_run:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - WRF_executed
+        WRF_executed:
+          target: WRF
+          activities:
+            - set_state: executed
+          on_success:
+            - CreatePostProcessHydeDirs_start
+            - CreatePostProcessHMCDirs_start
+        CreatePostProcessHydeDirs_start:
+          target: CreatePostProcessHydeDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreatePostProcessHydeDirs_started
+        CreatePostProcessHydeDirs_started:
+          target: CreatePostProcessHydeDirs
+          activities:
+            - set_state: started
+          on_success:
+            - CopyFromJob_start
+        CreatePostProcessHMCDirs_start:
+          target: CreatePostProcessHMCDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreatePostProcessHMCDirs_started
+        CreatePostProcessHMCDirs_started:
+          target: CreatePostProcessHMCDirs
+          activities:
+            - set_state: started
+          on_success:
+            - CopyFromJob_start
+        CopyFromJob_start:
+          target: CopyFromJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyFromJob_started
+        CopyFromJob_started:
+          target: CopyFromJob
+          activities:
+            - set_state: started
+          on_success:
+            - Continuum_Hyde_StaticData_start
+            - WRF_disable_file_transfer
+        WRF_disable_file_transfer:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - WRF_delete
+        WRF_delete:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_deleted
+        WRF_deleted:
+          target: WRF
+          activities:
+            - set_state: deleted
+        Continuum_Hyde_StaticData_start:
+          target: Continuum_Hyde_StaticData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_create
+        Continuum_Hyde_create:
+          target: Continuum_Hyde
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_Hyde_start
+            - Continuum_HMC_StaticData_start
+        Continuum_Hyde_start:
+          target: Continuum_Hyde
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_started
+        Continuum_Hyde_started:
+          target: Continuum_Hyde
+          activities:
+            - set_state: started
+          on_success:
+            - Continuum_HMC_start
+        Continuum_HMC_StaticData_start:
+          target: Continuum_HMC_StaticData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_create
+        Continuum_HMC_create:
+          target: Continuum_HMC
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_start
+        Continuum_HMC_start:
+          target: Continuum_HMC
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_started
+        Continuum_HMC_started:
+          target: Continuum_HMC
+          activities:
+            - set_state: started
+    testDocker:
+      steps:
         Docker_configure:
           target: Docker
           activities:
             - call_operation: Standard.configure
           on_success:
             - Docker_start
+        Docker_create:
+          target: Docker
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Docker_configure
         Docker_start:
           target: Docker
           activities:
             - call_operation: Standard.start
-          on_success:
-            - Docker_started
-        Docker_started:
-          target: Docker
-          activities:
-            - set_state: started
-          on_success:
-            - ContinuumTestData_start
-        ContinuumTestData_start:
-          target: ContinuumTestData
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_create
-        Continuum_create:
-          target: Continuum
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_start
-        Continuum_start:
-          target: Continuum
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_started
-        Continuum_started:
-          target: Continuum
-          activities:
-            - set_state: started
-    testDataAndContinuum:
+    RunPostProcess:
       steps:
-        ContinuumTestData_start:
-          target: ContinuumTestData
+        Continuum_Hyde_StaticData_start:
+          target: Continuum_Hyde_StaticData
           activities:
             - call_operation: Standard.start
           on_success:
-            - Continuum_create
-        Continuum_create:
-          target: Continuum
+            - Continuum_Hyde_create
+        Continuum_Hyde_create:
+          target: Continuum_Hyde
           activities:
             - call_operation: Standard.create
           on_success:
-            - Continuum_start
-        Continuum_start:
-          target: Continuum
+            - Continuum_Hyde_start
+            - Continuum_HMC_StaticData_start
+        Continuum_Hyde_start:
+          target: Continuum_Hyde
           activities:
             - call_operation: Standard.start
           on_success:
-            - Continuum_started
-        Continuum_started:
-          target: Continuum
+            - Continuum_Hyde_started
+        Continuum_Hyde_started:
+          target: Continuum_Hyde
           activities:
             - set_state: started
-    testContinuum:
-      steps:
-        Continuum_create:
-          target: Continuum
-          activities:
-            - call_operation: Standard.create
           on_success:
-            - Continuum_start
-        Continuum_start:
-          target: Continuum
+            - Continuum_HMC_start
+        Continuum_HMC_StaticData_start:
+          target: Continuum_HMC_StaticData
           activities:
             - call_operation: Standard.start
           on_success:
-            - Continuum_started
-        Continuum_started:
-          target: Continuum
+            - Continuum_HMC_create
+        Continuum_HMC_create:
+          target: Continuum_HMC
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_start
+        Continuum_HMC_start:
+          target: Continuum_HMC
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_started
+        Continuum_HMC_started:
+          target: Continuum_HMC
           activities:
             - set_state: started
     start:
