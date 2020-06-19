@@ -1,0 +1,33 @@
+- name: Install drops2
+  hosts: all
+  strategy: free
+  become: true
+  become_method: sudo
+  tasks:
+    - name: Load a variable file based on the OS type.
+      include_vars:
+        file: "vars/{{ ansible_os_family }}-py3.yml"
+    - name: RedHat - install prerequisites
+      yum:
+        name: "{{install_packages}}"
+        state: present
+        update_cache: yes
+      when: ansible_os_family == 'RedHat'
+    - name: Debian - install prerequisites
+      apt:
+        name: "{{ install_packages }}"
+        state: present
+        update_cache: yes
+      when: ansible_os_family == 'Debian'
+    - name: Install latest Pip version
+      pip:
+        name: "pip"
+        state: latest
+        executable: "{{pip_cmd}}"
+    - name: Install drops2
+      pip:
+        name: drops2
+        state: latest
+        extra_args: "--extra-index-url https://test.pypi.org/simple/"
+        executable: "{{pip_cmd}}"
+      

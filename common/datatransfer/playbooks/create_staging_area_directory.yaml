@@ -5,22 +5,23 @@
   become_user: "{{ user_name }}"
   become_method: sudo
   tasks:
+    - name: Getting user allowed to write in staging area
+      set_fact:
+        USER_NAME: "{{ user_name }}"
     - name: Get staging area destination directory
       set_fact:
-        STAGING_AREA_DIRECTORY: "{{ destination_directory }}"
+        STAGING_AREA_DIRECTORY: "{{ directory }}"
       when: not create_timestamp_destination_subdirectory
     - name: Compute staging area destination directory 
       set_fact:
-        STAGING_AREA_DIRECTORY: "{{ destination_directory }}/{{ '%Y-%m-%d-%H:%M:%S' | strftime(ansible_date_time.epoch) }}"
+        STAGING_AREA_DIRECTORY: "{{ directory }}/{{ '%Y-%m-%d-%H:%M:%S' | strftime(ansible_date_time.epoch) }}"
       when: create_timestamp_destination_subdirectory
-    - name: Compute destination directory absolute path
+    - name: Get destination directory absolute path
       set_fact:
         DIRECTORY_ABSOLUTE_PATH: "{{ mount_point }}/{{ STAGING_AREA_DIRECTORY }}"
-    - name: "Create destination directory {{ STAGING_AREA_DIRECTORY }}"
+    - name: "Create destination directory {{ DIRECTORY_ABSOLUTE_PATH }}"
       file:
         path: "{{ DIRECTORY_ABSOLUTE_PATH }}"
         state: directory
         recurse: yes
         mode: 0744
-    - name: "Copying source directory {{ source_directory }} content to staging area"
-      command: "/bin/cp -R {{ source_directory }}/. {{ DIRECTORY_ABSOLUTE_PATH }}"

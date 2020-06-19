@@ -457,7 +457,7 @@ topology_template:
   outputs:
     ddi_post_process_results:
       description: DDI path to Continuum post-processing results
-      value: { get_attribute: [ CloudToDDIJob, ddi_dataset_path ] }
+      value: { get_attribute: [ CloudToDDIJob, ddi_directory_path ] }
   workflows:
     install:
       steps:

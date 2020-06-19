@@ -69,3 +69,10 @@ node_types:
           implementation: playbooks/download_geog.yaml
     tags:
       icon: /images/GEOG.png
+  org.lexis.nodes.PWSData:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: Get data from Personal Weather Stations
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/install_drops2.yaml
