@@ -1,0 +1,6 @@
+- name: Moving file
+  hosts: all
+  strategy: free
+  tasks:
+    - name: "Moving file"
+      command: "mv  {{ source_file }} {{ destination_file }}"

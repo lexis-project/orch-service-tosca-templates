@@ -16,7 +16,7 @@ imports:
   - ddi-types:0.1.0
   - org.ystia.docker.containers.docker.generic:2.2.0-SNAPSHOT
   - org.ystia.docker.ansible:2.2.0-SNAPSHOT
-  - org.lexis.common.datatransfer:0.1.0
+  - org.lexis.common.datatransfer:0.1.1
   - org.lexis.weather.wps:0.1.0
 
 topology_template:
@@ -222,7 +222,7 @@ topology_template:
           walltimeLimit: 36000
           tasks: 
             - name: WRFTask
-              commandTemplateId: 6
+              commandTemplateId: 9
               templateParameterValues: 
                 - commandParameterIdentifier: MPICores
                   parameterValue: "48"
@@ -276,7 +276,7 @@ topology_template:
     CopyFromJob:
       type: org.lexis.datatransfer.nodes.CopyFromJob
       properties:
-        source_files_pattern: "auxhist*"
+        source_files_patterns: [ "auxhist*" ]
         destination_directory:  { concat: [get_input: postprocessing_input_directory, "/wrf"] }
       requirements:
         - hostedOnVirtualMachineHost:
@@ -405,12 +405,7 @@ topology_template:
     CloudToDDIJob:
       type: org.ddi.nodes.CloudToDDIJob
       properties:
-        metadata:
-          creator: ["RISICO workflow"]
-          contributor: ["RISICO workflow"]
-          publisher: ["RISICO workflow"]
-          resourceType: "Workflow result"
-          title: "RISICO Workflow result"
+        metadata: {concat: ["{\"creator\": [\"RISICO workflow\"], \"contributor\": [\"RISICO workflow\"], \"publisher\": [\"RISICO workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"RISICO Workflow result - ", get_input: postprocessing_risico_run_date, "\"}"]}
         token: { get_input: token }
         ddi_path: { get_input: postprocessing_ddi_path }
       requirements:
