@@ -2,7 +2,7 @@ tosca_definitions_version: alien_dsl_2_0_0
 
 metadata:
   template_name: org.lexis.common.datatransfer
-  template_version: 0.1.0
+  template_version: 0.1.1
   template_author: lexis
 
 imports:
@@ -37,6 +37,8 @@ node_types:
             destination_directory: {get_attribute: [REQ_TARGET, job, file_transfer, path]}
             source_directory: {get_property: [SELF, source_directory]}
           implementation: playbooks/copytojob.yaml
+        delete:
+          implementation: playbooks/noop.yaml
     tags:
       icon: images/copytojob.png
   org.lexis.datatransfer.nodes.CopyFromJob:
@@ -44,10 +46,13 @@ node_types:
     description: >
       Copy files from a HEAppE Job output directory
     properties:
-      source_files_pattern:
-        description: Pattern of files to copy from job output directory
-        type: string
-        default: "*"
+      source_files_patterns:
+        type: list
+        entry_schema:
+          type: string
+        description: |
+          List of file patterns to copy from job output directory
+        required: true
       destination_directory:
         description: Directory where to copy files
         type: string
@@ -68,11 +73,37 @@ node_types:
             private_key: {get_attribute: [REQ_TARGET, job, file_transfer, key]}
             server: {get_attribute: [REQ_TARGET, job, file_transfer, server]}
             source_directory: {get_attribute: [REQ_TARGET, job, file_transfer, path]}
-            source_files_pattern: {get_property: [SELF, source_files_pattern]}
+            source_files_patterns: {get_property: [SELF, source_files_patterns]}
             destination_directory: {get_property: [SELF, destination_directory]}
           implementation: playbooks/copyfromjob.yaml
+        delete:
+          implementation: playbooks/noop.yaml
     tags:
       icon: images/copyfromjob.png
+  org.lexis.datatransfer.nodes.MoveFile:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+      Move or rename a file (directories in path must exist)
+    properties:
+      source_file:
+        description: Source file
+        type: string
+        required: true
+      destination_file:
+        description: Destination file
+        type: string
+        required: true
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            source_file: {get_property: [SELF, source_file]}
+            destination_file: {get_property: [SELF, destination_file]}
+          implementation: playbooks/movefile.yaml
+        delete:
+          implementation: playbooks/noop.yaml
   org.lexis.datatransfer.nodes.CreateDirectories:
     derived_from: tosca.nodes.SoftwareComponent
     description: Create directories on a target
