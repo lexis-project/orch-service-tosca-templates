@@ -16,7 +16,7 @@ imports:
   - heappe-types:0.1.0
   - org.ystia.docker.containers.docker.generic:2.3.0-SNAPSHOT
   - org.ystia.docker.ansible:2.3.0-SNAPSHOT
-  - org.lexis.common.datatransfer:0.1.0
+  - org.lexis.common.datatransfer:0.1.1
   - org.lexis.weather.wps:0.1.0
   - org.lexis.weather.continuum:0.1.0
 
@@ -236,7 +236,7 @@ topology_template:
           walltimeLimit: 86400
           tasks: 
             - name: WRFTask
-              commandTemplateId: 4
+              commandTemplateId: 9
               templateParameterValues: 
                 - commandParameterIdentifier: MPICores
                   parameterValue: "48"
@@ -290,7 +290,7 @@ topology_template:
     CopyFromJob:
       type: org.lexis.datatransfer.nodes.CopyFromJob
       properties:
-        source_files_pattern: "auxhist*"
+        source_files_patterns: [ "auxhist*" ]
         destination_directory:  { concat: [get_input: postprocessing_hyde_inputs_directory, "/dynamic_data/nwp"] }
       requirements:
         - hostedOnVirtualMachineHost:
