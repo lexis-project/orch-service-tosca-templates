@@ -12,15 +12,20 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:2.2.0
   - alien-base-types:2.2.0
+  - ddi-types:0.1.0
   - heappe-types:0.1.0
   - org.ystia.docker.containers.docker.generic:2.3.0-SNAPSHOT
   - org.ystia.docker.ansible:2.3.0-SNAPSHOT
-  - org.lexis.common.datatransfer:0.1.0
+  - org.lexis.common.datatransfer:0.1.1
   - org.lexis.weather.wps:0.1.0
   - org.lexis.weather.continuum:0.1.0
 
 topology_template:
   inputs:
+    token:
+      type: string
+      required: true
+      description: "Access token"
     preprocessing_start_date:
       type: string
       description: Download GFS files from this date, format YYYYMMDDHH
@@ -91,6 +96,10 @@ topology_template:
         List of volumes to mount within the HMC post-processing container.
         Use docker CLI-style syntax: /host:/container[:mode]
       default: ["/continuum/datasets_hmc/static_data/land:/home/fp/fp_mount/datasets_hmc/static_land", "/continuum/datasets_hmc/static_data/point:/home/fp/fp_mount/datasets_hmc/static_point", "/continuum/datasets_hyde/docker_data:/home/fp/fp_mount/datasets_hmc/dynamic_source", "/continuum/datasets_hmc/docker_data/:/home/fp/fp_mount/datasets_hmc/dynamic_archive"]
+    postprocessing_ddi_path:
+      type: string
+      description: "Path where to transfer the post-processing results in DDI"
+      default: "project/wp7/continuum/results"
   node_templates:
     PublicNet:
       type: tosca.nodes.Network
@@ -159,6 +168,8 @@ topology_template:
             relationship: tosca.relationships.HostedOn
     WPS_GFS:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: preprocessing
       properties:
         auto_remove: false
         cleanup: false
@@ -225,7 +236,7 @@ topology_template:
           walltimeLimit: 86400
           tasks: 
             - name: WRFTask
-              commandTemplateId: 4
+              commandTemplateId: 9
               templateParameterValues: 
                 - commandParameterIdentifier: MPICores
                   parameterValue: "48"
@@ -279,7 +290,7 @@ topology_template:
     CopyFromJob:
       type: org.lexis.datatransfer.nodes.CopyFromJob
       properties:
-        source_files_pattern: "auxhist*"
+        source_files_patterns: [ "auxhist*" ]
         destination_directory:  { concat: [get_input: postprocessing_hyde_inputs_directory, "/dynamic_data/nwp"] }
       requirements:
         - hostedOnVirtualMachineHost:
@@ -318,6 +329,8 @@ topology_template:
             relationship: tosca.relationships.HostedOn
     Continuum_Hyde:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
       properties:
         auto_remove: false
         cleanup: false
@@ -366,6 +379,85 @@ topology_template:
             min_instances: 1
             max_instances: 1
             default_instances: 1
+    EnableCloudAcessJob:
+      type: org.ddi.nodes.EnableCloudStagingAreaAccessJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - sameSiteComputeOs:
+            type_requirement: os
+            node: VirtualMachine
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.ddi.relationships.SameSite
+    DisableCloudAcessJob:
+      type: org.ddi.nodes.DisableCloudStagingAreaAccessJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - sameSiteComputeOs:
+            type_requirement: os
+            node: VirtualMachine
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.ddi.relationships.SameSite
+    MountStagingArea:
+      type: org.lexis.datatransfer.nodes.MountStagingArea
+      properties:
+        mount_point: "/mnt/cloud_staging_area"
+        user_name: lexisclouduser
+        group_name: lexiscloudgroup
+      requirements:
+        - mountCloudStagingAreaEnableCloudAcessJobCloud_staging_area_access:
+            type_requirement: cloud_staging_area_access
+            node: EnableCloudAcessJob
+            capability: org.ddi.capabilities.CloudStagingAreaAccess
+            relationship: org.lexis.datatransfer.relationships.MountCloudStagingArea
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: VirtualMachine
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    CopyToStagingArea:
+      type: org.lexis.datatransfer.nodes.CopyToStagingArea
+      properties:
+        source_directory: "/continuum/datasets_hmc/docker_data"
+        destination_directory: "continuum_results"
+        create_timestamp_destination_subdirectory: true
+      requirements:
+        - mountedCloudStagingAreaMountStagingAreaMounted_staging_area:
+            type_requirement: mounted_staging_area
+            node: MountStagingArea
+            capability: org.lexis.datatransfer.MountedStagingAreaAccess
+            relationship: org.lexis.datatransfer.relationships.MountedCloudStagingArea
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: VirtualMachine
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    CloudToDDIJob:
+      type: org.ddi.nodes.CloudToDDIJob
+      properties:
+        token: { get_input: token }
+        ddi_path: { get_input: postprocessing_ddi_path }
+      requirements:
+        - datasetProviderCopyToStagingAreaDataset_provider:
+            type_requirement: dataset_provider
+            node: CopyToStagingArea
+            capability: org.ddi.capabilities.CloudAreaDatasetProvider
+            relationship: org.ddi.relationships.DatasetProvider
+    DeleteCloudDataJob:
+      type: org.ddi.nodes.DeleteCloudDataJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - datasetProviderCopyToStagingAreaDataset_provider:
+            type_requirement: dataset_provider
+            node: CopyToStagingArea
+            capability: org.ddi.capabilities.CloudAreaDatasetProvider
+            relationship: org.ddi.relationships.DatasetProvider
+  outputs:
+    ddi_post_process_results:
+      description: DDI path to Continuum post-processing results
+      value: { get_attribute: [ CloudToDDIJob, destination_directory_path ] }
   workflows:
     install:
       steps:
@@ -375,12 +467,6 @@ topology_template:
             - delegate: install
     uninstall:
       steps:
-        Compute_uninstall:
-          target: VirtualMachine
-          activities:
-            - delegate: uninstall
-          on_success:
-            - Network_uninstall
         Network_uninstall:
           target: PublicNet
           activities:
@@ -406,6 +492,7 @@ topology_template:
           on_success:
             - GFSData_download
             - GEOGData_download
+            - EnableCloudAcessJob_create
         GFSData_download:
           target: GFSData
           activities:
@@ -426,6 +513,63 @@ topology_template:
             - GEOGData_done
         GEOGData_done:
           target: GEOGData
+          activities:
+            - set_state: started
+          on_success:
+            - Docker_create
+        EnableCloudAcessJob_create:
+          target: EnableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - EnableCloudAcessJob_submit
+        EnableCloudAcessJob_submit:
+          target: EnableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - EnableCloudAcessJob_submitted
+        EnableCloudAcessJob_submitted:
+          target: EnableCloudAcessJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - EnableCloudAcessJob_run
+        EnableCloudAcessJob_run:
+          target: EnableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - EnableCloudAcessJob_executed
+        EnableCloudAcessJob_executed:
+          target: EnableCloudAcessJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountStagingArea_create
+        MountStagingArea_create:
+          target: MountStagingArea
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - MountStagingArea_created
+        MountStagingArea_created:
+          target: MountStagingArea
+          activities:
+            - set_state: created
+          on_success:
+            - MountStagingArea_start
+        MountStagingArea_start:
+          target: MountStagingArea
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountStagingArea_started
+        MountStagingArea_started:
+          target: MountStagingArea
           activities:
             - set_state: started
           on_success:
@@ -638,6 +782,129 @@ topology_template:
           target: Continuum_HMC
           activities:
             - set_state: started
+          on_success:
+            - CopyToStagingArea_start
+        CopyToStagingArea_start:
+          target: CopyToStagingArea
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyToStagingArea_started
+        CopyToStagingArea_started:
+          target: CopyToStagingArea
+          activities:
+            - set_state: started
+          on_success:
+            - CloudToDDIJob_create
+        CloudToDDIJob_create:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CloudToDDIJob_submit
+        CloudToDDIJob_submit:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CloudToDDIJob_submitted
+        CloudToDDIJob_submitted:
+          target: CloudToDDIJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CloudToDDIJob_run
+        CloudToDDIJob_run:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CloudToDDIJob_executed
+        CloudToDDIJob_executed:
+          target: CloudToDDIJob
+          activities:
+            - set_state: executed
+          on_success:
+            - DeleteCloudDataJob_create
+        DeleteCloudDataJob_create:
+          target: DeleteCloudDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudDataJob_created
+        DeleteCloudDataJob_created:
+          target: DeleteCloudDataJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudDataJob_submit
+        DeleteCloudDataJob_submit:
+          target: DeleteCloudDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudDataJob_submitted
+        DeleteCloudDataJob_submitted:
+          target: DeleteCloudDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudDataJob_run
+        DeleteCloudDataJob_run:
+          target: DeleteCloudDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudDataJob_executed
+        DeleteCloudDataJob_executed:
+          target: DeleteCloudDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - DisableCloudAcessJob_create
+        DisableCloudAcessJob_create:
+          target: DisableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DisableCloudAcessJob_submit
+        DisableCloudAcessJob_submit:
+          target: DisableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DisableCloudAcessJob_submitted
+        DisableCloudAcessJob_submitted:
+          target: DisableCloudAcessJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DisableCloudAcessJob_run
+        DisableCloudAcessJob_run:
+          target: DisableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DisableCloudAcessJob_executed
+        DisableCloudAcessJob_executed:
+          target: DisableCloudAcessJob
+          activities:
+            - set_state: executed
+          on_success:
+            - Compute_uninstall
+        Compute_uninstall:
+          target: VirtualMachine
+          activities:
+            - delegate: uninstall
     RunAfterPreProcess:
       steps:
         WRF_create:
@@ -795,7 +1062,85 @@ topology_template:
           target: Continuum_HMC
           activities:
             - set_state: started
-    testDocker:
+    cleanupRun:
+      steps:
+        DeleteCloudDataJob_create:
+          target: DeleteCloudDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudDataJob_created
+        DeleteCloudDataJob_created:
+          target: DeleteCloudDataJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudDataJob_submit
+        DeleteCloudDataJob_submit:
+          target: DeleteCloudDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudDataJob_submitted
+        DeleteCloudDataJob_submitted:
+          target: DeleteCloudDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudDataJob_run
+        DeleteCloudDataJob_run:
+          target: DeleteCloudDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudDataJob_executed
+        DeleteCloudDataJob_executed:
+          target: DeleteCloudDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - DisableCloudAcessJob_create
+        DisableCloudAcessJob_create:
+          target: DisableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DisableCloudAcessJob_submit
+        DisableCloudAcessJob_submit:
+          target: DisableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DisableCloudAcessJob_submitted
+        DisableCloudAcessJob_submitted:
+          target: DisableCloudAcessJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DisableCloudAcessJob_run
+        DisableCloudAcessJob_run:
+          target: DisableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DisableCloudAcessJob_executed
+        DisableCloudAcessJob_executed:
+          target: DisableCloudAcessJob
+          activities:
+            - set_state: executed
+          on_success:
+            - Compute_uninstall
+        Compute_uninstall:
+          target: VirtualMachine
+          activities:
+            - delegate: uninstall
+    testDataAndContinuum:
       steps:
         Docker_configure:
           target: Docker

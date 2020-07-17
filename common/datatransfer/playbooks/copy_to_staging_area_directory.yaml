@@ -1,0 +1,18 @@
+- name: Copy directory to staging area
+  hosts: all
+  strategy: free
+  become: true
+  become_user: "{{ user_name }}"
+  become_method: sudo
+  tasks:
+    - name: Get destination directory
+      set_fact:
+        DIRECTORY_ABSOLUTE_PATH: "{{ destination_directory }}/{{ destination_subdirectory }}"
+    - name: "Create destination directory {{ DIRECTORY_ABSOLUTE_PATH }}"
+      file:
+        path: "{{ DIRECTORY_ABSOLUTE_PATH }}"
+        state: directory
+        recurse: yes
+        mode: 0744
+    - name: "Copying source directory {{ source_directory }} content to staging area"
+      command: "/bin/cp -R {{ source_directory }}/. {{ DIRECTORY_ABSOLUTE_PATH }}"

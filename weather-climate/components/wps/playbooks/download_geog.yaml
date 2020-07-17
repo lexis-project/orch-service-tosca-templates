@@ -49,6 +49,7 @@
       get_url:
         url: "https://www2.mmm.ucar.edu/wrf/src/wps_files/geog_high_res_mandatory.tar.gz"
         dest: "{{ OUTPUT_DIRECTORY }}"
+        validate_certs: no
         mode: 0755
     - name: Extract archive
       unarchive:
@@ -82,6 +83,7 @@
       get_url:
         url: "https://www2.mmm.ucar.edu/wrf/src/wps_files/{{ item }}"
         dest: "{{ OUTPUT_DIRECTORY }}"
+        validate_certs: no
         mode: 0755
       with_items: "{{ geog_files }}"
     - name: Extract archive

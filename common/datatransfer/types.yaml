@@ -2,11 +2,12 @@ tosca_definitions_version: alien_dsl_2_0_0
 
 metadata:
   template_name: org.lexis.common.datatransfer
-  template_version: 0.1.0
+  template_version: 0.1.1
   template_author: lexis
 
 imports:
   - heappe-types:0.1.0
+  - ddi-types:0.1.0
   - yorc-types:1.1.0
 node_types:
   org.lexis.datatransfer.nodes.CopyToJob:
@@ -36,6 +37,8 @@ node_types:
             destination_directory: {get_attribute: [REQ_TARGET, job, file_transfer, path]}
             source_directory: {get_property: [SELF, source_directory]}
           implementation: playbooks/copytojob.yaml
+        delete:
+          implementation: playbooks/noop.yaml
     tags:
       icon: images/copytojob.png
   org.lexis.datatransfer.nodes.CopyFromJob:
@@ -43,10 +46,13 @@ node_types:
     description: >
       Copy files from a HEAppE Job output directory
     properties:
-      source_files_pattern:
-        description: Pattern of files to copy from job output directory
-        type: string
-        default: "*"
+      source_files_patterns:
+        type: list
+        entry_schema:
+          type: string
+        description: |
+          List of file patterns to copy from job output directory
+        required: true
       destination_directory:
         description: Directory where to copy files
         type: string
@@ -67,11 +73,37 @@ node_types:
             private_key: {get_attribute: [REQ_TARGET, job, file_transfer, key]}
             server: {get_attribute: [REQ_TARGET, job, file_transfer, server]}
             source_directory: {get_attribute: [REQ_TARGET, job, file_transfer, path]}
-            source_files_pattern: {get_property: [SELF, source_files_pattern]}
+            source_files_patterns: {get_property: [SELF, source_files_patterns]}
             destination_directory: {get_property: [SELF, destination_directory]}
           implementation: playbooks/copyfromjob.yaml
+        delete:
+          implementation: playbooks/noop.yaml
     tags:
       icon: images/copyfromjob.png
+  org.lexis.datatransfer.nodes.MoveFile:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+      Move or rename a file (directories in path must exist)
+    properties:
+      source_file:
+        description: Source file
+        type: string
+        required: true
+      destination_file:
+        description: Destination file
+        type: string
+        required: true
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            source_file: {get_property: [SELF, source_file]}
+            destination_file: {get_property: [SELF, destination_file]}
+          implementation: playbooks/movefile.yaml
+        delete:
+          implementation: playbooks/noop.yaml
   org.lexis.datatransfer.nodes.CreateDirectories:
     derived_from: tosca.nodes.SoftwareComponent
     description: Create directories on a target
@@ -92,3 +124,171 @@ node_types:
           implementation: playbooks/createdirs.yaml
     tags:
       icon: images/createDirs.png
+  org.lexis.datatransfer.nodes.MountStagingArea:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+       Mount the Cloud Staging Area on host and create a user with write permission
+    properties:
+      mount_point:
+        description: Directory where to mount the cloud staging area file system
+        type: string
+        required: true
+      user_name:
+        description: name of the user allowed to write in this staging area
+        type: string
+        default: lexisclouduser
+      group_name:
+        description: name of the group allowed to write in this staging area
+        type: string
+        default: lexiscloudgroup
+    capabilities:
+      mounted_staging_area:
+        type: org.lexis.datatransfer.capabilities.MountedStagingAreaAccess
+    requirements:
+      - cloud_staging_area_access:
+          capability: org.ddi.capabilities.CloudStagingAreaAccess
+          relationship: org.lexis.datatransfer.relationships.MountCloudStagingArea
+          occurrences: [1, 1]
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            remote_file_system: {get_attribute: [REQ_TARGET, cloud_staging_area_access, remote_file_system]}
+            mount_type: {get_attribute: [REQ_TARGET, cloud_staging_area_access, mount_type]}
+            mount_options: {get_attribute: [REQ_TARGET, cloud_staging_area_access, mount_options]}
+            mount_point: {get_property: [SELF, mount_point]}
+            user_name: {get_property: [SELF, user_name]}
+            group_name: {get_property: [SELF, group_name]}
+            user_id: {get_attribute: [REQ_TARGET, cloud_staging_area_access, user_id]}
+            group_id: {get_attribute: [REQ_TARGET, cloud_staging_area_access, group_id]}
+          implementation: playbooks/setup_cloud_staging_area.yaml
+  org.lexis.datatransfer.nodes.CreateStagingAreaDirectory:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+       Create a directory in the staging area, possibly using a timestamp useful
+       to store results of a workflow run
+    properties:
+      directory:
+        description: directory to create in staging area (relative path, will be created if it does not exist)
+        type: string
+        required: true
+      create_timestamp_destination_subdirectory:
+        description: If true, a subdirectory with the current timestamp will be created under the destination directory
+        type: boolean
+        default: false
+    attributes:
+      staging_area_directory_path: {get_operation_output: [SELF, Standard, start, STAGING_AREA_DIRECTORY]}
+      directory_absolute_path: {get_operation_output: [SELF, Standard, start, DIRECTORY_ABSOLUTE_PATH]}
+      user_name: {get_operation_output: [SELF, Standard, start, USER_NAME]}
+    capabilities:
+      dataset_provider:
+        type: org.ddi.capabilities.CloudAreaDatasetProvider
+    requirements:
+      - mounted_staging_area:
+          capability: org.lexis.datatransfer.capabilities.MountedStagingAreaAccess
+          relationship: org.lexis.datatransfer.relationships.MountedCloudStagingArea
+          occurrences: [1, 1]
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            directory: {get_property: [SELF, directory]}
+            create_timestamp_destination_subdirectory: {get_property: [SELF, create_timestamp_destination_subdirectory]}
+            mount_point: {get_property: [REQ_TARGET, mounted_staging_area, mount_point]}
+            user_name: {get_property: [REQ_TARGET, mounted_staging_area, user_name]}
+          implementation: playbooks/create_staging_area_directory.yaml
+  org.lexis.datatransfer.nodes.CopyToStagingAreaDirectory:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+       Copy a source directory to a staging area directory
+    properties:
+      source_directory:
+        description: Source directory
+        type: string
+        required: true
+      destination_subdirectory:
+        description: Subdirectory in staging area where to store the source directory content
+        type: string
+        required: false
+    attributes:
+      directory_absolute_path: {get_operation_output: [SELF, Standard, start, DIRECTORY_ABSOLUTE_PATH]}
+    capabilities:
+      dataset_provider:
+        type: org.ddi.capabilities.CloudAreaDatasetProvider
+    requirements:
+      - dataset_provider:
+          capability: org.ddi.capabilities.CloudAreaDatasetProvider
+          relationship: org.ddi.relationships.DatasetProvider
+          occurrences: [1, 1]
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            source_directory: {get_property: [SELF, source_directory]}
+            destination_subdirectory: {get_property: [SELF, destination_subdirectory]}
+            destination_directory: {get_attribute: [REQ_TARGET, dataset_provider, directory_absolute_path]}
+            user_name: {get_attribute: [REQ_TARGET, dataset_provider, user_name]}
+          implementation: playbooks/copy_to_staging_area_directory.yaml
+  org.lexis.datatransfer.nodes.CopyToStagingArea:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+       Copy a source directory to the staging area
+    properties:
+      source_directory:
+        description: Source directory to copy
+        type: string
+        required: true
+      destination_directory:
+        description: destination directory in staging area (relative path, will be created if it does not exist)
+        type: string
+        required: true
+      create_timestamp_destination_subdirectory:
+        description: If true, a subdirectory will be created under the destination directory
+        type: boolean
+        default: false
+    attributes:
+      staging_area_directory_path: {get_operation_output: [SELF, Standard, start, STAGING_AREA_DIRECTORY]}
+      directory_absolute_path: {get_operation_output: [SELF, Standard, start, DIRECTORY_ABSOLUTE_PATH]}
+    capabilities:
+      dataset_provider:
+        type: org.ddi.capabilities.CloudAreaDatasetProvider
+    requirements:
+      - mounted_staging_area:
+          capability: org.lexis.datatransfer.capabilities.MountedStagingAreaAccess
+          relationship: org.lexis.datatransfer.relationships.MountedCloudStagingArea
+          occurrences: [1, 1]
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            source_directory: {get_property: [SELF, source_directory]}
+            destination_directory: {get_property: [SELF, destination_directory]}
+            create_timestamp_destination_subdirectory: {get_property: [SELF, create_timestamp_destination_subdirectory]}
+            mount_point: {get_property: [REQ_TARGET, mounted_staging_area, mount_point]}
+            user_name: {get_property: [REQ_TARGET, mounted_staging_area, user_name]}
+          implementation: playbooks/copy_to_staging_area.yaml
+capability_types:
+  org.lexis.datatransfer.capabilities.MountedStagingAreaAccess:
+    derived_from: tosca.capabilities.Root
+    description: >
+      A capability fulfilling requirements of a node requiring to be
+      associated with a mounted staging area.
+relationship_types:
+  org.lexis.datatransfer.relationships.MountCloudStagingArea:
+    derived_from: tosca.relationships.DependsOn
+    description: >
+      Depends on a mounted Cloud Staging Area
+    valid_target_types: [ org.ddi.capabilities.CloudStagingAreaAccess ]
+  org.lexis.datatransfer.relationships.MountedCloudStagingArea:
+    derived_from: tosca.relationships.ConnectsTo
+    description: >
+      Connects to a node mouting the staging area
+    valid_target_types: [ org.lexis.datatransfer.MountedStagingAreaAccess ]
