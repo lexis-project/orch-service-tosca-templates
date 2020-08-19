@@ -1,0 +1,60 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: org.lexis.weather.webdrops
+  template_version: 0.1.0
+  template_author: lexis
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - yorc-types:1.1.0
+node_types:
+  org.lexis.nodes.Webdrops:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      start_date:
+        type: string
+        description: description: Download GFS files from this date, format YYYYMMDDHH
+        required: true
+      download_type:
+        type: string
+        description: Type of download data (RISICO, CONTINUUM or WRFDA)
+        required: true
+      user:
+        type: string
+        description: Type of download data (RISICO, CONTINUUM or WRFDA)
+        required: true
+      password:
+        type: string
+        description: Type of download data (RISICO, CONTINUUM or WRFDA)
+        required: true
+      destination:
+        type: string
+        description: Destination directory where to download data
+        required: true
+      auth_url:
+        type: string
+        description: Authentication URL
+        default: https://testauth.cimafoundation.org/auth/realms/webdrops/protocol/openid-connect/token
+        required: false
+      url:
+        type: string
+        description: webdrops base URL
+        default: http://webdrops.cimafoundation.org/app/
+        required: false
+    artifacts:
+      - lexisdn:
+          type: tosca.artifacts.File
+          file: bin/lexisdn
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            URL: {get_property: [SELF, url]}
+            DATASET: {get_property: [SELF, dataset]}
+            DESTINATION: {get_property: [SELF, destination]}
+          implementation: playbooks/download_testdata.yaml
+    tags:
+      icon: images/testsData.png
