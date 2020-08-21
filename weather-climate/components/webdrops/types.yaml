@@ -14,17 +14,9 @@ node_types:
     properties:
       start_date:
         type: string
-        description: description: Download GFS files from this date, format YYYYMMDDHH
+        description: Download GFS files from this date, format YYYYMMDDHH
         required: true
       download_type:
-        type: string
-        description: Type of download data (RISICO, CONTINUUM or WRFDA)
-        required: true
-      user:
-        type: string
-        description: Type of download data (RISICO, CONTINUUM or WRFDA)
-        required: true
-      password:
         type: string
         description: Type of download data (RISICO, CONTINUUM or WRFDA)
         required: true
@@ -52,9 +44,11 @@ node_types:
           implementation: playbooks/noop.yaml
         start:
           inputs:
+            START_DATE: {get_property: [SELF, start_date]}
+            DOWNLOAD_TYPE: {get_property: [SELF, download_type]}
+            USER: { get_secret: ["/secret/wp7/webdrops/creds", "data=user"]}
+            PASSWORD: { get_secret: ["/secret/wp7/webdrops/creds", "data=password"]}
+            DESTINATION_DIRECTORY: {get_property: [SELF, destination]}
+            AUTH_URL: {get_property: [SELF, auth_url]}
             URL: {get_property: [SELF, url]}
-            DATASET: {get_property: [SELF, dataset]}
-            DESTINATION: {get_property: [SELF, destination]}
-          implementation: playbooks/download_testdata.yaml
-    tags:
-      icon: images/testsData.png
+          implementation: playbooks/download_webdrops_data.yaml
