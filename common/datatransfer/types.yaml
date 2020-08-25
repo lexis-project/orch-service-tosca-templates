@@ -41,6 +41,42 @@ node_types:
           implementation: playbooks/noop.yaml
     tags:
       icon: images/copytojob.png
+  org.lexis.datatransfer.nodes.CopySubDirToJob:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+      Copy files in a subdirectory of a parent directory to a HEAppE Job input directory
+    properties:
+      parent_directory:
+        description: Parent directory containing the subdirectory
+        type: string
+        required: true
+      subdirectory_index:
+        description: Index of the subdirectory for which to copy content (0 means first subdir)
+        type: int
+        required: true
+    requirements:
+      - job:
+          capability: org.heappe.capabilities.HeappeJob
+          node: org.heappe.nodes.Job
+          relationship: org.heappe.relationships.SendInputsToJob
+          occurrences: [1, 1]
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            user: {get_attribute: [REQ_TARGET, job, file_transfer, user]}
+            private_key: {get_attribute: [REQ_TARGET, job, file_transfer, key]}
+            server: {get_attribute: [REQ_TARGET, job, file_transfer, server]}
+            destination_directory: {get_attribute: [REQ_TARGET, job, file_transfer, path]}
+            parent_directory: {get_property: [SELF, parent_directory]}
+            subdirectory_index: {get_property: [SELF, subdirectory_index]}
+          implementation: playbooks/copysubdirtojob.yaml
+        delete:
+          implementation: playbooks/noop.yaml
+    tags:
+      icon: images/copytojob.png
   org.lexis.datatransfer.nodes.CopyFromJob:
     derived_from: tosca.nodes.SoftwareComponent
     description: >
