@@ -17,7 +17,7 @@ imports:
   - org.ystia.docker.containers.docker.generic:2.2.0-SNAPSHOT
   - org.ystia.docker.ansible:2.2.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.1
-  - org.lexis.weather.wps:0.1.0
+  - org.lexis.weather.wps:0.1.1
 
 topology_template:
   inputs:
@@ -40,7 +40,7 @@ topology_template:
     preprocessing_image:
       type: string
       description: Pre-processing container repository path
-      default: "laurentg/wps.gfs"
+      default: "laurentg/wps.gfs:0.4.1"
       required: false
     preprocessing_volumes:
       type: list
@@ -167,7 +167,7 @@ topology_template:
         mem_share: "128 MB"
         volumes: {get_input: preprocessing_volumes}
         # docker_env_vars:  {get_input: preprocessing_environment_variables}
-        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_end_date, "\"}"]}
+        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_end_date, "\", \"WPS_MODE\": \"WARMUP\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
@@ -185,6 +185,8 @@ topology_template:
       properties:
         start_date: {get_input: preprocessing_start_date}
         end_date: {get_input: preprocessing_end_date}
+        number_of_past_days: 2
+        with_data_assimilation: false
         left_longitude: "-19.0"
         right_longitude: "48.0"
         top_latitude: "64.0"

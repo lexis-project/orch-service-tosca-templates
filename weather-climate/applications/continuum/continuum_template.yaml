@@ -65,7 +65,7 @@ topology_template:
     postprocessing_hyde_image:
       type: string
       description: Hyde post-processing container repository path 
-      default: "laurentg/fp_framework_hyde:1.0.2"
+      default: "laurentg/fp_framework_hyde:1.0.3"
     postprocessing_hyde_inputs_directory:
       type: string
       description: |
@@ -78,7 +78,7 @@ topology_template:
       description: |
         List of volumes to mount within the Hyde post-processing container.
         Use docker CLI-style syntax: /host:/container[:mode]
-      default: ["/continuum/datasets_hyde/static_data/land:/home/fp/fp_mount/datasets_hyde/static", "/continuum/datasets_hyde/dynamic_data/nwp/:/home/fp/fp_mount/datasets_hyde/dynamic_raw", "/continuum/datasets_hyde/docker_data:/home/fp/fp_mount/datasets_hyde/dynamic_processed"]
+      default: ["/continuum/datasets_hyde/static_data/land:/home/fp/fp_mount/datasets_hyde/static", "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw", "/continuum/datasets_hyde/docker_data:/home/fp/fp_mount/datasets_hyde/dynamic_processed"]
     postprocessing_hmc_image:
       type: string
       description: HMC post-processing container repository path
@@ -199,6 +199,8 @@ topology_template:
       properties:
         start_date: {get_input: preprocessing_start_date}
         end_date: {get_input: preprocessing_end_date}
+        number_of_past_days: 0
+        with_data_assimilation: false
         left_longitude: "-19.0"
         right_longitude: "48.0"
         top_latitude: "64.0"
@@ -307,7 +309,9 @@ topology_template:
       type: org.lexis.nodes.ContinuumStaticData
       properties:
         url: https://storage.googleapis.com/test-laurent/lexis
-        dataset: continuum_hyde_static_data_1.0.2.zip
+        # Dataset created from git LFS (Large File Storage) at:
+        # https://github.com/cima-lexis/fp-docker/tree/master/docker_testcase/datasets_hyde/static_data
+        dataset: continuum_hyde_static_data_1.0.3.zip
         destination: { concat: [get_input: postprocessing_hyde_inputs_directory, "/static_data"] }
       requirements:
         - hostedOnVirtualMachineHost:
@@ -319,12 +323,27 @@ topology_template:
       type: org.lexis.nodes.ContinuumStaticData
       properties:
         url: https://storage.googleapis.com/test-laurent/lexis
-        dataset: continuum_hmc_static_data_1.0.2.zip
+        # Dataset created from git LFS (Large File Storage) at:
+        # https://github.com/cima-lexis/fp-docker/tree/master/docker_testcase/datasets_hyde/static_data
+        dataset: continuum_hmc_static_data_1.0.3.zip
         destination: { concat: [get_input: postprocessing_hmc_inputs_directory, "/static_data"] }
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
             node: VirtualMachine
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    Webdrops:
+      type: org.lexis.nodes.Webdrops
+      properties:
+        start_date: {get_input: preprocessing_start_date}
+        destination: { concat: [get_input: postprocessing_hmc_inputs_directory, "/dynamic_data"] }
+        auth_url: "https://testauth.cimafoundation.org/auth/realms/webdrops/protocol/openid-connect/token"
+        url: "http://webdrops.cimafoundation.org/app/"
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: Compute
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     Continuum_Hyde:
@@ -341,7 +360,7 @@ topology_template:
         cpu_share: 1.0
         workdir: "/home/fp/fp_entrypoint/"
         volumes: {get_input: postprocessing_hyde_volumes}
-        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"10\",\"RUN_TIME_STEPS_FOR\": \"20\",\"RUN_NAME\": \"fp_hyde_wrf\",\"RUN_DOMAIN\": \"marche\",\"RUN_ENS\": \"false\"}"]}
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"10\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hyde_wrf\",\"RUN_DOMAIN\": \"marche\",\"RUN_ENS\": \"false\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
