@@ -1,4 +1,4 @@
-- name: Copying files to job input directory
+- name: Copying the content of a given subdirectory to job input directory
   hosts: all
   strategy: linear
   tasks:
@@ -14,9 +14,21 @@
     - name: Change file ownership
       file:
         path: "{{ privatekeyfile.path }}"
-        mode: '0400'    
-    - name: "Copying directory {{source_directory}} content to job inputs"
-      shell: "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {{ privatekeyfile.path }} {{ source_directory }}/* {{ user }}@{{ server }}:{{ destination_directory }}"
+        mode: '0400'
+    - name: Get subdirectories
+      find:
+        paths: "{{ parent_directory }}"
+        recurse: no
+        file_type: directory
+      register: subdirs
+    - name: Sort subdirs
+      set_fact:
+        subdirs_sorted:  "{{ subdirs.files| sort(attribute='path') }}"
+    - name: Get subdirectory to copy
+      set_fact:
+        subdir_path:  "{{ subdirs_sorted[(subdirectory_index|int)].path }}"
+    - name: "Copying directory {{subdir_path}} content to job inputs"
+      shell: "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {{ privatekeyfile.path }} {{ subdir_path }}/* {{ user }}@{{ server }}:{{ destination_directory }}"
     - name: Remove private key
       file:
         path: "{{ privatekeyfile.path }}"

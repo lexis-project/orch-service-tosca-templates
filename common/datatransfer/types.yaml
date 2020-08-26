@@ -2,7 +2,7 @@ tosca_definitions_version: alien_dsl_2_0_0
 
 metadata:
   template_name: org.lexis.common.datatransfer
-  template_version: 0.1.1
+  template_version: 0.1.2
   template_author: lexis
 
 imports:
@@ -52,7 +52,7 @@ node_types:
         required: true
       subdirectory_index:
         description: Index of the subdirectory for which to copy content (0 means first subdir)
-        type: int
+        type: integer
         required: true
     requirements:
       - job:
