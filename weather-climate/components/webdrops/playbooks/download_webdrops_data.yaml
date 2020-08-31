@@ -25,4 +25,4 @@
         recurse: yes
         mode: 0777
     - name: "Moving files to destination directory"
-      shell: "mv  {{ DOWNLOAD_TYPE }}/SENSORS/*.json {{ DESTINATION_DIRECTORY }}"
+      shell: "mv  {{ DOWNLOAD_TYPE }}/SENSORS/* {{ DESTINATION_DIRECTORY }}"

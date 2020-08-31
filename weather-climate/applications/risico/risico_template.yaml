@@ -18,6 +18,7 @@ imports:
   - org.ystia.docker.ansible:2.2.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2
   - org.lexis.weather.wps:0.1.1
+  - org.lexis.weather.webdrops:0.1.0
 
 topology_template:
   inputs:
@@ -67,7 +68,7 @@ topology_template:
     postprocessing_image:
       type: string
       description: Post-processing container repository path
-      default: "laurentg/risico"
+      default: "laurentg/risico:0.3.1"
       required: false
     postprocessing_input_directory:
       type: string
@@ -416,7 +417,7 @@ topology_template:
       type: org.lexis.datatransfer.nodes.CopyFromJob
       properties:
         source_files_patterns: [ "auxhist*" ]
-        destination_directory:  { concat: [get_input: postprocessing_input_directory, "/wrf"] }
+        destination_directory:  { concat: [get_input: postprocessing_input_directory, "/wrf/3"] }
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -432,7 +433,7 @@ topology_template:
       type: org.lexis.datatransfer.nodes.CopyFromJob
       properties:
         source_files_patterns: [ "auxhist*" ]
-        destination_directory:  { concat: [get_input: postprocessing_input_directory, "/wrf"] }
+        destination_directory:  { concat: [get_input: postprocessing_input_directory, "/wrf/2"] }
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -448,7 +449,7 @@ topology_template:
       type: org.lexis.datatransfer.nodes.CopyFromJob
       properties:
         source_files_patterns: [ "auxhist*" ]
-        destination_directory:  { concat: [get_input: postprocessing_input_directory, "/wrf"] }
+        destination_directory:  { concat: [get_input: postprocessing_input_directory, "/wrf/1"] }
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -460,6 +461,30 @@ topology_template:
             node: WRF_DAY_1
             capability: org.heappe.capabilities.HeappeJob
             relationship: org.heappe.relationships.GetResultsFromJob
+    DeletePreProcessDirs:
+      type: org.lexis.datatransfer.nodes.DeleteDirectories
+      properties:
+        directories: {get_input: preprocessing_volumes}
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: RisicoVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    Webdrops:
+      type: org.lexis.nodes.Webdrops
+      properties:
+        start_date: { concat: [get_input: postprocessing_risico_run_date, "00"] }
+        download_type: "RISICO"
+        destination: { concat: [get_input: postprocessing_input_directory, "/observations"] }
+        auth_url: "https://testauth.cimafoundation.org/auth/realms/webdrops/protocol/openid-connect/token"
+        url: "http://webdrops.cimafoundation.org/app/"
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: RisicoVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
     RISICO:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
       metadata:
@@ -875,6 +900,7 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - DeletePreProcessDirs_start
             - CreatePostProcessDirs_start
         WRF_DAY_2_submit:
           target: WRF_DAY_2
@@ -901,6 +927,7 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - DeletePreProcessDirs_start
             - CreatePostProcessDirs_start
         WRF_DAY_3_submit:
           target: WRF_DAY_3
@@ -927,7 +954,18 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - DeletePreProcessDirs_start
             - CreatePostProcessDirs_start
+        DeletePreProcessDirs_start:
+          target: DeletePreProcessDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - DeletePreProcessDirs_started
+        DeletePreProcessDirs_started:
+          target: DeletePreProcessDirs
+          activities:
+            - set_state: started
         CreatePostProcessDirs_start:
           target: CreatePostProcessDirs
           activities:
@@ -942,6 +980,19 @@ topology_template:
             - CopyWRFDay1FromJob_start
             - CopyWRFDay2FromJob_start
             - CopyWRFDay3FromJob_start
+            - Webdrops_start
+        Webdrops_start:
+          target: Webdrops
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Webdrops_started
+        Webdrops_started:
+          target: Webdrops
+          activities:
+            - set_state: started
+          on_success:
+            - RISICO_create
         CopyWRFDay1FromJob_start:
           target: CopyWRFDay1FromJob
           activities:
@@ -1372,6 +1423,7 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - DeletePreProcessDirs_start
             - CreatePostProcessDirs_start
         WRF_DAY_2_submit:
           target: WRF_DAY_2
@@ -1398,6 +1450,7 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - DeletePreProcessDirs_start
             - CreatePostProcessDirs_start
         WRF_DAY_3_submit:
           target: WRF_DAY_3
@@ -1424,7 +1477,18 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - DeletePreProcessDirs_start
             - CreatePostProcessDirs_start
+        DeletePreProcessDirs_start:
+          target: DeletePreProcessDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - DeletePreProcessDirs_started
+        DeletePreProcessDirs_started:
+          target: DeletePreProcessDirs
+          activities:
+            - set_state: started
         CreatePostProcessDirs_start:
           target: CreatePostProcessDirs
           activities:
@@ -1439,6 +1503,19 @@ topology_template:
             - CopyWRFDay1FromJob_start
             - CopyWRFDay2FromJob_start
             - CopyWRFDay3FromJob_start
+            - Webdrops_start
+        Webdrops_start:
+          target: Webdrops
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Webdrops_started
+        Webdrops_started:
+          target: Webdrops
+          activities:
+            - set_state: started
+          on_success:
+            - RISICO_create
         CopyWRFDay1FromJob_start:
           target: CopyWRFDay1FromJob
           activities:
@@ -1927,6 +2004,16 @@ topology_template:
             - set_state: started
     testPostRun:
       steps:
+        DeletePreProcessDirs_start:
+          target: DeletePreProcessDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - DeletePreProcessDirs_started
+        DeletePreProcessDirs_started:
+          target: DeletePreProcessDirs
+          activities:
+            - set_state: started
         CreatePostProcessDirs_start:
           target: CreatePostProcessDirs
           activities:
@@ -1941,6 +2028,19 @@ topology_template:
             - CopyWRFDay1FromJob_start
             - CopyWRFDay2FromJob_start
             - CopyWRFDay3FromJob_start
+            - Webdrops_start
+        Webdrops_start:
+          target: Webdrops
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Webdrops_started
+        Webdrops_started:
+          target: Webdrops
+          activities:
+            - set_state: started
+          on_success:
+            - RISICO_create
         CopyWRFDay1FromJob_start:
           target: CopyWRFDay1FromJob
           activities:

@@ -160,6 +160,24 @@ node_types:
           implementation: playbooks/createdirs.yaml
     tags:
       icon: images/createDirs.png
+  org.lexis.datatransfer.nodes.DeleteDirectories:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: Delete directories on a target
+    properties:
+      directories:
+        type: list
+        entry_schema:
+          type: string
+        description: List of directory to delete
+        required: true
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            dirs_to_delete: {get_property: [SELF, directories]}
+          implementation: playbooks/deletedirs.yaml
   org.lexis.datatransfer.nodes.MountStagingArea:
     derived_from: tosca.nodes.SoftwareComponent
     description: >
