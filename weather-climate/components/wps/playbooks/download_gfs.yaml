@@ -53,7 +53,7 @@
       when: NUMBER_OF_PAST_DAYS|int > 0
     - name: Download GFS analysis of initial atmospheric conditions file
       get_url:
-        url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=gfs.t{{ gfsHour }}z.pgrb2.0p25.anl&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ gfsDay }}%2F{{ gfsStartHour }}"
+        url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=gfs.t{{ gfsStartHour }}z.pgrb2.0p25.anl&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ gfsDay }}%2F{{ gfsStartHour }}"
         dest: "{{ OUTPUT_DIRECTORY }}"
         mode: 0755
       when: NUMBER_OF_PAST_DAYS|int == 0
@@ -62,19 +62,19 @@
         url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=gfs.t{{ gfsStartHour }}z.pgrb2.0p25.{{ 'f0%02d' | format(item[1]) }}&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ item[0] }}%2F{{ gfsStartHour }}"
         dest: "{{ OUTPUT_DIRECTORY }}/{{ item[0] }}{{gfsStartHour}}/gfs.t{{ gfsStartHour }}z.pgrb2.0p25.{{ 'f0%02d' | format(item[1]) }}.grb"
         mode: 0755
-      loop: "{{ gfsdates[1:]|product(range(gfsStartHour|int, gfsStartHour|int + 25, 1))|list }}"
+      loop: "{{ gfsdates[1:]|product(range(0, 25, 1))|list }}"
     - name: Download GFS data files for the specifed start and end date
       get_url:
         url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=gfs.t{{ gfsStartHour }}z.pgrb2.0p25.{{ 'f0%02d' | format(item[1]) }}&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ item[0] }}%2F{{ gfsStartHour }}"
         dest: "{{ OUTPUT_DIRECTORY }}/{{ item[0] }}{{gfsStartHour}}/gfs.t{{ gfsStartHour }}z.pgrb2.0p25.{{ 'f0%02d' | format(item[1]) }}.grb"
         mode: 0755
-      loop: "{{ gfsdates[:1]|product(range(gfsStartHour|int, nbHours|int + 1, 1))|list }}"
+      loop: "{{ gfsdates[:1]|product(range(0, nbHours|int + 1, 1))|list }}"
       when: NUMBER_OF_PAST_DAYS|int > 0
     - name: Download GFS data files for the specifed start and end date
       get_url:
         url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=gfs.t{{ gfsStartHour }}z.pgrb2.0p25.{{ 'f0%02d' | format(item) }}&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ gfsDay }}%2F{{ gfsStartHour }}"
         dest: "{{ OUTPUT_DIRECTORY }}/gfs.t{{ gfsStartHour }}z.pgrb2.0p25.{{ 'f0%02d' | format(item) }}.grb"
         mode: 0755
-      loop: "{{ range(gfsStartHour|int, nbHours|int + 1, 1)|list }}"
+      loop: "{{ range(0, nbHours|int + 1, 1)|list }}"
       when: NUMBER_OF_PAST_DAYS|int == 0
 
