@@ -1540,6 +1540,26 @@ topology_template:
           target: ContinuumVM
           activities:
             - delegate: uninstall
+    
+    testComputeUninstall:
+      steps:
+        Compute_uninstall:
+          target: ContinuumVM
+          activities:
+            - delegate: uninstall
+    testdeletewrf:
+      steps:
+        WRF_delete:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_deleted
+        WRF_deleted:
+          target: WRF
+          activities:
+            - set_state: deleted
     start:
       steps:
         start_step:
