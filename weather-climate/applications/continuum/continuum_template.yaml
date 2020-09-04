@@ -182,7 +182,7 @@ topology_template:
         shm_size: "1024 MB"
         volumes: {get_input: preprocessing_volumes}
         # docker_env_vars:  {get_input: preprocessing_environment_variables}
-        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_end_date, "\"}"]}
+        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_end_date, "\", \"WPS_MODE\": \"WRF\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
@@ -230,17 +230,17 @@ topology_template:
       properties:
         jobSpecification: 
           name: WRFJob
-          project: WP7
+          project: "DD-19-14"
           clusterNodeTypeId: 6
           priority: 4
           minCores: 48
           maxCores: 48
           waitingLimit: 0
-          walltimeLimit: 86400
-          tasks: 
+          walltimeLimit: 36000
+          tasks:
             - name: WRFTask
               commandTemplateId: 9
-              templateParameterValues: 
+              templateParameterValues:
                 - commandParameterIdentifier: MPICores
                   parameterValue: "48"
               environmentVariables:
@@ -270,15 +270,16 @@ topology_template:
                   value: "./deps/include"
               minCores: 48
               maxCores: 48
-              walltimeLimit: 86400
+              walltimeLimit: 36000
               standardOutputFile: "stdout"
               standardErrorFile: "stderr"
               progressFile: "stdprog"
               logFile: "stdlog"
     CopyToJob:
-      type: org.lexis.datatransfer.nodes.CopyToJob
+      type: org.lexis.datatransfer.nodes.CopySubDirToJob
       properties:
-        source_directory: {get_input: preprocessing_output_directory}
+        parent_directory: {get_input: preprocessing_output_directory}
+        subdirectory_index: 0
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -1540,7 +1541,6 @@ topology_template:
           target: ContinuumVM
           activities:
             - delegate: uninstall
-    
     testComputeUninstall:
       steps:
         Compute_uninstall:
@@ -1560,6 +1560,39 @@ topology_template:
           target: WRF
           activities:
             - set_state: deleted
+    testdisablecloudaccess:
+      steps:
+        DisableCloudAcessJob_create:
+          target: DisableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DisableCloudAcessJob_submit
+        DisableCloudAcessJob_submit:
+          target: DisableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DisableCloudAcessJob_submitted
+        DisableCloudAcessJob_submitted:
+          target: DisableCloudAcessJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DisableCloudAcessJob_run
+        DisableCloudAcessJob_run:
+          target: DisableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DisableCloudAcessJob_executed
+        DisableCloudAcessJob_executed:
+          target: DisableCloudAcessJob
+          activities:
+            - set_state: executed
     start:
       steps:
         start_step:
