@@ -39,7 +39,7 @@
       become: true
       become_method: sudo
       file:
-        path: "{{ OUTPUT_DIRECTORY }}"
+        path: "{{ OUTPUT_DIRECTORY }}/{{ START_DATE }}"
         state: directory
         recurse: yes
         mode: 0777
@@ -54,7 +54,7 @@
     - name: Download GFS analysis of initial atmospheric conditions file
       get_url:
         url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=gfs.t{{ gfsStartHour }}z.pgrb2.0p25.anl&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ gfsDay }}%2F{{ gfsStartHour }}"
-        dest: "{{ OUTPUT_DIRECTORY }}"
+        dest: "{{ OUTPUT_DIRECTORY }}/{{ START_DATE }}"
         mode: 0755
       when: NUMBER_OF_PAST_DAYS|int == 0
     - name: Download GFS data files from previous days to warmup the computation
@@ -73,7 +73,7 @@
     - name: Download GFS data files for the specifed start and end date
       get_url:
         url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=gfs.t{{ gfsStartHour }}z.pgrb2.0p25.{{ 'f0%02d' | format(item) }}&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ gfsDay }}%2F{{ gfsStartHour }}"
-        dest: "{{ OUTPUT_DIRECTORY }}/gfs.t{{ gfsStartHour }}z.pgrb2.0p25.{{ 'f0%02d' | format(item) }}.grb"
+        dest: "{{ OUTPUT_DIRECTORY }}/{{ START_DATE }}/gfs.t{{ gfsStartHour }}z.pgrb2.0p25.{{ 'f0%02d' | format(item) }}.grb"
         mode: 0755
       loop: "{{ range(0, nbHours|int + 1, 1)|list }}"
       when: NUMBER_OF_PAST_DAYS|int == 0
