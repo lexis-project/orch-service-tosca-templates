@@ -3,4 +3,4 @@
   strategy: free
   tasks:
     - name: "Moving file"
-      command: "mv  {{ source_file }} {{ destination_file }}"
+      shell: "mv  {{ source_file }} {{ destination_file }}"
