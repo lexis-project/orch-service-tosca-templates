@@ -2,7 +2,7 @@ tosca_definitions_version: alien_dsl_2_0_0
 
 metadata:
   template_name: org.lexis.weather.wps
-  template_version: 0.1.0
+  template_version: 0.1.1
   template_author: lexis
 
 imports:
@@ -20,6 +20,14 @@ node_types:
         type: string
         description: Download GFS files up to this date, format YYYYMMDDHH
         required: true
+      number_of_past_days:
+        type: string
+        description: Download additional warmup data for this given number of days before the start date
+        required: true
+      with_data_assimilation:
+        type: boolean
+        default: false
+        required: false
       left_longitude:
         type: string
         description: Left longitude
@@ -44,6 +52,8 @@ node_types:
           inputs:
             START_DATE: {get_property: [SELF, start_date]}
             END_DATE: {get_property: [SELF, end_date]}
+            NUMBER_OF_PAST_DAYS: {get_property: [SELF, number_of_past_days]}
+            WITH_DATA_ASSIMILATION:  {get_property: [SELF, with_data_assimilation]}
             LEFT_LONGITUDE: {get_property: [SELF, left_longitude]}
             RIGHT_LONGITUDE: {get_property: [SELF, right_longitude]}
             TOP_LATITUDE: {get_property: [SELF, top_latitude]}

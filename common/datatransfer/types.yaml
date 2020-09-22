@@ -2,7 +2,7 @@ tosca_definitions_version: alien_dsl_2_0_0
 
 metadata:
   template_name: org.lexis.common.datatransfer
-  template_version: 0.1.1
+  template_version: 0.1.2
   template_author: lexis
 
 imports:
@@ -37,6 +37,42 @@ node_types:
             destination_directory: {get_attribute: [REQ_TARGET, job, file_transfer, path]}
             source_directory: {get_property: [SELF, source_directory]}
           implementation: playbooks/copytojob.yaml
+        delete:
+          implementation: playbooks/noop.yaml
+    tags:
+      icon: images/copytojob.png
+  org.lexis.datatransfer.nodes.CopySubDirToJob:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+      Copy files in a subdirectory of a parent directory to a HEAppE Job input directory
+    properties:
+      parent_directory:
+        description: Parent directory containing the subdirectory
+        type: string
+        required: true
+      subdirectory_index:
+        description: Index of the subdirectory for which to copy content (0 means first subdir)
+        type: integer
+        required: true
+    requirements:
+      - job:
+          capability: org.heappe.capabilities.HeappeJob
+          node: org.heappe.nodes.Job
+          relationship: org.heappe.relationships.SendInputsToJob
+          occurrences: [1, 1]
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            user: {get_attribute: [REQ_TARGET, job, file_transfer, user]}
+            private_key: {get_attribute: [REQ_TARGET, job, file_transfer, key]}
+            server: {get_attribute: [REQ_TARGET, job, file_transfer, server]}
+            destination_directory: {get_attribute: [REQ_TARGET, job, file_transfer, path]}
+            parent_directory: {get_property: [SELF, parent_directory]}
+            subdirectory_index: {get_property: [SELF, subdirectory_index]}
+          implementation: playbooks/copysubdirtojob.yaml
         delete:
           implementation: playbooks/noop.yaml
     tags:
@@ -124,6 +160,24 @@ node_types:
           implementation: playbooks/createdirs.yaml
     tags:
       icon: images/createDirs.png
+  org.lexis.datatransfer.nodes.DeleteDirectories:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: Delete directories on a target
+    properties:
+      directories:
+        type: list
+        entry_schema:
+          type: string
+        description: List of directory to delete
+        required: true
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            dirs_to_delete: {get_property: [SELF, directories]}
+          implementation: playbooks/deletedirs.yaml
   org.lexis.datatransfer.nodes.MountStagingArea:
     derived_from: tosca.nodes.SoftwareComponent
     description: >

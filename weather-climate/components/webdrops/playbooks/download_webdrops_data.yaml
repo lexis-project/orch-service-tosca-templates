@@ -1,0 +1,28 @@
+- name: Get webdrops data
+  hosts: all
+  strategy: free
+  tasks:
+    - name: Change webdrops binary permissions
+      file:
+        path: "{{ lexisdn }}"
+        mode: 0777
+    - name: Download webdrops data
+      command: "{{ lexisdn }} {{ START_DATE }} {{ DOWNLOAD_TYPE }}"
+      environment:
+        WEBDROPS_USER: "{{ USER }}"
+        WEBDROPS_PWD:  "{{ PASSWORD }}" 
+        WEBDROPS_CLIENT_ID: webdrops
+        WEBDROPS_AUTH_URL: "{{ AUTH_URL }}"
+        WEBDROPS_URL: "{{ URL }}"
+      register: webdrops_download
+    - debug: var=webdrops_download.stdout_lines
+    - name: Create destination directories
+      become: true
+      become_method: sudo
+      file:
+        path: "{{ DESTINATION_DIRECTORY }}"
+        state: directory
+        recurse: yes
+        mode: 0777
+    - name: "Moving files to destination directory"
+      shell: "mv  {{ DOWNLOAD_TYPE }}/SENSORS/* {{ DESTINATION_DIRECTORY }}"

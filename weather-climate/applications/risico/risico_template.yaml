@@ -16,8 +16,9 @@ imports:
   - ddi-types:0.1.0
   - org.ystia.docker.containers.docker.generic:2.2.0-SNAPSHOT
   - org.ystia.docker.ansible:2.2.0-SNAPSHOT
-  - org.lexis.common.datatransfer:0.1.1
-  - org.lexis.weather.wps:0.1.0
+  - org.lexis.common.datatransfer:0.1.2
+  - org.lexis.weather.wps:0.1.1
+  - org.lexis.weather.webdrops:0.1.0
 
 topology_template:
   inputs:
@@ -40,7 +41,7 @@ topology_template:
     preprocessing_image:
       type: string
       description: Pre-processing container repository path
-      default: "laurentg/wps.gfs"
+      default: "laurentg/wps.gfs:0.4.2"
       required: false
     preprocessing_volumes:
       type: list
@@ -67,7 +68,7 @@ topology_template:
     postprocessing_image:
       type: string
       description: Post-processing container repository path
-      default: "laurentg/risico"
+      default: "laurentg/risico:0.3.1"
       required: false
     postprocessing_input_directory:
       type: string
@@ -101,7 +102,7 @@ topology_template:
       type: tosca.nodes.Network
       properties:
         ip_version: 4
-    VirtualMachine:
+    RisicoVM:
       type: tosca.nodes.Compute
       requirements:
         - networkPublicNetConnection:
@@ -129,7 +130,7 @@ topology_template:
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
-            node: VirtualMachine
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     CreatePreProcessDirs:
@@ -139,7 +140,7 @@ topology_template:
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
-            node: VirtualMachine
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     CreatePostProcessDirs:
@@ -149,7 +150,7 @@ topology_template:
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
-            node: VirtualMachine
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     WPS_GFS:
@@ -167,7 +168,7 @@ topology_template:
         mem_share: "128 MB"
         volumes: {get_input: preprocessing_volumes}
         # docker_env_vars:  {get_input: preprocessing_environment_variables}
-        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_end_date, "\"}"]}
+        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_end_date, "\", \"WPS_MODE\": \"WARMUP\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
@@ -185,6 +186,8 @@ topology_template:
       properties:
         start_date: {get_input: preprocessing_start_date}
         end_date: {get_input: preprocessing_end_date}
+        number_of_past_days: 2
+        with_data_assimilation: false
         left_longitude: "-19.0"
         right_longitude: "48.0"
         top_latitude: "64.0"
@@ -193,7 +196,7 @@ topology_template:
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
-            node: VirtualMachine
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     GEOGData:
@@ -203,15 +206,15 @@ topology_template:
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
-            node: VirtualMachine
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
-    WRF:
+    WRF_DAY_3:
       type: org.heappe.nodes.Job
       metadata:
         task: computation
       properties:
-        jobSpecification: 
+        jobSpecification:
           name: WRFJob
           project: "DD-19-14"
           clusterNodeTypeId: 6
@@ -220,10 +223,10 @@ topology_template:
           maxCores: 48
           waitingLimit: 0
           walltimeLimit: 36000
-          tasks: 
+          tasks:
             - name: WRFTask
               commandTemplateId: 9
-              templateParameterValues: 
+              templateParameterValues:
                 - commandParameterIdentifier: MPICores
                   parameterValue: "48"
               environmentVariables:
@@ -258,37 +261,230 @@ topology_template:
               standardErrorFile: "stderr"
               progressFile: "stdprog"
               logFile: "stdlog"
-    CopyToJob:
-      type: org.lexis.datatransfer.nodes.CopyToJob
+    WRF_DAY_2:
+      type: org.heappe.nodes.Job
+      metadata:
+        task: computation
       properties:
-        source_directory: {get_input: preprocessing_output_directory}
+        jobSpecification:
+          name: WRFJob
+          project: "DD-19-14"
+          clusterNodeTypeId: 6
+          priority: 4
+          minCores: 48
+          maxCores: 48
+          waitingLimit: 0
+          walltimeLimit: 36000
+          tasks:
+            - name: WRFTask
+              commandTemplateId: 9
+              templateParameterValues:
+                - commandParameterIdentifier: MPICores
+                  parameterValue: "48"
+              environmentVariables:
+                - name: HDF5
+                  value: "./deps"
+                - name: NETCDF
+                  value: "./deps"
+                - name: CPPFLAGS
+                  value: "-I./deps/include"
+                - name: CFLAGS
+                  value: "-I./deps/include"
+                - name: CXXFLAGS
+                  value: "-I./deps/include"
+                - name: FCFLAGS
+                  value: "-I./deps/include"
+                - name: FFLAGS
+                  value: "-I./deps/include"
+                - name: LDFLAGS
+                  value: "-L./deps/lib"
+                - name: WRFIO_NCD_LARGE_FILE_SUPPORT
+                  value: "1"
+                - name: LD_LIBRARY_PATH
+                  value: "$LD_LIBRARY_PATH:./deps/lib"
+                - name: JASPERLIB
+                  value: "./deps/lib"
+                - name: JASPERINC
+                  value: "./deps/include"
+              minCores: 48
+              maxCores: 48
+              walltimeLimit: 36000
+              standardOutputFile: "stdout"
+              standardErrorFile: "stderr"
+              progressFile: "stdprog"
+              logFile: "stdlog"
+    WRF_DAY_1:
+      type: org.heappe.nodes.Job
+      metadata:
+        task: computation
+      properties:
+        jobSpecification:
+          name: WRFJob
+          project: "DD-19-14"
+          clusterNodeTypeId: 6
+          priority: 4
+          minCores: 48
+          maxCores: 48
+          waitingLimit: 0
+          walltimeLimit: 36000
+          tasks:
+            - name: WRFTask
+              commandTemplateId: 9
+              templateParameterValues:
+                - commandParameterIdentifier: MPICores
+                  parameterValue: "48"
+              environmentVariables:
+                - name: HDF5
+                  value: "./deps"
+                - name: NETCDF
+                  value: "./deps"
+                - name: CPPFLAGS
+                  value: "-I./deps/include"
+                - name: CFLAGS
+                  value: "-I./deps/include"
+                - name: CXXFLAGS
+                  value: "-I./deps/include"
+                - name: FCFLAGS
+                  value: "-I./deps/include"
+                - name: FFLAGS
+                  value: "-I./deps/include"
+                - name: LDFLAGS
+                  value: "-L./deps/lib"
+                - name: WRFIO_NCD_LARGE_FILE_SUPPORT
+                  value: "1"
+                - name: LD_LIBRARY_PATH
+                  value: "$LD_LIBRARY_PATH:./deps/lib"
+                - name: JASPERLIB
+                  value: "./deps/lib"
+                - name: JASPERINC
+                  value: "./deps/include"
+              minCores: 48
+              maxCores: 48
+              walltimeLimit: 36000
+              standardOutputFile: "stdout"
+              standardErrorFile: "stderr"
+              progressFile: "stdprog"
+              logFile: "stdlog"
+    CopyDay3DataToJob:
+      type: org.lexis.datatransfer.nodes.CopySubDirToJob
+      properties:
+        parent_directory: {get_input: preprocessing_output_directory}
+        subdirectory_index: 2
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
-            node: VirtualMachine
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
         - job:
             type_requirement: job
-            node: WRF
+            node: WRF_DAY_3
             capability: org.heappe.capabilities.HeappeJob
             relationship: org.heappe.relationships.SendInputsToJob
-    CopyFromJob:
+    CopyDay2DataToJob:
+      type: org.lexis.datatransfer.nodes.CopySubDirToJob
+      properties:
+        parent_directory: {get_input: preprocessing_output_directory}
+        subdirectory_index: 1
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: RisicoVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - job:
+            type_requirement: job
+            node: WRF_DAY_2
+            capability: org.heappe.capabilities.HeappeJob
+            relationship: org.heappe.relationships.SendInputsToJob
+    CopyDay1DataToJob:
+      type: org.lexis.datatransfer.nodes.CopySubDirToJob
+      properties:
+        parent_directory: {get_input: preprocessing_output_directory}
+        subdirectory_index: 0
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: RisicoVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - job:
+            type_requirement: job
+            node: WRF_DAY_1
+            capability: org.heappe.capabilities.HeappeJob
+            relationship: org.heappe.relationships.SendInputsToJob
+    CopyWRFDay3FromJob:
       type: org.lexis.datatransfer.nodes.CopyFromJob
       properties:
         source_files_patterns: [ "auxhist*" ]
-        destination_directory:  { concat: [get_input: postprocessing_input_directory, "/wrf"] }
+        destination_directory:  { concat: [get_input: postprocessing_input_directory, "/wrf/3"] }
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
-            node: VirtualMachine
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
         - job:
             type_requirement: job
-            node: WRF
+            node: WRF_DAY_3
             capability: org.heappe.capabilities.HeappeJob
             relationship: org.heappe.relationships.GetResultsFromJob
+    CopyWRFDay2FromJob:
+      type: org.lexis.datatransfer.nodes.CopyFromJob
+      properties:
+        source_files_patterns: [ "auxhist*" ]
+        destination_directory:  { concat: [get_input: postprocessing_input_directory, "/wrf/2"] }
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: RisicoVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - job:
+            type_requirement: job
+            node: WRF_DAY_2
+            capability: org.heappe.capabilities.HeappeJob
+            relationship: org.heappe.relationships.GetResultsFromJob
+    CopyWRFDay1FromJob:
+      type: org.lexis.datatransfer.nodes.CopyFromJob
+      properties:
+        source_files_patterns: [ "auxhist*" ]
+        destination_directory:  { concat: [get_input: postprocessing_input_directory, "/wrf/1"] }
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: RisicoVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - job:
+            type_requirement: job
+            node: WRF_DAY_1
+            capability: org.heappe.capabilities.HeappeJob
+            relationship: org.heappe.relationships.GetResultsFromJob
+    DeletePreProcessDirs:
+      type: org.lexis.datatransfer.nodes.DeleteDirectories
+      properties:
+        directories: {get_input: preprocessing_volumes}
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: RisicoVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    Webdrops:
+      type: org.lexis.nodes.Webdrops
+      properties:
+        start_date: { concat: [get_input: postprocessing_risico_run_date, "00"] }
+        download_type: "RISICO"
+        destination: { concat: [get_input: postprocessing_input_directory, "/observations"] }
+        auth_url: "https://testauth.cimafoundation.org/auth/realms/webdrops/protocol/openid-connect/token"
+        url: "http://webdrops.cimafoundation.org/app/"
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: RisicoVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
     RISICO:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
       metadata:
@@ -324,7 +520,7 @@ topology_template:
       requirements:
         - sameSiteComputeOs:
             type_requirement: os
-            node: VirtualMachine
+            node: RisicoVM
             capability: tosca.capabilities.OperatingSystem
             relationship: org.ddi.relationships.SameSite
     DisableCloudAcessJob:
@@ -334,7 +530,7 @@ topology_template:
       requirements:
         - sameSiteComputeOs:
             type_requirement: os
-            node: VirtualMachine
+            node: RisicoVM
             capability: tosca.capabilities.OperatingSystem
             relationship: org.ddi.relationships.SameSite
     MountStagingArea:
@@ -351,7 +547,7 @@ topology_template:
             relationship: org.lexis.datatransfer.relationships.MountCloudStagingArea
         - hostedOnComputeHost:
             type_requirement: host
-            node: VirtualMachine
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     CreateStagingAreaResultDir:
@@ -367,7 +563,7 @@ topology_template:
             relationship: org.lexis.datatransfer.relationships.MountedCloudStagingArea
         - hostedOnComputeHost:
             type_requirement: host
-            node: VirtualMachine
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     StageWRFResults:
@@ -383,7 +579,7 @@ topology_template:
             relationship: org.ddi.relationships.DatasetProvider
         - hostedOnComputeHost:
             type_requirement: host
-            node: VirtualMachine
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     StageRISICOResults:
@@ -399,7 +595,7 @@ topology_template:
             relationship: org.ddi.relationships.DatasetProvider
         - hostedOnComputeHost:
             type_requirement: host
-            node: VirtualMachine
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     CloudToDDIJob:
@@ -444,7 +640,7 @@ topology_template:
     Run:
       steps:
         Compute_install:
-          target: VirtualMachine
+          target: RisicoVM
           activities:
             - delegate: install
           on_success:
@@ -598,59 +794,178 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - WRF_create
-        WRF_create:
-          target: WRF
+            - WRF_DAY_1_create
+            - WRF_DAY_2_create
+            - WRF_DAY_3_create
+        WRF_DAY_1_create:
+          target: WRF_DAY_1
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
           on_success:
-            - WRF_enable_file_transfer
-        WRF_enable_file_transfer:
-          target: WRF
+            - WRF_DAY_1_enable_file_transfer
+        WRF_DAY_2_create:
+          target: WRF_DAY_2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - WRF_DAY_2_enable_file_transfer
+        WRF_DAY_3_create:
+          target: WRF_DAY_3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - WRF_DAY_3_enable_file_transfer
+        WRF_DAY_1_enable_file_transfer:
+          target: WRF_DAY_1
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: custom.enable_file_transfer
           on_success:
-            - CopyToJob_start
-        CopyToJob_start:
-          target: CopyToJob
+            - CopyDay1ToJob_start
+        WRF_DAY_2_enable_file_transfer:
+          target: WRF_DAY_2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - CopyDay2ToJob_start
+        WRF_DAY_3_enable_file_transfer:
+          target: WRF_DAY_3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - CopyDay3ToJob_start
+        CopyDay1ToJob_start:
+          target: CopyDay1DataToJob
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyToJob_started
-        CopyToJob_started:
-          target: CopyToJob
+            - CopyDay1ToJob_started
+        CopyDay1ToJob_started:
+          target: CopyDay1DataToJob
           activities:
             - set_state: started
           on_success:
-            - WRF_submit
-        WRF_submit:
-          target: WRF
+            - WRF_DAY_1_submit
+        CopyDay2ToJob_start:
+          target: CopyDay2DataToJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyDay2ToJob_started
+        CopyDay2ToJob_started:
+          target: CopyDay2DataToJob
+          activities:
+            - set_state: started
+          on_success:
+            - WRF_DAY_2_submit
+        CopyDay3ToJob_start:
+          target: CopyDay3DataToJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyDay3ToJob_started
+        CopyDay3ToJob_started:
+          target: CopyDay3DataToJob
+          activities:
+            - set_state: started
+          on_success:
+            - WRF_DAY_3_submit
+        WRF_DAY_1_submit:
+          target: WRF_DAY_1
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
-            - WRF_submitted
-        WRF_submitted:
-          target: WRF
+            - WRF_DAY_1_submitted
+        WRF_DAY_1_submitted:
+          target: WRF_DAY_1
           activities:
             - set_state: submitted
           on_success:
-            - WRF_run
-        WRF_run:
-          target: WRF
+            - WRF_DAY_1_run
+        WRF_DAY_1_run:
+          target: WRF_DAY_1
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
           on_success:
-            - WRF_executed
-        WRF_executed:
-          target: WRF
+            - WRF_DAY_1_executed
+        WRF_DAY_1_executed:
+          target: WRF_DAY_1
           activities:
             - set_state: executed
           on_success:
+            - DeletePreProcessDirs_start
             - CreatePostProcessDirs_start
+        WRF_DAY_2_submit:
+          target: WRF_DAY_2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - WRF_DAY_2_submitted
+        WRF_DAY_2_submitted:
+          target: WRF_DAY_2
+          activities:
+            - set_state: submitted
+          on_success:
+            - WRF_DAY_2_run
+        WRF_DAY_2_run:
+          target: WRF_DAY_2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - WRF_DAY_2_executed
+        WRF_DAY_2_executed:
+          target: WRF_DAY_2
+          activities:
+            - set_state: executed
+          on_success:
+            - DeletePreProcessDirs_start
+            - CreatePostProcessDirs_start
+        WRF_DAY_3_submit:
+          target: WRF_DAY_3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - WRF_DAY_3_submitted
+        WRF_DAY_3_submitted:
+          target: WRF_DAY_3
+          activities:
+            - set_state: submitted
+          on_success:
+            - WRF_DAY_3_run
+        WRF_DAY_3_run:
+          target: WRF_DAY_3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - WRF_DAY_3_executed
+        WRF_DAY_3_executed:
+          target: WRF_DAY_3
+          activities:
+            - set_state: executed
+          on_success:
+            - DeletePreProcessDirs_start
+            - CreatePostProcessDirs_start
+        DeletePreProcessDirs_start:
+          target: DeletePreProcessDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - DeletePreProcessDirs_started
+        DeletePreProcessDirs_started:
+          target: DeletePreProcessDirs
+          activities:
+            - set_state: started
         CreatePostProcessDirs_start:
           target: CreatePostProcessDirs
           activities:
@@ -662,20 +977,63 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - CopyFromJob_start
-        CopyFromJob_start:
-          target: CopyFromJob
+            - CopyWRFDay1FromJob_start
+            - CopyWRFDay2FromJob_start
+            - CopyWRFDay3FromJob_start
+            - Webdrops_start
+        Webdrops_start:
+          target: Webdrops
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyFromJob_started
-        CopyFromJob_started:
-          target: CopyFromJob
+            - Webdrops_started
+        Webdrops_started:
+          target: Webdrops
           activities:
             - set_state: started
           on_success:
             - RISICO_create
-            - WRF_disable_file_transfer
+        CopyWRFDay1FromJob_start:
+          target: CopyWRFDay1FromJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyWRFDay1FromJob_started
+        CopyWRFDay1FromJob_started:
+          target: CopyWRFDay1FromJob
+          activities:
+            - set_state: started
+          on_success:
+            - RISICO_create
+            - WRF_DAY_1_disable_file_transfer
+            - StageWRFResults_start
+        CopyWRFDay2FromJob_start:
+          target: CopyWRFDay2FromJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyWRFDay2FromJob_started
+        CopyWRFDay2FromJob_started:
+          target: CopyWRFDay2FromJob
+          activities:
+            - set_state: started
+          on_success:
+            - RISICO_create
+            - WRF_DAY_2_disable_file_transfer
+            - StageWRFResults_start
+        CopyWRFDay3FromJob_start:
+          target: CopyWRFDay3FromJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyWRFDay3FromJob_started
+        CopyWRFDay3FromJob_started:
+          target: CopyWRFDay3FromJob
+          activities:
+            - set_state: started
+          on_success:
+            - RISICO_create
+            - WRF_DAY_3_disable_file_transfer
             - StageWRFResults_start
         StageWRFResults_start:
           target: StageWRFResults
@@ -689,22 +1047,58 @@ topology_template:
             - set_state: started
           on_success:
             - StageRISICOResults_start
-        WRF_disable_file_transfer:
-          target: WRF
+        WRF_DAY_1_disable_file_transfer:
+          target: WRF_DAY_1
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: custom.disable_file_transfer
           on_success:
-            - WRF_delete
-        WRF_delete:
-          target: WRF
+            - WRF_DAY_1_delete
+        WRF_DAY_1_delete:
+          target: WRF_DAY_1
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.delete
           on_success:
-            - WRF_deleted
-        WRF_deleted:
-          target: WRF
+            - WRF_DAY_1_deleted
+        WRF_DAY_1_deleted:
+          target: WRF_DAY_1
+          activities:
+            - set_state: deleted
+        WRF_DAY_2_disable_file_transfer:
+          target: WRF_DAY_2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - WRF_DAY_2_delete
+        WRF_DAY_2_delete:
+          target: WRF_DAY_2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_DAY_2_deleted
+        WRF_DAY_2_deleted:
+          target: WRF_DAY_2
+          activities:
+            - set_state: deleted
+        WRF_DAY_3_disable_file_transfer:
+          target: WRF_DAY_3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - WRF_DAY_3_delete
+        WRF_DAY_3_delete:
+          target: WRF_DAY_3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_DAY_3_deleted
+        WRF_DAY_3_deleted:
+          target: WRF_DAY_3
           activities:
             - set_state: deleted
         RISICO_create:
@@ -843,7 +1237,7 @@ topology_template:
           on_success:
             - Compute_uninstall
         Compute_uninstall:
-          target: VirtualMachine
+          target: RisicoVM
           activities:
             - delegate: uninstall
     cleanupRun:
@@ -921,63 +1315,180 @@ topology_template:
           on_success:
             - Compute_uninstall
         Compute_uninstall:
-          target: VirtualMachine
+          target: RisicoVM
           activities:
             - delegate: uninstall
     testRun:
       steps:
-        WRF_create:
-          target: WRF
+        WRF_DAY_1_create:
+          target: WRF_DAY_1
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
           on_success:
-            - WRF_enable_file_transfer
-        WRF_enable_file_transfer:
-          target: WRF
+            - WRF_DAY_1_enable_file_transfer
+        WRF_DAY_2_create:
+          target: WRF_DAY_2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - WRF_DAY_2_enable_file_transfer
+        WRF_DAY_3_create:
+          target: WRF_DAY_3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - WRF_DAY_3_enable_file_transfer
+        WRF_DAY_1_enable_file_transfer:
+          target: WRF_DAY_1
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: custom.enable_file_transfer
           on_success:
-            - CopyToJob_start
-        CopyToJob_start:
-          target: CopyToJob
+            - CopyDay1ToJob_start
+        WRF_DAY_2_enable_file_transfer:
+          target: WRF_DAY_2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - CopyDay2ToJob_start
+        WRF_DAY_3_enable_file_transfer:
+          target: WRF_DAY_3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - CopyDay3ToJob_start
+        CopyDay1ToJob_start:
+          target: CopyDay1DataToJob
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyToJob_started
-        CopyToJob_started:
-          target: CopyToJob
+            - CopyDay1ToJob_started
+        CopyDay1ToJob_started:
+          target: CopyDay1DataToJob
           activities:
             - set_state: started
           on_success:
-            - WRF_submit
-        WRF_submit:
-          target: WRF
+            - WRF_DAY_1_submit
+        CopyDay2ToJob_start:
+          target: CopyDay2DataToJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyDay2ToJob_started
+        CopyDay2ToJob_started:
+          target: CopyDay2DataToJob
+          activities:
+            - set_state: started
+          on_success:
+            - WRF_DAY_2_submit
+        CopyDay3ToJob_start:
+          target: CopyDay3DataToJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyDay3ToJob_started
+        CopyDay3ToJob_started:
+          target: CopyDay3DataToJob
+          activities:
+            - set_state: started
+          on_success:
+            - WRF_DAY_3_submit
+        WRF_DAY_1_submit:
+          target: WRF_DAY_1
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
-            - WRF_submitted
-        WRF_submitted:
-          target: WRF
+            - WRF_DAY_1_submitted
+        WRF_DAY_1_submitted:
+          target: WRF_DAY_1
           activities:
             - set_state: submitted
           on_success:
-            - WRF_run
-        WRF_run:
-          target: WRF
+            - WRF_DAY_1_run
+        WRF_DAY_1_run:
+          target: WRF_DAY_1
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
           on_success:
-            - WRF_executed
-        WRF_executed:
-          target: WRF
+            - WRF_DAY_1_executed
+        WRF_DAY_1_executed:
+          target: WRF_DAY_1
           activities:
             - set_state: executed
           on_success:
+            - DeletePreProcessDirs_start
             - CreatePostProcessDirs_start
+        WRF_DAY_2_submit:
+          target: WRF_DAY_2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - WRF_DAY_2_submitted
+        WRF_DAY_2_submitted:
+          target: WRF_DAY_2
+          activities:
+            - set_state: submitted
+          on_success:
+            - WRF_DAY_2_run
+        WRF_DAY_2_run:
+          target: WRF_DAY_2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - WRF_DAY_2_executed
+        WRF_DAY_2_executed:
+          target: WRF_DAY_2
+          activities:
+            - set_state: executed
+          on_success:
+            - DeletePreProcessDirs_start
+            - CreatePostProcessDirs_start
+        WRF_DAY_3_submit:
+          target: WRF_DAY_3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - WRF_DAY_3_submitted
+        WRF_DAY_3_submitted:
+          target: WRF_DAY_3
+          activities:
+            - set_state: submitted
+          on_success:
+            - WRF_DAY_3_run
+        WRF_DAY_3_run:
+          target: WRF_DAY_3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - WRF_DAY_3_executed
+        WRF_DAY_3_executed:
+          target: WRF_DAY_3
+          activities:
+            - set_state: executed
+          on_success:
+            - DeletePreProcessDirs_start
+            - CreatePostProcessDirs_start
+        DeletePreProcessDirs_start:
+          target: DeletePreProcessDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - DeletePreProcessDirs_started
+        DeletePreProcessDirs_started:
+          target: DeletePreProcessDirs
+          activities:
+            - set_state: started
         CreatePostProcessDirs_start:
           target: CreatePostProcessDirs
           activities:
@@ -989,20 +1500,63 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - CopyFromJob_start
-        CopyFromJob_start:
-          target: CopyFromJob
+            - CopyWRFDay1FromJob_start
+            - CopyWRFDay2FromJob_start
+            - CopyWRFDay3FromJob_start
+            - Webdrops_start
+        Webdrops_start:
+          target: Webdrops
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyFromJob_started
-        CopyFromJob_started:
-          target: CopyFromJob
+            - Webdrops_started
+        Webdrops_started:
+          target: Webdrops
           activities:
             - set_state: started
           on_success:
             - RISICO_create
-            - WRF_disable_file_transfer
+        CopyWRFDay1FromJob_start:
+          target: CopyWRFDay1FromJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyWRFDay1FromJob_started
+        CopyWRFDay1FromJob_started:
+          target: CopyWRFDay1FromJob
+          activities:
+            - set_state: started
+          on_success:
+            - RISICO_create
+            - WRF_DAY_1_disable_file_transfer
+            - StageWRFResults_start
+        CopyWRFDay2FromJob_start:
+          target: CopyWRFDay2FromJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyWRFDay2FromJob_started
+        CopyWRFDay2FromJob_started:
+          target: CopyWRFDay2FromJob
+          activities:
+            - set_state: started
+          on_success:
+            - RISICO_create
+            - WRF_DAY_2_disable_file_transfer
+            - StageWRFResults_start
+        CopyWRFDay3FromJob_start:
+          target: CopyWRFDay3FromJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyWRFDay3FromJob_started
+        CopyWRFDay3FromJob_started:
+          target: CopyWRFDay3FromJob
+          activities:
+            - set_state: started
+          on_success:
+            - RISICO_create
+            - WRF_DAY_3_disable_file_transfer
             - StageWRFResults_start
         StageWRFResults_start:
           target: StageWRFResults
@@ -1016,22 +1570,58 @@ topology_template:
             - set_state: started
           on_success:
             - StageRISICOResults_start
-        WRF_disable_file_transfer:
-          target: WRF
+        WRF_DAY_1_disable_file_transfer:
+          target: WRF_DAY_1
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: custom.disable_file_transfer
           on_success:
-            - WRF_delete
-        WRF_delete:
-          target: WRF
+            - WRF_DAY_1_delete
+        WRF_DAY_1_delete:
+          target: WRF_DAY_1
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.delete
           on_success:
-            - WRF_deleted
-        WRF_deleted:
-          target: WRF
+            - WRF_DAY_1_deleted
+        WRF_DAY_1_deleted:
+          target: WRF_DAY_1
+          activities:
+            - set_state: deleted
+        WRF_DAY_2_disable_file_transfer:
+          target: WRF_DAY_2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - WRF_DAY_2_delete
+        WRF_DAY_2_delete:
+          target: WRF_DAY_2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_DAY_2_deleted
+        WRF_DAY_2_deleted:
+          target: WRF_DAY_2
+          activities:
+            - set_state: deleted
+        WRF_DAY_3_disable_file_transfer:
+          target: WRF_DAY_3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - WRF_DAY_3_delete
+        WRF_DAY_3_delete:
+          target: WRF_DAY_3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_DAY_3_deleted
+        WRF_DAY_3_deleted:
+          target: WRF_DAY_3
           activities:
             - set_state: deleted
         RISICO_create:
@@ -1170,7 +1760,7 @@ topology_template:
           on_success:
             - Compute_uninstall
         Compute_uninstall:
-          target: VirtualMachine
+          target: RisicoVM
           activities:
             - delegate: uninstall
     testpostprocess:
@@ -1311,13 +1901,13 @@ topology_template:
           on_success:
             - Compute_uninstall
         Compute_uninstall:
-          target: VirtualMachine
+          target: RisicoVM
           activities:
             - delegate: uninstall
     testcomputeuninstall:
       steps:
         Compute_uninstall:
-          target: VirtualMachine
+          target: RisicoVM
           activities:
             - delegate: uninstall
           on_success:
@@ -1361,15 +1951,37 @@ topology_template:
             - set_state: executed
     testdeletewrf:
       steps:
-        WRF_delete:
-          target: WRF
+        WRF_DAY_1_delete:
+          target: WRF_DAY_1
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.delete
           on_success:
-            - WRF_deleted
-        WRF_deleted:
-          target: WRF
+            - WRF_DAY_1_deleted
+        WRF_DAY_1_deleted:
+          target: WRF_DAY_1
+          activities:
+            - set_state: deleted
+        WRF_DAY_2_delete:
+          target: WRF_DAY_2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_DAY_2_deleted
+        WRF_DAY_2_deleted:
+          target: WRF_DAY_2
+          activities:
+            - set_state: deleted
+        WRF_DAY_3_delete:
+          target: WRF_DAY_3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_DAY_3_deleted
+        WRF_DAY_3_deleted:
+          target: WRF_DAY_3
           activities:
             - set_state: deleted
     testrisico:
@@ -1392,6 +2004,16 @@ topology_template:
             - set_state: started
     testPostRun:
       steps:
+        DeletePreProcessDirs_start:
+          target: DeletePreProcessDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - DeletePreProcessDirs_started
+        DeletePreProcessDirs_started:
+          target: DeletePreProcessDirs
+          activities:
+            - set_state: started
         CreatePostProcessDirs_start:
           target: CreatePostProcessDirs
           activities:
@@ -1403,20 +2025,63 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - CopyFromJob_start
-        CopyFromJob_start:
-          target: CopyFromJob
+            - CopyWRFDay1FromJob_start
+            - CopyWRFDay2FromJob_start
+            - CopyWRFDay3FromJob_start
+            - Webdrops_start
+        Webdrops_start:
+          target: Webdrops
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyFromJob_started
-        CopyFromJob_started:
-          target: CopyFromJob
+            - Webdrops_started
+        Webdrops_started:
+          target: Webdrops
           activities:
             - set_state: started
           on_success:
             - RISICO_create
-            - WRF_disable_file_transfer
+        CopyWRFDay1FromJob_start:
+          target: CopyWRFDay1FromJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyWRFDay1FromJob_started
+        CopyWRFDay1FromJob_started:
+          target: CopyWRFDay1FromJob
+          activities:
+            - set_state: started
+          on_success:
+            - RISICO_create
+            - WRF_DAY_1_disable_file_transfer
+            - StageWRFResults_start
+        CopyWRFDay2FromJob_start:
+          target: CopyWRFDay2FromJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyWRFDay2FromJob_started
+        CopyWRFDay2FromJob_started:
+          target: CopyWRFDay2FromJob
+          activities:
+            - set_state: started
+          on_success:
+            - RISICO_create
+            - WRF_DAY_2_disable_file_transfer
+            - StageWRFResults_start
+        CopyWRFDay3FromJob_start:
+          target: CopyWRFDay3FromJob
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyWRFDay3FromJob_started
+        CopyWRFDay3FromJob_started:
+          target: CopyWRFDay3FromJob
+          activities:
+            - set_state: started
+          on_success:
+            - RISICO_create
+            - WRF_DAY_3_disable_file_transfer
             - StageWRFResults_start
         StageWRFResults_start:
           target: StageWRFResults
@@ -1430,22 +2095,58 @@ topology_template:
             - set_state: started
           on_success:
             - StageRISICOResults_start
-        WRF_disable_file_transfer:
-          target: WRF
+        WRF_DAY_1_disable_file_transfer:
+          target: WRF_DAY_1
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: custom.disable_file_transfer
           on_success:
-            - WRF_delete
-        WRF_delete:
-          target: WRF
+            - WRF_DAY_1_delete
+        WRF_DAY_1_delete:
+          target: WRF_DAY_1
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.delete
           on_success:
-            - WRF_deleted
-        WRF_deleted:
-          target: WRF
+            - WRF_DAY_1_deleted
+        WRF_DAY_1_deleted:
+          target: WRF_DAY_1
+          activities:
+            - set_state: deleted
+        WRF_DAY_2_disable_file_transfer:
+          target: WRF_DAY_2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - WRF_DAY_2_delete
+        WRF_DAY_2_delete:
+          target: WRF_DAY_2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_DAY_2_deleted
+        WRF_DAY_2_deleted:
+          target: WRF_DAY_2
+          activities:
+            - set_state: deleted
+        WRF_DAY_3_disable_file_transfer:
+          target: WRF_DAY_3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - WRF_DAY_3_delete
+        WRF_DAY_3_delete:
+          target: WRF_DAY_3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_DAY_3_deleted
+        WRF_DAY_3_deleted:
+          target: WRF_DAY_3
           activities:
             - set_state: deleted
         RISICO_create:
@@ -1584,7 +2285,7 @@ topology_template:
           on_success:
             - Compute_uninstall
         Compute_uninstall:
-          target: VirtualMachine
+          target: RisicoVM
           activities:
             - delegate: uninstall
     start:
