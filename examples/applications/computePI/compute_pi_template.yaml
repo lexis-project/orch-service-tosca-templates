@@ -1,0 +1,142 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: ComputePITemplate
+  template_version: 0.1.0-SNAPSHOT
+  template_author: lexis
+
+description: ""
+
+imports:
+    - tosca-normative-types:1.0.0-ALIEN20
+    - org.lexis.examples.pi:0.0.1-SNAPSHOT
+
+topology_template:
+  inputs:
+    # Prefix preprocessing is used by LEXIS Portal to identify a preprocessing input parameter
+    preprocessing_decimalsNumber:
+      type: integer
+      required: true
+      description: "Number of decimals to compute"
+  node_templates:
+    VirtualMachinePI:
+      type: tosca.nodes.Compute
+      requirements:
+        - networkNetworkConnection:
+            type_requirement: network
+            node: PublicNet
+            capability: tosca.capabilities.Connectivity
+            relationship: tosca.relationships.Network
+      capabilities:
+        host:
+          properties:
+            num_cpus: 1
+            disk_size: "10 GB"
+            mem_size: "2 GB"
+        os:
+          properties:
+            type: linux
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        endpoint:
+          properties:
+            secure: true
+            protocol: tcp
+            network_name: PRIVATE
+            initiator: source
+    ComputePI:
+      type: org.lexis.examples.pi.ComputePI
+      # Metadata used by LEXIS Portal to identify a preprocessing workflow step
+      metadata:
+        task: preprocessing
+      properties:
+        decimalsNumber: { get_input: preprocessing_decimalsNumber }
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: VirtualMachinePI
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    PublicNet:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+  outputs:
+    ComputePI_result:
+      value: { get_attribute: [ ComputePI, result ] }
+  workflows:
+    install:
+        steps:
+          PublicNet_install:
+            target: PublicNet
+            activities:
+              - delegate: install
+    Run:
+      steps:
+        VirtualMachinePI_install:
+          target: VirtualMachinePI
+          activities:
+            - delegate: install
+          on_success:
+            - ComputePI_start
+        ComputePI_start:
+          target: ComputePI
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ComputePI_started
+        ComputePI_started:
+          target: ComputePI
+          activities:
+            - set_state: started
+          on_success:
+            - VirtualMachinePI_uninstall
+        VirtualMachinePI_uninstall:
+          target: VirtualMachinePI
+          activities:
+            - delegate: uninstall
+    uninstall:
+      steps:
+        PublicNet_uninstall:
+            target: PublicNet
+            activities:
+              - delegate: uninstall
+    start:
+      steps:
+        ComputePI_start:
+          target: ComputePI
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ComputePI_started
+        ComputePI_started:
+          target: ComputePI
+          activities:
+            - set_state: started
+    stop:
+      steps:
+        ComputePI_stopping:
+          target: ComputePI
+          activities:
+            - set_state: stopping
+          on_success:
+            - ComputePI_stopped
+        ComputePI_stopped:
+          target: ComputePI
+          activities:
+            - set_state: stopped
+    cancel:
+      steps:
+        ComputePI_cancelling:
+          target: ComputePI
+          activities:
+            - set_state: cancelling
+          on_success:
+            - ComputePI_cancelled
+        ComputePI_cancelled:
+          target: ComputePI
+          activities:
+            - set_state: cancelled
