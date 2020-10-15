@@ -10,12 +10,12 @@ description: ""
 imports:
   - yorc-types:1.1.0
   - tosca-normative-types:1.0.0-ALIEN20
-  - docker-types:2.2.0-SM10
-  - alien-base-types:2.2.0-SM10
-  - heappe-types:0.1.0
-  - ddi-types:0.1.0
-  - org.ystia.docker.containers.docker.generic:2.2.0-SNAPSHOT
-  - org.ystia.docker.ansible:2.2.0-SNAPSHOT
+  - docker-types:2.2.0
+  - alien-base-types:2.2.0
+  - heappe-types:0.1.1
+  - ddi-types:0.1.1
+  - org.ystia.docker.containers.docker.generic:2.3.0-SNAPSHOT
+  - org.ystia.docker.ansible:2.3.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2
   - org.lexis.weather.wps:0.1.1
   - org.lexis.weather.webdrops:0.1.0
@@ -215,156 +215,147 @@ topology_template:
         task: computation
       properties:
         jobSpecification:
-          name: WRFJob
-          project: "DD-19-14"
-          clusterNodeTypeId: 6
-          priority: 4
-          minCores: 48
-          maxCores: 48
-          waitingLimit: 0
-          walltimeLimit: 36000
-          tasks:
-            - name: WRFTask
-              commandTemplateId: 9
-              templateParameterValues:
-                - commandParameterIdentifier: MPICores
-                  parameterValue: "48"
-              environmentVariables:
-                - name: HDF5
-                  value: "./deps"
-                - name: NETCDF
-                  value: "./deps"
-                - name: CPPFLAGS
-                  value: "-I./deps/include"
-                - name: CFLAGS
-                  value: "-I./deps/include"
-                - name: CXXFLAGS
-                  value: "-I./deps/include"
-                - name: FCFLAGS
-                  value: "-I./deps/include"
-                - name: FFLAGS
-                  value: "-I./deps/include"
-                - name: LDFLAGS
-                  value: "-L./deps/lib"
-                - name: WRFIO_NCD_LARGE_FILE_SUPPORT
-                  value: "1"
-                - name: LD_LIBRARY_PATH
-                  value: "$LD_LIBRARY_PATH:./deps/lib"
-                - name: JASPERLIB
-                  value: "./deps/lib"
-                - name: JASPERINC
-                  value: "./deps/include"
-              minCores: 48
-              maxCores: 48
-              walltimeLimit: 36000
-              standardOutputFile: "stdout"
-              standardErrorFile: "stderr"
-              progressFile: "stdprog"
-              logFile: "stdlog"
+          Name: WRFJob
+          Project: "DD-19-14"
+          ClusterId: 2
+          Tasks:
+            - Name: WRFTask
+              ClusterNodeTypeId: 6
+              CommandTemplateId: 9
+              TemplateParameterValues:
+                - CommandParameterIdentifier: MPICores
+                  ParameterValue: "48"
+              WalltimeLimit: 36000
+              MinCores: 48
+              MaxCores: 48
+              Priority: 4
+              EnvironmentVariables:
+                - Name: HDF5
+                  Value: "./deps"
+                - Name: NETCDF
+                  Value: "./deps"
+                - Name: CPPFLAGS
+                  Value: "-I./deps/include"
+                - Name: CFLAGS
+                  Value: "-I./deps/include"
+                - Name: CXXFLAGS
+                  Value: "-I./deps/include"
+                - Name: FCFLAGS
+                  Value: "-I./deps/include"
+                - Name: FFLAGS
+                  Value: "-I./deps/include"
+                - Name: LDFLAGS
+                  Value: "-L./deps/lib"
+                - Name: WRFIO_NCD_LARGE_FILE_SUPPORT
+                  Value: "1"
+                - Name: LD_LIBRARY_PATH
+                  Value: "$LD_LIBRARY_PATH:./deps/lib"
+                - Name: JASPERLIB
+                  Value: "./deps/lib"
+                - Name: JASPERINC
+                  Value: "./deps/include"
+              StandardOutputFile: "stdout"
+              StandardErrorFile: "stderr"
+              ProgressFile: "stdprog"
+              LogFile: "stdlog"
     WRF_DAY_2:
       type: org.heappe.nodes.Job
       metadata:
         task: computation
       properties:
         jobSpecification:
-          name: WRFJob
-          project: "DD-19-14"
-          clusterNodeTypeId: 6
-          priority: 4
-          minCores: 48
-          maxCores: 48
-          waitingLimit: 0
-          walltimeLimit: 36000
-          tasks:
-            - name: WRFTask
-              commandTemplateId: 9
-              templateParameterValues:
-                - commandParameterIdentifier: MPICores
-                  parameterValue: "48"
-              environmentVariables:
-                - name: HDF5
-                  value: "./deps"
-                - name: NETCDF
-                  value: "./deps"
-                - name: CPPFLAGS
-                  value: "-I./deps/include"
-                - name: CFLAGS
-                  value: "-I./deps/include"
-                - name: CXXFLAGS
-                  value: "-I./deps/include"
-                - name: FCFLAGS
-                  value: "-I./deps/include"
-                - name: FFLAGS
-                  value: "-I./deps/include"
-                - name: LDFLAGS
-                  value: "-L./deps/lib"
-                - name: WRFIO_NCD_LARGE_FILE_SUPPORT
-                  value: "1"
-                - name: LD_LIBRARY_PATH
-                  value: "$LD_LIBRARY_PATH:./deps/lib"
-                - name: JASPERLIB
-                  value: "./deps/lib"
-                - name: JASPERINC
-                  value: "./deps/include"
-              minCores: 48
-              maxCores: 48
-              walltimeLimit: 36000
-              standardOutputFile: "stdout"
-              standardErrorFile: "stderr"
-              progressFile: "stdprog"
-              logFile: "stdlog"
+          Name: WRFJob
+          Project: "DD-19-14"
+          ClusterId: 2
+          Tasks:
+            - Name: WRFTask
+              ClusterNodeTypeId: 6
+              CommandTemplateId: 9
+              TemplateParameterValues:
+                - CommandParameterIdentifier: MPICores
+                  ParameterValue: "48"
+              WalltimeLimit: 36000
+              MinCores: 48
+              MaxCores: 48
+              Priority: 4
+              EnvironmentVariables:
+                - Name: HDF5
+                  Value: "./deps"
+                - Name: NETCDF
+                  Value: "./deps"
+                - Name: CPPFLAGS
+                  Value: "-I./deps/include"
+                - Name: CFLAGS
+                  Value: "-I./deps/include"
+                - Name: CXXFLAGS
+                  Value: "-I./deps/include"
+                - Name: FCFLAGS
+                  Value: "-I./deps/include"
+                - Name: FFLAGS
+                  Value: "-I./deps/include"
+                - Name: LDFLAGS
+                  Value: "-L./deps/lib"
+                - Name: WRFIO_NCD_LARGE_FILE_SUPPORT
+                  Value: "1"
+                - Name: LD_LIBRARY_PATH
+                  Value: "$LD_LIBRARY_PATH:./deps/lib"
+                - Name: JASPERLIB
+                  Value: "./deps/lib"
+                - Name: JASPERINC
+                  Value: "./deps/include"
+              StandardOutputFile: "stdout"
+              StandardErrorFile: "stderr"
+              ProgressFile: "stdprog"
+              LogFile: "stdlog"
     WRF_DAY_1:
       type: org.heappe.nodes.Job
       metadata:
         task: computation
       properties:
         jobSpecification:
-          name: WRFJob
-          project: "DD-19-14"
-          clusterNodeTypeId: 6
-          priority: 4
-          minCores: 48
-          maxCores: 48
-          waitingLimit: 0
-          walltimeLimit: 36000
-          tasks:
-            - name: WRFTask
-              commandTemplateId: 9
-              templateParameterValues:
-                - commandParameterIdentifier: MPICores
-                  parameterValue: "48"
-              environmentVariables:
-                - name: HDF5
-                  value: "./deps"
-                - name: NETCDF
-                  value: "./deps"
-                - name: CPPFLAGS
-                  value: "-I./deps/include"
-                - name: CFLAGS
-                  value: "-I./deps/include"
-                - name: CXXFLAGS
-                  value: "-I./deps/include"
-                - name: FCFLAGS
-                  value: "-I./deps/include"
-                - name: FFLAGS
-                  value: "-I./deps/include"
-                - name: LDFLAGS
-                  value: "-L./deps/lib"
-                - name: WRFIO_NCD_LARGE_FILE_SUPPORT
-                  value: "1"
-                - name: LD_LIBRARY_PATH
-                  value: "$LD_LIBRARY_PATH:./deps/lib"
-                - name: JASPERLIB
-                  value: "./deps/lib"
-                - name: JASPERINC
-                  value: "./deps/include"
-              minCores: 48
-              maxCores: 48
-              walltimeLimit: 36000
-              standardOutputFile: "stdout"
-              standardErrorFile: "stderr"
-              progressFile: "stdprog"
-              logFile: "stdlog"
+          Name: WRFJob
+          Project: "DD-19-14"
+          ClusterId: 2
+          Tasks:
+            - Name: WRFTask
+              ClusterNodeTypeId: 6
+              CommandTemplateId: 9
+              TemplateParameterValues:
+                - CommandParameterIdentifier: MPICores
+                  ParameterValue: "48"
+              WalltimeLimit: 36000
+              MinCores: 48
+              MaxCores: 48
+              Priority: 4
+              EnvironmentVariables:
+                - Name: HDF5
+                  Value: "./deps"
+                - Name: NETCDF
+                  Value: "./deps"
+                - Name: CPPFLAGS
+                  Value: "-I./deps/include"
+                - Name: CFLAGS
+                  Value: "-I./deps/include"
+                - Name: CXXFLAGS
+                  Value: "-I./deps/include"
+                - Name: FCFLAGS
+                  Value: "-I./deps/include"
+                - Name: FFLAGS
+                  Value: "-I./deps/include"
+                - Name: LDFLAGS
+                  Value: "-L./deps/lib"
+                - Name: WRFIO_NCD_LARGE_FILE_SUPPORT
+                  Value: "1"
+                - Name: LD_LIBRARY_PATH
+                  Value: "$LD_LIBRARY_PATH:./deps/lib"
+                - Name: JASPERLIB
+                  Value: "./deps/lib"
+                - Name: JASPERINC
+                  Value: "./deps/include"
+              StandardOutputFile: "stdout"
+              StandardErrorFile: "stderr"
+              ProgressFile: "stdprog"
+              LogFile: "stdlog"
     CopyDay3DataToJob:
       type: org.lexis.datatransfer.nodes.CopySubDirToJob
       properties:

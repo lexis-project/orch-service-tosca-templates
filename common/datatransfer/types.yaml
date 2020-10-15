@@ -6,8 +6,8 @@ metadata:
   template_author: lexis
 
 imports:
-  - heappe-types:0.1.0
-  - ddi-types:0.1.0
+  - heappe-types:0.1.1
+  - ddi-types:0.1.1
   - yorc-types:1.1.0
 node_types:
   org.lexis.datatransfer.nodes.CopyToJob:
