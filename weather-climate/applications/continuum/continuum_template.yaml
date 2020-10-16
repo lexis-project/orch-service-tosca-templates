@@ -10,12 +10,12 @@ description: ""
 imports:
   - yorc-types:1.1.0
   - tosca-normative-types:1.0.0-ALIEN20
-  - docker-types:2.2.0
-  - alien-base-types:2.2.0
-  - ddi-types:0.1.1
-  - heappe-types:0.1.0
-  - org.ystia.docker.containers.docker.generic:2.3.0-SNAPSHOT
-  - org.ystia.docker.ansible:2.3.0-SNAPSHOT
+  - docker-types:3.0.0
+  - alien-base-types:3.0.0
+  - ddi-types:0.1.2
+  - heappe-types:1.0.2
+  - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
+  - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2
   - org.lexis.weather.wps:0.1.1
   - org.lexis.weather.continuum:0.1.0
@@ -307,7 +307,7 @@ topology_template:
     Continuum_Hyde_StaticData:
       type: org.lexis.nodes.ContinuumStaticData
       properties:
-        url: https://storage.googleapis.com/test-laurent/lexis
+        url: https://code.it4i.cz/gan0035/artifacts/-/raw/master
         # Dataset created from git LFS (Large File Storage) at:
         # https://github.com/cima-lexis/fp-docker/tree/master/docker_testcase/datasets_hyde/static_data
         dataset: continuum_hyde_static_data_1.0.3.zip
@@ -321,7 +321,7 @@ topology_template:
     Continuum_HMC_StaticData:
       type: org.lexis.nodes.ContinuumStaticData
       properties:
-        url: https://storage.googleapis.com/test-laurent/lexis
+        url: https://code.it4i.cz/gan0035/artifacts/-/raw/master
         # Dataset created from git LFS (Large File Storage) at:
         # https://github.com/cima-lexis/fp-docker/tree/master/docker_testcase/datasets_hyde/static_data
         dataset: continuum_hmc_static_data_1.0.3.zip
@@ -446,6 +446,22 @@ topology_template:
             node: ContinuumVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
+    CreateStagingAreaWRFResultDir:
+      type: org.lexis.datatransfer.nodes.CreateStagingAreaDirectory
+      properties:
+        directory: "continuum_wrf_results"
+        create_timestamp_destination_subdirectory: true
+      requirements:
+        - mountedCloudStagingArea:
+            type_requirement: mounted_staging_area
+            node: MountStagingArea
+            capability: org.lexis.datatransfer.capabilities.MountedStagingAreaAccess
+            relationship: org.lexis.datatransfer.relationships.MountedCloudStagingArea
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
     CreateStagingAreaResultDir:
       type: org.lexis.datatransfer.nodes.CreateStagingAreaDirectory
       properties:
@@ -470,7 +486,7 @@ topology_template:
       requirements:
         - staging_area_directory:
             type_requirement: dataset_provider
-            node: CreateStagingAreaResultDir
+            node: CreateStagingAreaWRFResultDir
             capability: org.ddi.capabilities.CloudAreaDatasetProvider
             relationship: org.ddi.relationships.DatasetProvider
         - hostedOnComputeHost:
@@ -494,6 +510,18 @@ topology_template:
             node: ContinuumVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
+    CloudToDDIWRFJob:
+      type: org.ddi.nodes.CloudToDDIJob
+      properties:
+        metadata: {concat: ["{\"creator\": [\"Continuum workflow\"], \"contributor\": [\"Continuum workflow\"], \"publisher\": [\"Continuum workflow\"], \"resourceType\": \"WRF result\", \"title\": \"Continuum Workflow WRF result - ", get_input: postprocessing_run_date, "\"}"]}
+        token: { get_input: token }
+        ddi_path: { get_input: postprocessing_ddi_path }
+      requirements:
+        - dataset_provider:
+            type_requirement: dataset_provider
+            node: CreateStagingAreaWRFResultDir
+            capability: org.ddi.capabilities.CloudAreaDatasetProvider
+            relationship: org.ddi.relationships.DatasetProvider
     CloudToDDIJob:
       type: org.ddi.nodes.CloudToDDIJob
       properties:
@@ -504,6 +532,16 @@ topology_template:
         - dataset_provider:
             type_requirement: dataset_provider
             node: CreateStagingAreaResultDir
+            capability: org.ddi.capabilities.CloudAreaDatasetProvider
+            relationship: org.ddi.relationships.DatasetProvider
+    DeleteCloudWRFDataJob:
+      type: org.ddi.nodes.DeleteCloudDataJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - dataset_provider:
+            type_requirement: dataset_provider
+            node: CreateStagingAreaWRFResultDir
             capability: org.ddi.capabilities.CloudAreaDatasetProvider
             relationship: org.ddi.relationships.DatasetProvider
     DeleteCloudDataJob:
@@ -520,6 +558,9 @@ topology_template:
     ddi_post_process_results:
       description: DDI path to Continuum post-processing results
       value: { get_attribute: [ CloudToDDIJob, destination_directory_path ] }
+    ddi_wrf_results:
+      description: DDI path to Continuum WRF results
+      value: { get_attribute: [ CloudToDDIWRFJob, destination_directory_path ] }
   workflows:
     install:
       steps:
@@ -636,19 +677,6 @@ topology_template:
             - set_state: started
           on_success:
             - Docker_create
-            - CreateStagingAreaResultDir_start
-        CreateStagingAreaResultDir_start:
-          target: CreateStagingAreaResultDir
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CreateStagingAreaResultDir_started
-        CreateStagingAreaResultDir_started:
-          target: CreateStagingAreaResultDir
-          activities:
-            - set_state: started
-          on_success:
-            - StageWRFResults_start
         Docker_create:
           target: Docker
           activities:
@@ -753,8 +781,21 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - CreateStagingAreaWRFResultDir_start
             - CreatePostProcessHydeDirs_start
             - CreatePostProcessHMCDirs_start
+        CreateStagingAreaWRFResultDir_start:
+          target: CreateStagingAreaWRFResultDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaWRFResultDir_started
+        CreateStagingAreaWRFResultDir_started:
+          target: CreateStagingAreaWRFResultDir
+          activities:
+            - set_state: started
+          on_success:
+            - CopyFromJob_start
         CreatePostProcessHydeDirs_start:
           target: CreatePostProcessHydeDirs
           activities:
@@ -803,8 +844,81 @@ topology_template:
           activities:
             - set_state: started
           on_success:
+            - CloudToDDIWRFJob_create
+        CloudToDDIWRFJob_create:
+          target: CloudToDDIWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CloudToDDIWRFJob_submit
+        CloudToDDIWRFJob_submit:
+          target: CloudToDDIWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CloudToDDIWRFJob_submitted
+        CloudToDDIWRFJob_submitted:
+          target: CloudToDDIWRFJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CloudToDDIWRFJob_run
             - Webdrops_start
             - Continuum_Hyde_StaticData_start
+        CloudToDDIWRFJob_run:
+          target: CloudToDDIWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CloudToDDIWRFJob_executed
+        CloudToDDIWRFJob_executed:
+          target: CloudToDDIWRFJob
+          activities:
+            - set_state: executed
+          on_success:
+            - DeleteCloudWRFDataJob_create
+        DeleteCloudWRFDataJob_create:
+          target: DeleteCloudWRFDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudWRFDataJob_created
+        DeleteCloudWRFDataJob_created:
+          target: DeleteCloudWRFDataJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudWRFDataJob_submit
+        DeleteCloudWRFDataJob_submit:
+          target: DeleteCloudWRFDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudWRFDataJob_submitted
+        DeleteCloudWRFDataJob_submitted:
+          target: DeleteCloudWRFDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudWRFDataJob_run
+        DeleteCloudWRFDataJob_run:
+          target: DeleteCloudWRFDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudWRFDataJob_executed
+        DeleteCloudWRFDataJob_executed:
+          target: DeleteCloudWRFDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - DisableCloudAcessJob_create
         Webdrops_start:
           target: Webdrops
           activities:
@@ -904,6 +1018,18 @@ topology_template:
             - Continuum_HMC_started
         Continuum_HMC_started:
           target: Continuum_HMC
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        CreateStagingAreaResultDir_start:
+          target: CreateStagingAreaResultDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaResultDir_started
+        CreateStagingAreaResultDir_started:
+          target: CreateStagingAreaResultDir
           activities:
             - set_state: started
           on_success:
@@ -1082,8 +1208,21 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - CreateStagingAreaWRFResultDir_start
             - CreatePostProcessHydeDirs_start
             - CreatePostProcessHMCDirs_start
+        CreateStagingAreaWRFResultDir_start:
+          target: CreateStagingAreaWRFResultDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaWRFResultDir_started
+        CreateStagingAreaWRFResultDir_started:
+          target: CreateStagingAreaWRFResultDir
+          activities:
+            - set_state: started
+          on_success:
+            - CopyFromJob_start
         CreatePostProcessHydeDirs_start:
           target: CreatePostProcessHydeDirs
           activities:
@@ -1132,8 +1271,81 @@ topology_template:
           activities:
             - set_state: started
           on_success:
+            - CloudToDDIWRFJob_create
+        CloudToDDIWRFJob_create:
+          target: CloudToDDIWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CloudToDDIWRFJob_submit
+        CloudToDDIWRFJob_submit:
+          target: CloudToDDIWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CloudToDDIWRFJob_submitted
+        CloudToDDIWRFJob_submitted:
+          target: CloudToDDIWRFJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CloudToDDIWRFJob_run
             - Webdrops_start
             - Continuum_Hyde_StaticData_start
+        CloudToDDIWRFJob_run:
+          target: CloudToDDIWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CloudToDDIWRFJob_executed
+        CloudToDDIWRFJob_executed:
+          target: CloudToDDIWRFJob
+          activities:
+            - set_state: executed
+          on_success:
+            - DeleteCloudWRFDataJob_create
+        DeleteCloudWRFDataJob_create:
+          target: DeleteCloudWRFDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudWRFDataJob_created
+        DeleteCloudWRFDataJob_created:
+          target: DeleteCloudWRFDataJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudWRFDataJob_submit
+        DeleteCloudWRFDataJob_submit:
+          target: DeleteCloudWRFDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudWRFDataJob_submitted
+        DeleteCloudWRFDataJob_submitted:
+          target: DeleteCloudWRFDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudWRFDataJob_run
+        DeleteCloudWRFDataJob_run:
+          target: DeleteCloudWRFDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudWRFDataJob_executed
+        DeleteCloudWRFDataJob_executed:
+          target: DeleteCloudWRFDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - DisableCloudAcessJob_create
         Webdrops_start:
           target: Webdrops
           activities:
@@ -1233,6 +1445,18 @@ topology_template:
             - Continuum_HMC_started
         Continuum_HMC_started:
           target: Continuum_HMC
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        CreateStagingAreaResultDir_start:
+          target: CreateStagingAreaResultDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaResultDir_started
+        CreateStagingAreaResultDir_started:
+          target: CreateStagingAreaResultDir
           activities:
             - set_state: started
           on_success:
