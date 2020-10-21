@@ -10,12 +10,12 @@ description: ""
 imports:
   - yorc-types:1.1.0
   - tosca-normative-types:1.0.0-ALIEN20
-  - docker-types:2.2.0
-  - alien-base-types:2.2.0
-  - heappe-types:0.1.1
-  - ddi-types:0.1.1
-  - org.ystia.docker.containers.docker.generic:2.3.0-SNAPSHOT
-  - org.ystia.docker.ansible:2.3.0-SNAPSHOT
+  - docker-types:3.0.0
+  - alien-base-types:3.0.0
+  - heappe-types:1.0.2
+  - ddi-types:0.1.2
+  - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
+  - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2
   - org.lexis.weather.wps:0.1.1
   - org.lexis.weather.webdrops:0.1.0

@@ -10,11 +10,11 @@ description: ""
 imports:
   - yorc-types:1.1.0
   - tosca-normative-types:1.0.0-ALIEN20
-  - docker-types:2.2.0
-  - alien-base-types:2.2.0
-  - heappe-types:0.1.1
-  - org.ystia.docker.containers.docker.generic:2.3.0-SNAPSHOT
-  - org.ystia.docker.ansible:2.3.0-SNAPSHOT
+  - docker-types:3.0.0-SNAPSHOT
+  - alien-base-types:3.0.0
+  - heappe-types:1.0.2
+  - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
+  - org.ystia.docker.ansible:3.0.0-SNAPSHOT
 
 topology_template:
   input_artifacts:
