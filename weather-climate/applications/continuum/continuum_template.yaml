@@ -16,7 +16,7 @@ imports:
   - heappe-types:1.0.2
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
-  - org.lexis.common.datatransfer:0.1.2
+  - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
   - org.lexis.weather.wps:0.1.1
   - org.lexis.weather.continuum:0.1.0
   - org.lexis.weather.webdrops:0.1.0
@@ -485,10 +485,10 @@ topology_template:
         destination_subdirectory: "wrf"
       requirements:
         - staging_area_directory:
-            type_requirement: dataset_provider
+            type_requirement: cloud_area_directory_provider
             node: CreateStagingAreaWRFResultDir
-            capability: org.ddi.capabilities.CloudAreaDatasetProvider
-            relationship: org.ddi.relationships.DatasetProvider
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
         - hostedOnComputeHost:
             type_requirement: host
             node: ContinuumVM
@@ -501,10 +501,10 @@ topology_template:
         destination_subdirectory: "continuum"
       requirements:
         - staging_area_directory:
-            type_requirement: dataset_provider
+            type_requirement: cloud_area_directory_provider
             node: CreateStagingAreaResultDir
-            capability: org.ddi.capabilities.CloudAreaDatasetProvider
-            relationship: org.ddi.relationships.DatasetProvider
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
         - hostedOnComputeHost:
             type_requirement: host
             node: ContinuumVM
@@ -517,11 +517,11 @@ topology_template:
         token: { get_input: token }
         ddi_path: { get_input: postprocessing_ddi_path }
       requirements:
-        - dataset_provider:
-            type_requirement: dataset_provider
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
             node: CreateStagingAreaWRFResultDir
-            capability: org.ddi.capabilities.CloudAreaDatasetProvider
-            relationship: org.ddi.relationships.DatasetProvider
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
     CloudToDDIJob:
       type: org.ddi.nodes.CloudToDDIJob
       properties:
@@ -529,31 +529,31 @@ topology_template:
         token: { get_input: token }
         ddi_path: { get_input: postprocessing_ddi_path }
       requirements:
-        - dataset_provider:
-            type_requirement: dataset_provider
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
             node: CreateStagingAreaResultDir
-            capability: org.ddi.capabilities.CloudAreaDatasetProvider
-            relationship: org.ddi.relationships.DatasetProvider
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
     DeleteCloudWRFDataJob:
       type: org.ddi.nodes.DeleteCloudDataJob
       properties:
         token: { get_input: token }
       requirements:
-        - dataset_provider:
-            type_requirement: dataset_provider
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
             node: CreateStagingAreaWRFResultDir
-            capability: org.ddi.capabilities.CloudAreaDatasetProvider
-            relationship: org.ddi.relationships.DatasetProvider
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
     DeleteCloudDataJob:
       type: org.ddi.nodes.DeleteCloudDataJob
       properties:
         token: { get_input: token }
       requirements:
-        - dataset_provider:
-            type_requirement: dataset_provider
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
             node: CreateStagingAreaResultDir
-            capability: org.ddi.capabilities.CloudAreaDatasetProvider
-            relationship: org.ddi.relationships.DatasetProvider
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
   outputs:
     ddi_post_process_results:
       description: DDI path to Continuum post-processing results

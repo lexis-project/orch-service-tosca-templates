@@ -1,0 +1,476 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: ADMSTestTemplate
+  template_version: 0.1.0-SNAPSHOT
+  template_author: lexis
+
+description: ADMS Test Template
+
+imports:
+  - yorc-types:1.1.0
+  - tosca-normative-types:1.0.0-ALIEN20
+  - docker-types:3.0.0
+  - alien-base-types:3.0.0
+  - ddi-types:0.1.2
+  #- heappe-types:1.0.2
+  #- org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
+  - org.ystia.docker.ansible:3.0.0-SNAPSHOT
+  - org.ystia.docker.images:3.0.0-SNAPSHOT
+  - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
+  #- org.lexis.weather.wps:0.1.1
+  #- org.lexis.weather.continuum:0.1.0
+  #- org.lexis.weather.webdrops:0.1.0
+
+topology_template:
+  inputs:
+    token:
+      type: string
+      required: true
+      description: "Access token"
+    postprocessing_image:
+      type: string
+      description: Post-processing docker image
+      default: "adms/ncl:1.0.0"
+      required: false
+    postprocessing_dataset_docker_image_path:
+      type: string
+      description: Post-processing docker image tar archive path in DDI
+      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/1c3a51ac-1879-11eb-ae7c-0050568fc9b5"
+      required: false
+  node_templates:
+    PublicNet:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+    ADMS_VM:
+      type: tosca.nodes.Compute
+      requirements:
+        - networkPublicNetConnection:
+            type_requirement: network
+            node: PublicNet
+            capability: tosca.capabilities.Connectivity
+            relationship: tosca.relationships.Network
+      capabilities:
+        host:
+          properties:
+            # num_cpus: 10
+            num_cpus: 2
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        endpoint:
+          properties:
+            secure: true
+            protocol: tcp
+            network_name: PRIVATE
+            initiator: source
+    Docker:
+      type: org.ystia.docker.ansible.nodes.Docker
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    EnableCloudAcessJob:
+      type: org.ddi.nodes.EnableCloudStagingAreaAccessJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - sameSiteComputeOs:
+            type_requirement: os
+            node: ADMS_VM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.ddi.relationships.SameSite
+    DisableCloudAcessJob:
+      type: org.ddi.nodes.DisableCloudStagingAreaAccessJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - sameSiteComputeOs:
+            type_requirement: os
+            node: ADMS_VM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.ddi.relationships.SameSite
+    MountStagingArea:
+      type: org.lexis.datatransfer.nodes.MountStagingArea
+      properties:
+        mount_point: "/mnt/cloud_staging_area"
+        user_name: lexisclouduser
+        group_name: lexiscloudgroup
+      requirements:
+        - mountCloudStagingAreaEnableCloudAcessJobCloud_staging_area_access:
+            type_requirement: cloud_staging_area_access
+            node: EnableCloudAcessJob
+            capability: org.ddi.capabilities.CloudStagingAreaAccess
+            relationship: org.lexis.datatransfer.relationships.MountCloudStagingArea
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    CreateStagingAreaADMSArchiveDir:
+      type: org.lexis.datatransfer.nodes.CreateStagingAreaDirectory
+      properties:
+        directory: "adms_archive"
+        create_timestamp_destination_subdirectory: true
+      requirements:
+        - mountedCloudStagingArea:
+            type_requirement: mounted_staging_area
+            node: MountStagingArea
+            capability: org.lexis.datatransfer.capabilities.MountedStagingAreaAccess
+            relationship: org.lexis.datatransfer.relationships.MountedCloudStagingArea
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    DDIToCloudJob:
+      type: org.ddi.nodes.DDIToCloudJob
+      properties:
+        token: { get_input: token }
+        ddi_dataset_path: { get_input: postprocessing_dataset_docker_image_path }
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaADMSArchiveDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+    DeleteCloudDataJob:
+      type: org.ddi.nodes.DeleteCloudDataJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaADMSArchiveDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+    FindArchive:
+      type: org.lexis.datatransfer.nodes.FindFileInStagingAreaDirectory
+      properties:
+        patterns: ["*.tar*", "*.tgz"]
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaADMSArchiveDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    ImageLoader:
+      type: org.ystia.docker.images.Loader
+      properties:
+        name: { get_input: postprocessing_image }
+        force_load: true
+      requirements:
+        - archive_provider:
+            type_requirement: archive_provider
+            node: FindArchive
+            capability: org.ystia.docker.images.capabilities.ArchiveProvider
+            relationship: org.ystia.docker.images.relationships.ArchiveProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+  workflows:
+    install:
+      steps:
+        Network_install:
+          target: PublicNet
+          activities:
+            - delegate: install
+          on_success:
+            - Compute_install
+        Compute_install:
+          target: ADMS_VM
+          activities:
+            - delegate: install
+          on_success:
+            - Docker_create
+        Docker_create:
+          target: Docker
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Docker_created
+        Docker_created:
+          target: Docker
+          activities:
+            - set_state: created
+          on_success:
+            - Docker_configure
+        Docker_configure:
+          target: Docker
+          activities:
+            - call_operation: Standard.configure
+          on_success:
+            - Docker_configured
+        Docker_configured:
+          target: Docker
+          activities:
+            - set_state: configured
+          on_success:
+            - Docker_start
+        Docker_start:
+          target: Docker
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Docker_started
+        Docker_started:
+          target: Docker
+          activities:
+            - set_state: started
+          on_success:
+            - ImageLoader_create
+            - EnableCloudAcessJob_create
+        ImageLoader_create:
+          target: ImageLoader
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ImageLoader_created
+        ImageLoader_created:
+          target: ImageLoader
+          activities:
+            - set_state: created
+        EnableCloudAcessJob_create:
+          target: EnableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - EnableCloudAcessJob_submit
+        EnableCloudAcessJob_submit:
+          target: EnableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - EnableCloudAcessJob_submitted
+        EnableCloudAcessJob_submitted:
+          target: EnableCloudAcessJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - EnableCloudAcessJob_run
+        EnableCloudAcessJob_run:
+          target: EnableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - EnableCloudAcessJob_executed
+        EnableCloudAcessJob_executed:
+          target: EnableCloudAcessJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountStagingArea_create
+        MountStagingArea_create:
+          target: MountStagingArea
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - MountStagingArea_created
+        MountStagingArea_created:
+          target: MountStagingArea
+          activities:
+            - set_state: created
+          on_success:
+            - MountStagingArea_start
+        MountStagingArea_start:
+          target: MountStagingArea
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountStagingArea_started
+        MountStagingArea_started:
+          target: MountStagingArea
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaADMSArchiveDir_start
+        CreateStagingAreaADMSArchiveDir_start:
+          target: CreateStagingAreaADMSArchiveDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaADMSArchiveDir_started
+        CreateStagingAreaADMSArchiveDir_started:
+          target: CreateStagingAreaADMSArchiveDir
+          activities:
+            - set_state: started
+          on_success:
+            - DDIToCloudJob_create
+        DDIToCloudJob_create:
+          target: DDIToCloudJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToCloudJob_submit
+        DDIToCloudJob_submit:
+          target: DDIToCloudJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToCloudJob_submitted
+        DDIToCloudJob_submitted:
+          target: DDIToCloudJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToCloudJob_run
+        DDIToCloudJob_run:
+          target: DDIToCloudJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToCloudJob_executed
+        DDIToCloudJob_executed:
+          target: DDIToCloudJob
+          activities:
+            - set_state: executed
+    uninstall:
+      steps:
+        DeleteCloudDataJob_create:
+          target: DeleteCloudDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudDataJob_created
+        DeleteCloudDataJob_created:
+          target: DeleteCloudDataJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudDataJob_submit
+        DeleteCloudDataJob_submit:
+          target: DeleteCloudDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudDataJob_submitted
+        DeleteCloudDataJob_submitted:
+          target: DeleteCloudDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudDataJob_run
+        DeleteCloudDataJob_run:
+          target: DeleteCloudDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudDataJob_executed
+        DeleteCloudDataJob_executed:
+          target: DeleteCloudDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - DisableCloudAcessJob_create
+        DisableCloudAcessJob_create:
+          target: DisableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DisableCloudAcessJob_submit
+        DisableCloudAcessJob_submit:
+          target: DisableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DisableCloudAcessJob_submitted
+        DisableCloudAcessJob_submitted:
+          target: DisableCloudAcessJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DisableCloudAcessJob_run
+        DisableCloudAcessJob_run:
+          target: DisableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DisableCloudAcessJob_executed
+        DisableCloudAcessJob_executed:
+          target: DisableCloudAcessJob
+          activities:
+            - set_state: executed
+          on_success:
+            - Compute_uninstall
+        Compute_uninstall:
+          target: ADMS_VM
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: PublicNet
+          activities:
+            - delegate: uninstall
+    start:
+      steps:
+        Docker_start:
+          target: Docker
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Docker_started
+        Docker_started:
+          target: Docker
+          activities:
+            - set_state: started
+    stop:
+      steps:
+        Docker_stop:
+          target: Docker
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - Docker_stopped
+        Docker_stopped:
+          target: Docker
+          activities:
+            - set_state: stopped
+    Run:
+      steps:
+        ImageLoader_start:
+          target: ImageLoader
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ImageLoader_started
+        ImageLoader_started:
+          target: ImageLoader
+          activities:
+            - set_state: started
+    RemoveImage:
+      steps:
+        ImageLoader_stop:
+          target: ImageLoader
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - ImageLoader_stopped
+        ImageLoader_stopped:
+          target: ImageLoader
+          activities:
+            - set_state: stopped

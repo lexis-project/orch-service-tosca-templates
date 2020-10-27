@@ -2,12 +2,13 @@ tosca_definitions_version: alien_dsl_2_0_0
 
 metadata:
   template_name: org.lexis.common.datatransfer
-  template_version: 0.1.2
+  template_version: 0.1.2-SNAPSHOT
   template_author: lexis
 
 imports:
   - heappe-types:1.0.2
   - ddi-types:0.1.2
+  - org.ystia.docker.images:3.0.0-SNAPSHOT
   - yorc-types:1.1.0
 node_types:
   org.lexis.datatransfer.nodes.CopyToJob:
@@ -140,6 +141,36 @@ node_types:
           implementation: playbooks/movefile.yaml
         delete:
           implementation: playbooks/noop.yaml
+  org.lexis.datatransfer.nodes.FindFileInStagingAreaDirectory:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+      Find files based on a given pattern in a staging area directory
+    properties:
+      patterns:
+        type: list
+        entry_schema:
+          type: string
+        description: |
+          List of file patterns to match
+        required: true
+    attributes:
+      path: {get_operation_output: [SELF, Standard, start, PATH]}
+    capabilities:
+      archive_provider:
+        type: org.ystia.docker.images.capabilities.ArchiveProvider
+    requirements:
+      - cloud_area_directory_provider:
+          capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+          relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+          occurrences: [1, 1]
+    interfaces:
+      Standard:
+        start:
+          inputs:
+            patterns: {get_property: [SELF, patterns]}
+            directory: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, directory_absolute_path]}
+            user_name: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, user_name]}
+          implementation: playbooks/find_file.yaml
   org.lexis.datatransfer.nodes.CreateDirectories:
     derived_from: tosca.nodes.SoftwareComponent
     description: Create directories on a target
@@ -237,8 +268,8 @@ node_types:
       directory_absolute_path: {get_operation_output: [SELF, Standard, start, DIRECTORY_ABSOLUTE_PATH]}
       user_name: {get_operation_output: [SELF, Standard, start, USER_NAME]}
     capabilities:
-      dataset_provider:
-        type: org.ddi.capabilities.CloudAreaDatasetProvider
+      cloud_area_directory_provider:
+        type: org.ddi.capabilities.CloudAreaDirectoryProvider
     requirements:
       - mounted_staging_area:
           capability: org.lexis.datatransfer.capabilities.MountedStagingAreaAccess
@@ -271,12 +302,12 @@ node_types:
     attributes:
       directory_absolute_path: {get_operation_output: [SELF, Standard, start, DIRECTORY_ABSOLUTE_PATH]}
     capabilities:
-      dataset_provider:
-        type: org.ddi.capabilities.CloudAreaDatasetProvider
+      cloud_area_directory_provider:
+        type: org.ddi.capabilities.CloudAreaDirectoryProvider
     requirements:
-      - dataset_provider:
-          capability: org.ddi.capabilities.CloudAreaDatasetProvider
-          relationship: org.ddi.relationships.DatasetProvider
+      - cloud_area_directory_provider:
+          capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+          relationship: org.ddi.relationships.CloudAreaDirectoryProvider
           occurrences: [1, 1]
     interfaces:
       Standard:
@@ -286,8 +317,8 @@ node_types:
           inputs:
             source_directory: {get_property: [SELF, source_directory]}
             destination_subdirectory: {get_property: [SELF, destination_subdirectory]}
-            destination_directory: {get_attribute: [REQ_TARGET, dataset_provider, directory_absolute_path]}
-            user_name: {get_attribute: [REQ_TARGET, dataset_provider, user_name]}
+            destination_directory: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, directory_absolute_path]}
+            user_name: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, user_name]}
           implementation: playbooks/copy_to_staging_area_directory.yaml
   org.lexis.datatransfer.nodes.CopyToStagingArea:
     derived_from: tosca.nodes.SoftwareComponent
@@ -310,8 +341,8 @@ node_types:
       staging_area_directory_path: {get_operation_output: [SELF, Standard, start, STAGING_AREA_DIRECTORY]}
       directory_absolute_path: {get_operation_output: [SELF, Standard, start, DIRECTORY_ABSOLUTE_PATH]}
     capabilities:
-      dataset_provider:
-        type: org.ddi.capabilities.CloudAreaDatasetProvider
+      cloud_area_directory_provider:
+        type: org.ddi.capabilities.CloudAreaDirectoryProvider
     requirements:
       - mounted_staging_area:
           capability: org.lexis.datatransfer.capabilities.MountedStagingAreaAccess

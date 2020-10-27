@@ -1,0 +1,25 @@
+- name: Find files matching patterns
+  hosts: all
+  strategy: free
+  become: true
+  become_user: "{{ user_name }}"
+  become_method: sudo
+  tasks:
+    - name: Find files
+      find:
+        paths: "{{directory}}"
+        patterns: "{{patterns | from_json}}"
+        recurse: true
+      register: result
+    - name: Getting file paths
+      set_fact:
+        FILES: "{{ result.files | map(attribute='path') | list }}"
+        FIRST_FOUND: ""
+    - name: Getting first file
+      set_fact:
+        PATH: "{{ FILES[0] }}"
+      when: FILES | length > 0
+    - name: No such file found
+      set_fact:
+        PATH: ""
+      when: FILES | length == 0
