@@ -1,0 +1,41 @@
+- name: Copying the content of a given subdirectory to job input directory
+  hosts: all
+  strategy: linear
+  tasks:
+    - name: create temporary file
+      tempfile:
+        state: file
+        suffix: temp
+      register: privatekeyfile
+    - name: Add private key content
+      copy:
+        content: "{{ private_key }}"
+        dest: "{{ privatekeyfile.path }}"
+    - name: Change file ownership
+      file:
+        path: "{{ privatekeyfile.path }}"
+        mode: '0400'
+    - name: Get subdirectories
+      find:
+        paths: "{{ parent_directory }}"
+        recurse: no
+        file_type: directory
+      register: subdirs
+    - name: Sort subdirs
+      set_fact:
+        subdirs_sorted:  "{{ subdirs.files| sort(attribute='path') }}"
+    - name : Get task ID
+      set_fact:
+        task_id: "{{ (tasks_name_id | from_json)[task_name]}}"
+    - name: Computing destination directory
+      set_fact:
+        destination_directory: "{{job_directory}}/{{task_id}}"
+    - name: Get subdirectory to copy
+      set_fact:
+        subdir_path:  "{{ subdirs_sorted[(subdirectory_index|int)].path }}"
+    - name: "Copying directory {{subdir_path}} content to job inputs"
+      shell: "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {{ privatekeyfile.path }} {{ subdir_path }}/* {{ user }}@{{ server }}:{{ destination_directory }}"
+    - name: Remove private key
+      file:
+        path: "{{ privatekeyfile.path }}"
+        state: absent

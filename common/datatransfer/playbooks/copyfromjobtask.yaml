@@ -1,0 +1,38 @@
+- name: Prequisites
+  hosts: all
+  strategy: free
+  tasks:
+    - name: "Create destination directory"
+      become: true
+      become_method: sudo
+      file:
+        path: "{{ destination_directory }}"
+        state: directory
+        recurse: yes
+        mode: 0777
+    - name: create temporary file
+      tempfile:
+        state: file
+        suffix: temp
+      register: privatekeyfile
+    - name: Add private key content
+      copy:
+        content: "{{ private_key }}"
+        dest: "{{ privatekeyfile.path }}"
+    - name: Change file ownership
+      file:
+        path: "{{ privatekeyfile.path }}"
+        mode: '0400'
+    - name : Get task ID
+      set_fact:
+        task_id: "{{ (tasks_name_id | from_json)[task_name]}}"
+    - name: Computing source directory
+      set_fact:
+        source_directory: "{{job_directory}}/{{task_id}}"
+    - name: "Copying job outputs to  {{destination_directory}}"
+      shell: "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {{ privatekeyfile.path }}  {{ user }}@{{ server }}:{{ source_directory }}/{{ item }} {{ destination_directory }}"
+      with_items: "{{ source_files_patterns }}"
+    - name: Remove private key
+      file:
+        path: "{{ privatekeyfile.path }}"
+        state: absent

@@ -24,7 +24,7 @@ topology_template:
     TestJob:
       type: org.heappe.nodes.Job
       properties:
-        jobSpecification: 
+        JobSpecification:
           Name: testJobName
           Project: testProjectName
           WaitingLimit: 600

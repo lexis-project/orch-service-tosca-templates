@@ -1,0 +1,1036 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: ADMS
+  template_version: 0.1.0-SNAPSHOT
+  template_author: lexis
+
+description: ADMS template
+
+imports:
+  - yorc-types:1.1.0
+  - tosca-normative-types:1.0.0-ALIEN20
+  - docker-types:3.0.0
+  - alien-base-types:3.0.0
+  - ddi-types:0.1.2
+  - heappe-types:1.0.2
+  - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
+  - org.ystia.docker.ansible:3.0.0-SNAPSHOT
+  - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
+  - org.lexis.weather.wps:0.1.1-SNAPSHOT
+
+topology_template:
+  inputs:
+    token:
+      type: string
+      required: true
+      description: "Access token"
+    preprocessing_start_date:
+      type: string
+      description: Download GFS files from this date, format YYYYMMDDHH
+      required: true
+    preprocessing_end_date:
+      type: string
+      description: Download GFS files up to this date, format YYYYMMDDHH
+      required: true
+    preprocessing_docker_image:
+      type: string
+      description: Pre-processing container repository path
+      default: "laurentg/wps.gfs:0.4.2"
+    preprocessing_dataset_geographical_data:
+      type: string
+      description: Dataset containing geographical data
+      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/cfa03302-22a0-11eb-ae7e-0050568fc9b5"
+      required: false
+    preprocessing_directory:
+      type: string
+      description: Pre-processing directory where input and output data will be stored
+      default: "/wps_data"
+    preprocessing_volumes:
+      type: list
+      entry_schema:
+        type: string
+      description: |
+        List of volumes to mount within the pre-processing container.
+        Use docker CLI-style syntax: /host:/container[:mode]
+      default: ["/wps_data/gfs:/input", "/wps_data/output:/output", "/wps_data/geog/WPS_GEOG:/geogrid"]
+    preprocessing_environment_variables:
+      type: map
+      entry_schema:
+        type: string
+      description: |
+        Environment variables for the pre-processing container.
+      # default: {WPS_START_DATE: "2020030112", WPS_END_DATE: "2020030115"}
+      required: false
+    preprocessing_output_directory:
+      type: string
+      description: Directory where preprocessing results are stored
+      default: /wps_data/output
+    postprocessing_docker_image:
+      type: string
+      description: Post-processing docker image mame:tag
+      default: "adms/ncl:1.0.0"
+      required: false
+    postprocessing_dataset_docker_image_path:
+      type: string
+      description: Post-processing docker image tar archive path in DDI
+      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/89ddda90-1918-11eb-b6d1-0050568fc9b5"
+      required: false
+    postprocessing_dataset_ncl_script:
+      type: string
+      description: Post-processing NCL script path in DDI
+      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/7fc89bf4-1d13-11eb-ae7e-0050568fc9b5"
+      required: false
+    postprocessing_input_directory:
+      type: string
+      description: Directory where postprocessing data will be stored
+      default: /adms_data/
+      required: false
+    postprocessing_volumes:
+      type: list
+      entry_schema:
+        type: string
+      description: |
+        List of volumes to mount within the post-processing container.
+        Use docker CLI-style syntax: /host:/container[:mode]
+      default: ["/adms_data/:/wrfdata"]
+      required: false
+    postprocessing_ddi_path:
+      type: string
+      description: Path where to transfer the post-processing results in DDI
+      default: "project/wp7"
+  node_templates:
+    PublicNet:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+    ADMS_VM:
+      type: tosca.nodes.Compute
+      requirements:
+        - networkPublicNetConnection:
+            type_requirement: network
+            node: PublicNet
+            capability: tosca.capabilities.Connectivity
+            relationship: tosca.relationships.Network
+      capabilities:
+        host:
+          properties:
+            num_cpus: 10
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        endpoint:
+          properties:
+            secure: true
+            protocol: tcp
+            network_name: PRIVATE
+            initiator: source
+    Docker:
+      type: org.ystia.docker.ansible.nodes.Docker
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    CreatePreProcessDirs:
+      type: org.lexis.datatransfer.nodes.CreateDirectories
+      properties:
+        directories: {get_input: preprocessing_volumes}
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    WPS_GFS:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: preprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: preprocessing_docker_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        shm_size: "1024 MB"
+        volumes: {get_input: preprocessing_volumes}
+        # docker_env_vars:  {get_input: preprocessing_environment_variables}
+        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_end_date, "\", \"WPS_MODE\": \"WRF\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+    GFSData:
+      type: org.lexis.nodes.GFSData
+      properties:
+        start_date: {get_input: preprocessing_start_date}
+        end_date: {get_input: preprocessing_end_date}
+        number_of_past_days: 0
+        with_data_assimilation: true
+        left_longitude: "-19.0"
+        right_longitude: "48.0"
+        top_latitude: "64.0"
+        bottom_latitude: "24.0"
+        output_directory: "/wps_data/gfs"
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    EnableCloudAcessJob:
+      type: org.ddi.nodes.EnableCloudStagingAreaAccessJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - sameSiteComputeOs:
+            type_requirement: os
+            node: ADMS_VM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.ddi.relationships.SameSite
+    DisableCloudAcessJob:
+      type: org.ddi.nodes.DisableCloudStagingAreaAccessJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - sameSiteComputeOs:
+            type_requirement: os
+            node: ADMS_VM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.ddi.relationships.SameSite
+    MountStagingArea:
+      type: org.lexis.datatransfer.nodes.MountStagingArea
+      properties:
+        mount_point: "/mnt/cloud_staging_area"
+        user_name: lexisclouduser
+        group_name: lexiscloudgroup
+      requirements:
+        - mountCloudStagingAreaEnableCloudAcessJobCloud_staging_area_access:
+            type_requirement: cloud_staging_area_access
+            node: EnableCloudAcessJob
+            capability: org.ddi.capabilities.CloudStagingAreaAccess
+            relationship: org.lexis.datatransfer.relationships.MountCloudStagingArea
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    CreateStagingAreaADMSPreprocessDir:
+      type: org.lexis.datatransfer.nodes.CreateStagingAreaDirectory
+      properties:
+        directory: "adms_preprocess"
+        create_timestamp_destination_subdirectory: true
+      requirements:
+        - mountedCloudStagingArea:
+            type_requirement: mounted_staging_area
+            node: MountStagingArea
+            capability: org.lexis.datatransfer.capabilities.MountedStagingAreaAccess
+            relationship: org.lexis.datatransfer.relationships.MountedCloudStagingArea
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    DeleteStagingAreaADMSPreprocessDirJob:
+      type: org.ddi.nodes.DeleteCloudDataJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaADMSPreprocessDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+    DDIToCloudGEOGDatasetJob:
+      type: org.ddi.nodes.DDIToCloudJob
+      properties:
+        token: { get_input: token }
+        ddi_dataset_path: { get_input: preprocessing_dataset_geographical_data }
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaADMSPreprocessDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+    FindGeoDataFiles:
+      type: org.lexis.datatransfer.nodes.FindFilesInStagingAreaDirectory
+      properties:
+        patterns: ["*.tar*"]
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaADMSPreprocessDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    GetGEOGData:
+      type: org.lexis.nodes.GetGEOGDataFromFiles
+      properties:
+        output_directory: { concat: [get_input: preprocessing_directory, "/geog/"] }
+      requirements:
+        - files_provider:
+            type_requirement: files_provider
+            node: FindGeoDataFiles
+            capability: org.lexis.datatransfer.capabilities.FilesProvider
+            relationship: org.lexis.datatransfer.relationships.FilesProvider
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    WRF:
+      type: org.heappe.nodes.Job
+      metadata:
+        task: computation
+      properties:
+        JobSpecification:
+          Name: WRFJob
+          Project: "DD-19-14"
+          ClusterId: 2
+          Tasks:
+            - Name: WRFTask
+              ClusterNodeTypeId: 7
+              CommandTemplateId: 9
+              TemplateParameterValues:
+                - CommandParameterIdentifier: MPICores
+                  ParameterValue: "48"
+              WalltimeLimit: 36000
+              MinCores: 48
+              MaxCores: 48
+              Priority: 4
+              EnvironmentVariables:
+                - Name: HDF5
+                  Value: "./deps"
+                - Name: NETCDF
+                  Value: "./deps"
+                - Name: CPPFLAGS
+                  Value: "-I./deps/include"
+                - Name: CFLAGS
+                  Value: "-I./deps/include"
+                - Name: CXXFLAGS
+                  Value: "-I./deps/include"
+                - Name: FCFLAGS
+                  Value: "-I./deps/include"
+                - Name: FFLAGS
+                  Value: "-I./deps/include"
+                - Name: LDFLAGS
+                  Value: "-L./deps/lib"
+                - Name: WRFIO_NCD_LARGE_FILE_SUPPORT
+                  Value: "1"
+                - Name: LD_LIBRARY_PATH
+                  Value: "$LD_LIBRARY_PATH:./deps/lib"
+                - Name: JASPERLIB
+                  Value: "./deps/lib"
+                - Name: JASPERINC
+                  Value: "./deps/include"
+              StandardOutputFile: "stdout"
+              StandardErrorFile: "stderr"
+              ProgressFile: "stdprog"
+              LogFile: "stdlog"
+    CopyToJobTask:
+      type: org.lexis.datatransfer.nodes.CopySubDirToJobTask
+      properties:
+        task_name: WRFTask
+        parent_directory: {get_input: preprocessing_output_directory}
+        subdirectory_index: 0
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - job:
+            type_requirement: job
+            node: WRF
+            capability: org.heappe.capabilities.HeappeJob
+            relationship: org.heappe.relationships.SendInputsToJob
+    CopyFromJobTask:
+      type: org.lexis.datatransfer.nodes.CopyFromJobTask
+      properties:
+        task_name: WRFTask
+        source_files_patterns: [ "auxhist*" ]
+        destination_directory:  { concat: [get_input: postprocessing_input_directory, "/DATA-WRF/"] }
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - job:
+            type_requirement: job
+            node: WRF
+            capability: org.heappe.capabilities.HeappeJob
+            relationship: org.heappe.relationships.GetResultsFromJob
+    CreateStagingAreaADMSTempDir:
+      type: org.lexis.datatransfer.nodes.CreateStagingAreaDirectory
+      properties:
+        directory: "adms_tmp"
+        create_timestamp_destination_subdirectory: true
+      requirements:
+        - mountedCloudStagingArea:
+            type_requirement: mounted_staging_area
+            node: MountStagingArea
+            capability: org.lexis.datatransfer.capabilities.MountedStagingAreaAccess
+            relationship: org.lexis.datatransfer.relationships.MountedCloudStagingArea
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    DDIToCloudDockerImageJob:
+      type: org.ddi.nodes.DDIToCloudJob
+      properties:
+        token: { get_input: token }
+        ddi_dataset_path: { get_input: postprocessing_dataset_docker_image_path }
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaADMSTempDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+    DDIToCloudNCLScriptJob:
+      type: org.ddi.nodes.DDIToCloudJob
+      properties:
+        token: { get_input: token }
+        ddi_dataset_path: { get_input: postprocessing_dataset_ncl_script }
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaADMSTempDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+    FindArchive:
+      type: org.lexis.datatransfer.nodes.FindArchiveInStagingAreaDirectory
+      properties:
+        patterns: ["*.tar*", "*.tgz"]
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaADMSTempDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    ImageLoader:
+      type: org.ystia.docker.images.Loader
+      properties:
+        name: { get_input: postprocessing_docker_image }
+        force_load: true
+      requirements:
+        - archive_provider:
+            type_requirement: archive_provider
+            node: FindArchive
+            capability: org.ystia.docker.images.capabilities.ArchiveProvider
+            relationship: org.ystia.docker.images.relationships.ArchiveProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    FindNCLScript:
+      type: org.lexis.datatransfer.nodes.FindFileInStagingAreaDirectory
+      properties:
+        patterns: ["*.ncl"]
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaADMSTempDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    CopyNCLScriptFromStagingArea:
+      type: org.lexis.datatransfer.nodes.CopyFromStagingArea
+      properties:
+        destination_directory:  {get_input: postprocessing_input_directory}
+      requirements:
+        - file_provider:
+            type_requirement: file_provider
+            node: FindNCLScript
+            capability: org.lexis.datatransfer.capabilities.FileProvider
+            relationship: org.lexis.datatransfer.relationships.FileProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    WRFToMet:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_docker_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        mem_share: "128 MB"
+        volumes: {get_input: postprocessing_volumes}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+    CreateStagingAreaWRFResultDir:
+      type: org.lexis.datatransfer.nodes.CreateStagingAreaDirectory
+      properties:
+        directory: "adms_wrf_results"
+        create_timestamp_destination_subdirectory: true
+      requirements:
+        - mountedCloudStagingArea:
+            type_requirement: mounted_staging_area
+            node: MountStagingArea
+            capability: org.lexis.datatransfer.capabilities.MountedStagingAreaAccess
+            relationship: org.lexis.datatransfer.relationships.MountedCloudStagingArea
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    CreateStagingAreaResultDir:
+      type: org.lexis.datatransfer.nodes.CreateStagingAreaDirectory
+      properties:
+        directory: "adms_results"
+        create_timestamp_destination_subdirectory: true
+      requirements:
+        - mountedCloudStagingArea:
+            type_requirement: mounted_staging_area
+            node: MountStagingArea
+            capability: org.lexis.datatransfer.capabilities.MountedStagingAreaAccess
+            relationship: org.lexis.datatransfer.relationships.MountedCloudStagingArea
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    StageWRFResults:
+      type: org.lexis.datatransfer.nodes.CopyToStagingAreaDirectory
+      properties:
+        source_directory: { concat: [get_input: postprocessing_input_directory, "/DATA-WRF"] }
+        destination_subdirectory: "wrf"
+      requirements:
+        - staging_area_directory:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaWRFResultDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    StageMETResults:
+      type: org.lexis.datatransfer.nodes.CopyFilesToStagingAreaDirectory
+      properties:
+        source_directory: { concat: [get_input: postprocessing_input_directory, "/DATA-WRF"] }
+        source_files_patterns: [ "*.met" ]
+        destination_subdirectory: "met"
+      requirements:
+        - staging_area_directory:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaResultDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    CloudToDDIWRFJob:
+      type: org.ddi.nodes.CloudToDDIJob
+      properties:
+        metadata: {concat: ["{\"creator\": [\"ADMS workflow\"], \"contributor\": [\"ADMS workflow\"], \"publisher\": [\"ADMS workflow\"], \"resourceType\": \"WRF result\", \"title\": \"ADMS Workflow WRF result - ", get_input: preprocessing_start_date, "\"}"]}
+        token: { get_input: token }
+        ddi_path: { get_input: postprocessing_ddi_path }
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaWRFResultDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+    CloudToDDIJob:
+      type: org.ddi.nodes.CloudToDDIJob
+      properties:
+        metadata: {concat: ["{\"creator\": [\"ADMS workflow\"], \"contributor\": [\"ADMS workflow\"], \"publisher\": [\"ADMS workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"ADMS Workflow result - ", get_input: preprocessing_start_date, "\"}"]}
+        token: { get_input: token }
+        ddi_path: { get_input: postprocessing_ddi_path }
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaResultDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+    DeleteCloudWRFDataJob:
+      type: org.ddi.nodes.DeleteCloudDataJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaWRFResultDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+    DeleteNCLDataJob:
+      type: org.ddi.nodes.DeleteCloudDataJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaADMSTempDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+    DeleteCloudDataJob:
+      type: org.ddi.nodes.DeleteCloudDataJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaResultDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+  outputs:
+    ddi_post_process_results:
+      description: DDI path to ADMS post-processing results
+      value: { get_attribute: [ CloudToDDIJob, destination_directory_path ] }
+    ddi_wrf_results:
+      description: DDI path to ADMS WRF results
+      value: { get_attribute: [ CloudToDDIWRFJob, destination_directory_path ] }
+  workflows:
+    install:
+      steps:
+        Network_install:
+          target: PublicNet
+          activities:
+            - delegate: install
+    uninstall:
+      steps:
+        Network_uninstall:
+          target: PublicNet
+          activities:
+            - delegate: uninstall
+    testPreProcess:
+      steps:
+        Compute_install:
+          target: ADMS_VM
+          activities:
+            - delegate: install
+          on_success:
+            - CreatePreProcessDirs_start
+        CreatePreProcessDirs_start:
+          target: CreatePreProcessDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreatePreProcessDirs_started
+        CreatePreProcessDirs_started:
+          target: CreatePreProcessDirs
+          activities:
+            - set_state: started
+          on_success:
+            - GFSData_download
+            - EnableCloudAcessJob_create
+        GFSData_download:
+          target: GFSData
+          activities:
+            - call_operation: custom.download
+          on_success:
+            - GFSData_done
+        GFSData_done:
+          target: GFSData
+          activities:
+            - set_state: started
+          on_success:
+            - Docker_create
+        EnableCloudAcessJob_create:
+          target: EnableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - EnableCloudAcessJob_submit
+        EnableCloudAcessJob_submit:
+          target: EnableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - EnableCloudAcessJob_submitted
+        EnableCloudAcessJob_submitted:
+          target: EnableCloudAcessJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - EnableCloudAcessJob_run
+        EnableCloudAcessJob_run:
+          target: EnableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - EnableCloudAcessJob_executed
+        EnableCloudAcessJob_executed:
+          target: EnableCloudAcessJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountStagingArea_create
+        MountStagingArea_create:
+          target: MountStagingArea
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - MountStagingArea_created
+        MountStagingArea_created:
+          target: MountStagingArea
+          activities:
+            - set_state: created
+          on_success:
+            - MountStagingArea_start
+        MountStagingArea_start:
+          target: MountStagingArea
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountStagingArea_started
+        MountStagingArea_started:
+          target: MountStagingArea
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaADMSPreprocessDir_start
+        CreateStagingAreaADMSPreprocessDir_start:
+          target: CreateStagingAreaADMSPreprocessDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaADMSPreprocessDir_started
+        CreateStagingAreaADMSPreprocessDir_started:
+          target: CreateStagingAreaADMSPreprocessDir
+          activities:
+            - set_state: started
+          on_success:
+            - DDIToCloudGEOGDatasetJob_create
+        DDIToCloudGEOGDatasetJob_create:
+          target: DDIToCloudGEOGDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToCloudGEOGDatasetJobsubmit
+        DDIToCloudGEOGDatasetJobsubmit:
+          target: DDIToCloudGEOGDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToCloudGEOGDatasetJob_submitted
+        DDIToCloudGEOGDatasetJob_submitted:
+          target: DDIToCloudGEOGDatasetJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToCloudGEOGDatasetJob_run
+        DDIToCloudGEOGDatasetJob_run:
+          target: DDIToCloudGEOGDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToCloudGEOGDatasetJob_executed
+        DDIToCloudGEOGDatasetJob_executed:
+          target: DDIToCloudGEOGDatasetJob
+          activities:
+            - set_state: executed
+          on_success:
+            - FindGeoDataFiles_start
+        FindGeoDataFiles_start:
+          target: FindGeoDataFiles
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - FindGeoDataFiles_started
+        FindGeoDataFiles_started:
+          target: FindGeoDataFiles
+          activities:
+            - set_state: started
+          on_success:
+            - GetGEOGData_start
+        GetGEOGData_start:
+          target: GetGEOGData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetGEOGData_started
+        GetGEOGData_started:
+          target: GetGEOGData
+          activities:
+            - set_state: started
+          on_success:
+            - Docker_create
+        Docker_create:
+          target: Docker
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Docker_configure
+        Docker_configure:
+          target: Docker
+          activities:
+            - call_operation: Standard.configure
+          on_success:
+            - Docker_start
+        Docker_start:
+          target: Docker
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Docker_started
+        Docker_started:
+          target: Docker
+          activities:
+            - set_state: started
+          on_success:
+            - WPS_GFS_create
+        WPS_GFS_create:
+          target: WPS_GFS
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - WPS_GFS_start
+        WPS_GFS_start:
+          target: WPS_GFS
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - WPS_GFS_started
+        WPS_GFS_started:
+          target: WPS_GFS
+          activities:
+            - set_state: started
+          on_success:
+            - WPS_GFS_delete
+        WPS_GFS_delete:
+          target: WPS_GFS
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WPS_GFS_deleted
+        WPS_GFS_deleted:
+          target: WPS_GFS
+          activities:
+            - set_state: deleted
+    testStageGEOG:
+      steps:
+        DDIToCloudGEOGDatasetJob_create:
+          target: DDIToCloudGEOGDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToCloudGEOGDatasetJobsubmit
+        DDIToCloudGEOGDatasetJobsubmit:
+          target: DDIToCloudGEOGDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToCloudGEOGDatasetJob_submitted
+        DDIToCloudGEOGDatasetJob_submitted:
+          target: DDIToCloudGEOGDatasetJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToCloudGEOGDatasetJob_run
+        DDIToCloudGEOGDatasetJob_run:
+          target: DDIToCloudGEOGDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToCloudGEOGDatasetJob_executed
+        DDIToCloudGEOGDatasetJob_executed:
+          target: DDIToCloudGEOGDatasetJob
+          activities:
+            - set_state: executed
+    testGetGEOG:
+      steps:
+        FindGeoDataFiles_start:
+          target: FindGeoDataFiles
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - FindGeoDataFiles_started
+        FindGeoDataFiles_started:
+          target: FindGeoDataFiles
+          activities:
+            - set_state: started
+          on_success:
+            - GetGEOGData_start
+        GetGEOGData_start:
+          target: GetGEOGData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetGEOGData_started
+        GetGEOGData_started:
+          target: GetGEOGData
+          activities:
+            - set_state: started
+    testStartDocker:
+      steps:
+        Docker_create:
+          target: Docker
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Docker_configure
+        Docker_configure:
+          target: Docker
+          activities:
+            - call_operation: Standard.configure
+          on_success:
+            - Docker_start
+        Docker_start:
+          target: Docker
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Docker_started
+        Docker_started:
+          target: Docker
+          activities:
+            - set_state: started
+    testRunContainer:
+      steps:
+        WPS_GFS_create:
+          target: WPS_GFS
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - WPS_GFS_start
+        WPS_GFS_start:
+          target: WPS_GFS
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - WPS_GFS_started
+        WPS_GFS_started:
+          target: WPS_GFS
+          activities:
+            - set_state: started
+          on_success:
+            - WPS_GFS_delete
+        WPS_GFS_delete:
+          target: WPS_GFS
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WPS_GFS_deleted
+        WPS_GFS_deleted:
+          target: WPS_GFS
+          activities:
+            - set_state: deleted
+    testComputeUninstall:
+      steps:
+        Compute_uninstall:
+          target: ADMS_VM
+          activities:
+            - delegate: uninstall
+    testdeletewrf:
+      steps:
+        WRF_delete:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_deleted
+        WRF_deleted:
+          target: WRF
+          activities:
+            - set_state: deleted
+    testdisablecloudaccess:
+      steps:
+        DisableCloudAcessJob_create:
+          target: DisableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DisableCloudAcessJob_submit
+        DisableCloudAcessJob_submit:
+          target: DisableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DisableCloudAcessJob_submitted
+        DisableCloudAcessJob_submitted:
+          target: DisableCloudAcessJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DisableCloudAcessJob_run
+        DisableCloudAcessJob_run:
+          target: DisableCloudAcessJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DisableCloudAcessJob_executed
+        DisableCloudAcessJob_executed:
+          target: DisableCloudAcessJob
+          activities:
+            - set_state: executed
+    start:
+      steps:
+        start_step:
+          target: PublicNet
+          activities:
+            - set_state: started
+    stop:
+      steps:
+        stop_step:
+          target: PublicNet
+          activities:
+            - set_state: stopped
+    cancel:
+      steps:
+        start_step:
+          target: PublicNet
+          activities:
+            - set_state: canceled
