@@ -2,12 +2,13 @@ tosca_definitions_version: alien_dsl_2_0_0
 
 metadata:
   template_name: org.lexis.weather.wps
-  template_version: 0.1.1
+  template_version: 0.1.1-SNAPSHOT
   template_author: lexis
 
 imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - yorc-types:1.1.0
+  - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
 node_types:
   org.lexis.nodes.GFSData:
     derived_from: tosca.nodes.SoftwareComponent
@@ -62,7 +63,31 @@ node_types:
           implementation: playbooks/download_gfs.yaml
     tags:
       icon: /images/GFS.png
-  org.lexis.nodes.GEOGData:
+  org.lexis.nodes.GetGEOGDataFromFiles:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: Get geographical data from zipped archive files
+    properties:
+     output_directory:
+        type: string
+        description: Absolute path to directory where to store geographical data
+    requirements:
+      - files_provider:
+          capability: org.lexis.datatransfer.capabilities.FilesProvider
+          relationship: org.lexis.datatransfer.relationships.FilesProvider
+          occurrences: [1, 1]
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            FILES: {get_attribute: [REQ_TARGET, files_provider, paths]}
+            USER: {get_attribute: [REQ_TARGET, files_provider, user]}
+            OUTPUT_DIRECTORY: {get_property: [SELF, output_directory]}
+          implementation: playbooks/get_geog_data_from_files.yaml
+    tags:
+      icon: /images/GEOG.png
+  org.lexis.nodes.DownloadGEOGData:
     derived_from: tosca.nodes.SoftwareComponent
     properties:
      output_directory:

@@ -13,13 +13,15 @@
       register: result
     - name: Getting file paths
       set_fact:
-        FILES: "{{ result.files | map(attribute='path') | list }}"
-        FIRST_FOUND: ""
+        paths: "{{ result.files | map(attribute='path') | list }}"
+        PATH: ""
+    - name: Setting operation output FILES (space-separated string)
+      set_fact:
+        FILES: "{{paths | join(' ')}}"
     - name: Getting first file
       set_fact:
-        PATH: "{{ FILES[0] }}"
-      when: FILES | length > 0
-    - name: No such file found
+        PATH: "{{ paths[0] }}"
+      when: paths | length > 0
+    - name: User having read access to this file
       set_fact:
-        PATH: ""
-      when: FILES | length == 0
+        USER: "{{ user_name }}"

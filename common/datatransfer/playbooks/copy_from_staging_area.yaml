@@ -1,0 +1,17 @@
+- name: Copy a file from staging area
+  hosts: all
+  strategy: free
+  tasks:
+    - name: "Create destination directory"
+      file:
+        path: "{{ destination_directory }}"
+        state: directory
+        recurse: yes
+        mode: 0777
+      become: true
+    - name: "Copying source from staging area to destination"
+      command: "/bin/cp -R {{ source_path }} {{ destination_directory }}"
+      become: true
+      become_user: "{{ user_name }}"
+      become_method: sudo
+    

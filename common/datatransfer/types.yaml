@@ -11,11 +11,15 @@ imports:
   - org.ystia.docker.images:3.0.0-SNAPSHOT
   - yorc-types:1.1.0
 node_types:
-  org.lexis.datatransfer.nodes.CopyToJob:
+  org.lexis.datatransfer.nodes.CopyToJobTask:
     derived_from: tosca.nodes.SoftwareComponent
     description: >
-      Copy files to a HEAppE Job input directory
+      Copy files to a HEAppE Job task input directory
     properties:
+      task_name:
+        description: Name of the task in the Job
+        type: string
+        required: true
       source_directory:
         description: Directory containing files to copy
         type: string
@@ -35,18 +39,24 @@ node_types:
             user: {get_attribute: [REQ_TARGET, job, file_transfer, user]}
             private_key: {get_attribute: [REQ_TARGET, job, file_transfer, key]}
             server: {get_attribute: [REQ_TARGET, job, file_transfer, server]}
-            destination_directory: {get_attribute: [REQ_TARGET, job, file_transfer, path]}
+            job_directory: {get_attribute: [REQ_TARGET, job, file_transfer, path]}
+            tasks_name_id: {get_attribute: [REQ_TARGET, job, tasks_name_id]}
+            task_name: {get_property: [SELF, task_name]}
             source_directory: {get_property: [SELF, source_directory]}
-          implementation: playbooks/copytojob.yaml
+          implementation: playbooks/copytojobtask.yaml
         delete:
           implementation: playbooks/noop.yaml
     tags:
       icon: images/copytojob.png
-  org.lexis.datatransfer.nodes.CopySubDirToJob:
+  org.lexis.datatransfer.nodes.CopySubDirToJobTask:
     derived_from: tosca.nodes.SoftwareComponent
     description: >
-      Copy files in a subdirectory of a parent directory to a HEAppE Job input directory
+      Copy files in a subdirectory of a parent directory to a HEAppE Job task input directory
     properties:
+      task_name:
+        description: Name of the task in the Job
+        type: string
+        required: true
       parent_directory:
         description: Parent directory containing the subdirectory
         type: string
@@ -70,19 +80,25 @@ node_types:
             user: {get_attribute: [REQ_TARGET, job, file_transfer, user]}
             private_key: {get_attribute: [REQ_TARGET, job, file_transfer, key]}
             server: {get_attribute: [REQ_TARGET, job, file_transfer, server]}
-            destination_directory: {get_attribute: [REQ_TARGET, job, file_transfer, path]}
+            job_directory: {get_attribute: [REQ_TARGET, job, file_transfer, path]}
+            tasks_name_id: {get_attribute: [REQ_TARGET, job, tasks_name_id]}
+            task_name: {get_property: [SELF, task_name]}
             parent_directory: {get_property: [SELF, parent_directory]}
             subdirectory_index: {get_property: [SELF, subdirectory_index]}
-          implementation: playbooks/copysubdirtojob.yaml
+          implementation: playbooks/copysubdirtojobtask.yaml
         delete:
           implementation: playbooks/noop.yaml
     tags:
       icon: images/copytojob.png
-  org.lexis.datatransfer.nodes.CopyFromJob:
+  org.lexis.datatransfer.nodes.CopyFromJobTask:
     derived_from: tosca.nodes.SoftwareComponent
     description: >
-      Copy files from a HEAppE Job output directory
+      Copy files from a HEAppE Job task output directory
     properties:
+      task_name:
+        description: Name of the task in the Job
+        type: string
+        required: true
       source_files_patterns:
         type: list
         entry_schema:
@@ -109,10 +125,12 @@ node_types:
             user: {get_attribute: [REQ_TARGET, job, file_transfer, user]}
             private_key: {get_attribute: [REQ_TARGET, job, file_transfer, key]}
             server: {get_attribute: [REQ_TARGET, job, file_transfer, server]}
-            source_directory: {get_attribute: [REQ_TARGET, job, file_transfer, path]}
             source_files_patterns: {get_property: [SELF, source_files_patterns]}
+            job_directory: {get_attribute: [REQ_TARGET, job, file_transfer, path]}
+            tasks_name_id: {get_attribute: [REQ_TARGET, job, tasks_name_id]}
+            task_name: {get_property: [SELF, task_name]}
             destination_directory: {get_property: [SELF, destination_directory]}
-          implementation: playbooks/copyfromjob.yaml
+          implementation: playbooks/copyfromjobtask.yaml
         delete:
           implementation: playbooks/noop.yaml
     tags:
@@ -141,10 +159,10 @@ node_types:
           implementation: playbooks/movefile.yaml
         delete:
           implementation: playbooks/noop.yaml
-  org.lexis.datatransfer.nodes.FindFileInStagingAreaDirectory:
+  org.lexis.datatransfer.nodes.FindArchiveInStagingAreaDirectory:
     derived_from: tosca.nodes.SoftwareComponent
     description: >
-      Find files based on a given pattern in a staging area directory
+      Find a docker image archive based on given patterns in a staging area directory
     properties:
       patterns:
         type: list
@@ -155,9 +173,72 @@ node_types:
         required: true
     attributes:
       path: {get_operation_output: [SELF, Standard, start, PATH]}
+      user: {get_operation_output: [SELF, Standard, start, USER]}
     capabilities:
       archive_provider:
         type: org.ystia.docker.images.capabilities.ArchiveProvider
+    requirements:
+      - cloud_area_directory_provider:
+          capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+          relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+          occurrences: [1, 1]
+    interfaces:
+      Standard:
+        start:
+          inputs:
+            patterns: {get_property: [SELF, patterns]}
+            directory: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, directory_absolute_path]}
+            user_name: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, user_name]}
+          implementation: playbooks/find_file.yaml
+  org.lexis.datatransfer.nodes.FindFileInStagingAreaDirectory:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+      Find one file based on given patterns in a staging area directory
+    properties:
+      patterns:
+        type: list
+        entry_schema:
+          type: string
+        description: |
+          List of file patterns to match
+        required: true
+    attributes:
+      path: {get_operation_output: [SELF, Standard, start, PATH]}
+      user: {get_operation_output: [SELF, Standard, start, USER]}
+    capabilities:
+      file_provider:
+        type: org.lexis.datatransfer.capabilities.FileProvider
+    requirements:
+      - cloud_area_directory_provider:
+          capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+          relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+          occurrences: [1, 1]
+    interfaces:
+      Standard:
+        start:
+          inputs:
+            patterns: {get_property: [SELF, patterns]}
+            directory: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, directory_absolute_path]}
+            user_name: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, user_name]}
+          implementation: playbooks/find_file.yaml
+  org.lexis.datatransfer.nodes.FindFilesInStagingAreaDirectory:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+      Find all files based on given patterns in a staging area directory
+    properties:
+      patterns:
+        type: list
+        entry_schema:
+          type: string
+        description: |
+          List of file patterns to match
+        required: true
+    attributes:
+      paths: {get_operation_output: [SELF, Standard, start, FILES]}
+      user: {get_operation_output: [SELF, Standard, start, USER]}
+    capabilities:
+      files_provider:
+        type: org.lexis.datatransfer.capabilities.FilesProvider
     requirements:
       - cloud_area_directory_provider:
           capability: org.ddi.capabilities.CloudAreaDirectoryProvider
@@ -286,6 +367,48 @@ node_types:
             mount_point: {get_property: [REQ_TARGET, mounted_staging_area, mount_point]}
             user_name: {get_property: [REQ_TARGET, mounted_staging_area, user_name]}
           implementation: playbooks/create_staging_area_directory.yaml
+  org.lexis.datatransfer.nodes.CopyFilesToStagingAreaDirectory:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+       Copy files from a source directory to a staging area directory
+    properties:
+      source_directory:
+        description: Source directory
+        type: string
+        required: true
+      source_files_patterns:
+        type: list
+        entry_schema:
+          type: string
+        description: |
+          List of file patterns to copy from source directory
+        required: true
+      destination_subdirectory:
+        description: Subdirectory in staging area where to store the source directory content
+        type: string
+        required: false
+    attributes:
+      directory_absolute_path: {get_operation_output: [SELF, Standard, start, DIRECTORY_ABSOLUTE_PATH]}
+    capabilities:
+      cloud_area_directory_provider:
+        type: org.ddi.capabilities.CloudAreaDirectoryProvider
+    requirements:
+      - cloud_area_directory_provider:
+          capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+          relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+          occurrences: [1, 1]
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            source_directory: {get_property: [SELF, source_directory]}
+            destination_subdirectory: {get_property: [SELF, destination_subdirectory]}
+            destination_directory: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, directory_absolute_path]}
+            source_files_patterns: {get_property: [SELF, source_files_patterns]}
+            user_name: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, user_name]}
+          implementation: playbooks/copy_to_staging_area_directory.yaml
   org.lexis.datatransfer.nodes.CopyToStagingAreaDirectory:
     derived_from: tosca.nodes.SoftwareComponent
     description: >
@@ -316,6 +439,7 @@ node_types:
         start:
           inputs:
             source_directory: {get_property: [SELF, source_directory]}
+            source_files_patterns: []
             destination_subdirectory: {get_property: [SELF, destination_subdirectory]}
             destination_directory: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, directory_absolute_path]}
             user_name: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, user_name]}
@@ -360,12 +484,58 @@ node_types:
             mount_point: {get_property: [REQ_TARGET, mounted_staging_area, mount_point]}
             user_name: {get_property: [REQ_TARGET, mounted_staging_area, user_name]}
           implementation: playbooks/copy_to_staging_area.yaml
+  org.lexis.datatransfer.nodes.CopyFromStagingArea:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+       Copy a file from the staging area (provided by the file provider in this component requirements)
+    properties:
+      destination_directory:
+        description: destination directory (will be created if it does not exist)
+        type: string
+        required: true
+    requirements:
+      - file_provider:
+          capability: org.lexis.datatransfer.capabilities.FileProvider
+          relationship: org.lexis.datatransfer.relationships.FileProvider
+          occurrences: [1, 1]
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            source_path: {get_attribute: [REQ_TARGET, file_provider, path]}
+            user_name: {get_attribute: [REQ_TARGET, file_provider, user]}
+            destination_directory: {get_property: [SELF, destination_directory]}
+          implementation: playbooks/copy_from_staging_area.yaml
 capability_types:
   org.lexis.datatransfer.capabilities.MountedStagingAreaAccess:
     derived_from: tosca.capabilities.Root
     description: >
       A capability fulfilling requirements of a node requiring to be
       associated with a mounted staging area.
+  org.lexis.datatransfer.capabilities.FileProvider:
+    derived_from: tosca.capabilities.Root
+    description: >
+      A capability provided by a component providing access to a file as a given user.
+    attributes:
+      path:
+        type: string
+        description: Path to file
+      user:
+        type: string
+        description: User having access to this file
+  org.lexis.datatransfer.capabilities.FilesProvider:
+    derived_from: tosca.capabilities.Root
+    description: >
+      A capability provided by a component providing access to files as a given user.
+    attributes:
+      paths:
+        type: string
+        description: Space-separated list of file paths
+      user:
+        type: string
+        description: User having access to this file
 relationship_types:
   org.lexis.datatransfer.relationships.MountCloudStagingArea:
     derived_from: tosca.relationships.DependsOn
@@ -377,3 +547,13 @@ relationship_types:
     description: >
       Connects to a node mouting the staging area
     valid_target_types: [ org.lexis.datatransfer.MountedStagingAreaAccess ]
+  org.lexis.datatransfer.relationships.FileProvider:
+    derived_from: tosca.relationships.DependsOn
+    description: >
+      Relationship with a provider of a file
+    valid_target_types: [ org.lexis.datatransfer.capabilities.FileProvider ]
+  org.lexis.datatransfer.relationships.FilesProvider:
+    derived_from: tosca.relationships.DependsOn
+    description: >
+      Relationship with a provider of files
+    valid_target_types: [ org.lexis.datatransfer.capabilities.FilesProvider ]

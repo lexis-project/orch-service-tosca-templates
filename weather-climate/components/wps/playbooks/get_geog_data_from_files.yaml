@@ -1,0 +1,72 @@
+- name: Prequisites
+  hosts: all
+  strategy: free
+  become: true
+  become_method: sudo
+  tasks:
+    - name: Ubuntu - install unzip and bzip2 (acl needed by Ansible to become an unprivileged user)
+      apt:
+        name:
+          - acl
+          - unzip
+          - bzip2
+        state: present
+        update_cache: yes
+      register: apt_res
+      retries: 3
+      until: apt_res is success
+      when: ansible_distribution == 'Ubuntu'
+    - name: RedHat - install unzip and bzip2
+      yum:
+        name:
+          - unzip
+          - bzip2
+        state: present
+        update_cache: yes
+      when: ansible_os_family == 'RedHat'
+    - name: Debian - install unzip and bzip2
+      apt:
+        name:
+          - unzip
+          - bzip2
+        state: present
+        update_cache: yes
+      when: ansible_os_family == 'Debian'
+    - name: Create output directory
+      file:
+        path: "{{ OUTPUT_DIRECTORY }}"
+        state: directory
+        recurse: yes
+        mode: 0777
+        owner: "{{ USER }}"
+- name: Get GEOG data
+  hosts: all
+  strategy: free
+  become_user: "{{ USER }}"
+  become: true
+  become_method: sudo
+  tasks:
+    - name: Get file paths from space-separated string input
+      set_fact:
+        paths: "{{ FILES.split() }}"
+    - name: Extract geog_high_res_mandatory archive in destination directory
+      unarchive:
+        src: "{{ item }}"
+        dest: "{{ OUTPUT_DIRECTORY }}"
+        remote_src: yes
+      when: item is search("geog_high_res_mandatory")
+      with_items: "{{ paths }}"
+- name: Get additional data
+  hosts: all
+  strategy: free
+  become_user: "{{ USER }}"
+  become: true
+  become_method: sudo
+  tasks:
+    - name: Extract additional archive in destination directory subdir WPS_GEOG
+      unarchive:
+        src: "{{ item }}"
+        dest: "{{ OUTPUT_DIRECTORY }}/WPS_GEOG"
+        remote_src: yes
+      when: not item is search("geog_high_res_mandatory")
+      with_items: "{{ paths }}"

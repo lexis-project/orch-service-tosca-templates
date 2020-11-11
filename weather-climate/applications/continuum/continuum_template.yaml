@@ -17,7 +17,7 @@ imports:
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
-  - org.lexis.weather.wps:0.1.1
+  - org.lexis.weather.wps:0.1.1-SNAPSHOT
   - org.lexis.weather.continuum:0.1.0
   - org.lexis.weather.webdrops:0.1.0
 
@@ -79,7 +79,7 @@ topology_template:
       description: |
         List of volumes to mount within the Hyde post-processing container.
         Use docker CLI-style syntax: /host:/container[:mode]
-      default: ["/continuum/datasets_hyde/static_data/land:/home/fp/fp_mount/datasets_hyde/static", "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw", "/continuum/datasets_hyde/docker_data:/home/fp/fp_mount/datasets_hyde/dynamic_processed"]
+      default: ["/continuum/datasets_hyde/static_data/land/marche:/home/fp/fp_mount/datasets_hyde/static", "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw", "/continuum/datasets_hyde/docker_data:/home/fp/fp_mount/datasets_hyde/dynamic_processed"]
     postprocessing_hmc_image:
       type: string
       description: HMC post-processing container repository path
@@ -228,13 +228,13 @@ topology_template:
       metadata:
         task: computation
       properties:
-        jobSpecification:
+        JobSpecification:
           Name: WRFJob
           Project: "DD-19-14"
           ClusterId: 2
           Tasks:
             - Name: WRFTask
-              ClusterNodeTypeId: 6
+              ClusterNodeTypeId: 7
               CommandTemplateId: 9
               TemplateParameterValues:
                 - CommandParameterIdentifier: MPICores
@@ -272,9 +272,10 @@ topology_template:
               StandardErrorFile: "stderr"
               ProgressFile: "stdprog"
               LogFile: "stdlog"
-    CopyToJob:
-      type: org.lexis.datatransfer.nodes.CopySubDirToJob
+    CopyToJobTask:
+      type: org.lexis.datatransfer.nodes.CopySubDirToJobTask
       properties:
+        task_name: WRFTask
         parent_directory: {get_input: preprocessing_output_directory}
         subdirectory_index: 0
       requirements:
@@ -288,9 +289,10 @@ topology_template:
             node: WRF
             capability: org.heappe.capabilities.HeappeJob
             relationship: org.heappe.relationships.SendInputsToJob
-    CopyFromJob:
-      type: org.lexis.datatransfer.nodes.CopyFromJob
+    CopyFromJobTask:
+      type: org.lexis.datatransfer.nodes.CopyFromJobTask
       properties:
+        task_name: WRFTask
         source_files_patterns: [ "auxhist*" ]
         destination_directory:  { concat: [get_input: postprocessing_hyde_inputs_directory, "/dynamic_data/"] }
       requirements:
@@ -743,15 +745,15 @@ topology_template:
           activities:
             - call_operation: custom.enable_file_transfer
           on_success:
-            - CopyToJob_start
-        CopyToJob_start:
-          target: CopyToJob
+            - CopyToJobTask_start
+        CopyToJobTask_start:
+          target: CopyToJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyToJob_started
-        CopyToJob_started:
-          target: CopyToJob
+            - CopyToJobTask_started
+        CopyToJobTask_started:
+          target: CopyToJobTask
           activities:
             - set_state: started
           on_success:
@@ -795,7 +797,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - CopyFromJob_start
+            - CopyFromJobTask_start
         CreatePostProcessHydeDirs_start:
           target: CreatePostProcessHydeDirs
           activities:
@@ -807,7 +809,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - CopyFromJob_start
+            - CopyFromJobTask_start
         CreatePostProcessHMCDirs_start:
           target: CreatePostProcessHMCDirs
           activities:
@@ -819,15 +821,15 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - CopyFromJob_start
-        CopyFromJob_start:
-          target: CopyFromJob
+            - CopyFromJobTask_start
+        CopyFromJobTask_start:
+          target: CopyFromJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyFromJob_started
-        CopyFromJob_started:
-          target: CopyFromJob
+            - CopyFromJobTask_started
+        CopyFromJobTask_started:
+          target: CopyFromJobTask
           activities:
             - set_state: started
           on_success:
@@ -1170,15 +1172,15 @@ topology_template:
           activities:
             - call_operation: custom.enable_file_transfer
           on_success:
-            - CopyToJob_start
-        CopyToJob_start:
-          target: CopyToJob
+            - CopyToJobTask_start
+        CopyToJobTask_start:
+          target: CopyToJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyToJob_started
-        CopyToJob_started:
-          target: CopyToJob
+            - CopyToJobTask_started
+        CopyToJobTask_started:
+          target: CopyToJobTask
           activities:
             - set_state: started
           on_success:
@@ -1222,7 +1224,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - CopyFromJob_start
+            - CopyFromJobTask_start
         CreatePostProcessHydeDirs_start:
           target: CreatePostProcessHydeDirs
           activities:
@@ -1234,7 +1236,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - CopyFromJob_start
+            - CopyFromJobTask_start
         CreatePostProcessHMCDirs_start:
           target: CreatePostProcessHMCDirs
           activities:
@@ -1246,15 +1248,15 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - CopyFromJob_start
-        CopyFromJob_start:
-          target: CopyFromJob
+            - CopyFromJobTask_start
+        CopyFromJobTask_start:
+          target: CopyFromJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyFromJob_started
-        CopyFromJob_started:
-          target: CopyFromJob
+            - CopyFromJobTask_started
+        CopyFromJobTask_started:
+          target: CopyFromJobTask
           activities:
             - set_state: started
           on_success:

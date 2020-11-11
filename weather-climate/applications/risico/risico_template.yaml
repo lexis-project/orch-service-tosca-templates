@@ -17,7 +17,7 @@ imports:
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
-  - org.lexis.weather.wps:0.1.1
+  - org.lexis.weather.wps:0.1.1-SNAPSHOT
   - org.lexis.weather.webdrops:0.1.0
 
 topology_template:
@@ -214,13 +214,13 @@ topology_template:
       metadata:
         task: computation
       properties:
-        jobSpecification:
+        JobSpecification:
           Name: WRFJob
           Project: "DD-19-14"
           ClusterId: 2
           Tasks:
             - Name: WRFTask
-              ClusterNodeTypeId: 6
+              ClusterNodeTypeId: 7
               CommandTemplateId: 9
               TemplateParameterValues:
                 - CommandParameterIdentifier: MPICores
@@ -263,13 +263,13 @@ topology_template:
       metadata:
         task: computation
       properties:
-        jobSpecification:
+        JobSpecification:
           Name: WRFJob
           Project: "DD-19-14"
           ClusterId: 2
           Tasks:
             - Name: WRFTask
-              ClusterNodeTypeId: 6
+              ClusterNodeTypeId: 7
               CommandTemplateId: 9
               TemplateParameterValues:
                 - CommandParameterIdentifier: MPICores
@@ -312,13 +312,13 @@ topology_template:
       metadata:
         task: computation
       properties:
-        jobSpecification:
+        JobSpecification:
           Name: WRFJob
           Project: "DD-19-14"
           ClusterId: 2
           Tasks:
             - Name: WRFTask
-              ClusterNodeTypeId: 6
+              ClusterNodeTypeId: 7
               CommandTemplateId: 9
               TemplateParameterValues:
                 - CommandParameterIdentifier: MPICores
@@ -356,9 +356,10 @@ topology_template:
               StandardErrorFile: "stderr"
               ProgressFile: "stdprog"
               LogFile: "stdlog"
-    CopyDay3DataToJob:
-      type: org.lexis.datatransfer.nodes.CopySubDirToJob
+    CopyDay3DataToJobTask:
+      type: org.lexis.datatransfer.nodes.CopySubDirToJobTask
       properties:
+        task_name: WRFTask
         parent_directory: {get_input: preprocessing_output_directory}
         subdirectory_index: 2
       requirements:
@@ -372,9 +373,10 @@ topology_template:
             node: WRF_DAY_3
             capability: org.heappe.capabilities.HeappeJob
             relationship: org.heappe.relationships.SendInputsToJob
-    CopyDay2DataToJob:
-      type: org.lexis.datatransfer.nodes.CopySubDirToJob
+    CopyDay2DataToJobTask:
+      type: org.lexis.datatransfer.nodes.CopySubDirToJobTask
       properties:
+        task_name: WRFTask
         parent_directory: {get_input: preprocessing_output_directory}
         subdirectory_index: 1
       requirements:
@@ -388,9 +390,10 @@ topology_template:
             node: WRF_DAY_2
             capability: org.heappe.capabilities.HeappeJob
             relationship: org.heappe.relationships.SendInputsToJob
-    CopyDay1DataToJob:
-      type: org.lexis.datatransfer.nodes.CopySubDirToJob
+    CopyDay1DataToJobTask:
+      type: org.lexis.datatransfer.nodes.CopySubDirToJobTask
       properties:
+        task_name: WRFTask
         parent_directory: {get_input: preprocessing_output_directory}
         subdirectory_index: 0
       requirements:
@@ -404,9 +407,10 @@ topology_template:
             node: WRF_DAY_1
             capability: org.heappe.capabilities.HeappeJob
             relationship: org.heappe.relationships.SendInputsToJob
-    CopyWRFDay3FromJob:
-      type: org.lexis.datatransfer.nodes.CopyFromJob
+    CopyWRFDay3FromJobTask:
+      type: org.lexis.datatransfer.nodes.CopyFromJobTask
       properties:
+        task_name: WRFTask
         source_files_patterns: [ "auxhist*" ]
         destination_directory:  { concat: [get_input: postprocessing_input_directory, "/wrf/3"] }
       requirements:
@@ -420,9 +424,10 @@ topology_template:
             node: WRF_DAY_3
             capability: org.heappe.capabilities.HeappeJob
             relationship: org.heappe.relationships.GetResultsFromJob
-    CopyWRFDay2FromJob:
-      type: org.lexis.datatransfer.nodes.CopyFromJob
+    CopyWRFDay2FromJobTask:
+      type: org.lexis.datatransfer.nodes.CopyFromJobTask
       properties:
+        task_name: WRFTask
         source_files_patterns: [ "auxhist*" ]
         destination_directory:  { concat: [get_input: postprocessing_input_directory, "/wrf/2"] }
       requirements:
@@ -436,9 +441,10 @@ topology_template:
             node: WRF_DAY_2
             capability: org.heappe.capabilities.HeappeJob
             relationship: org.heappe.relationships.GetResultsFromJob
-    CopyWRFDay1FromJob:
-      type: org.lexis.datatransfer.nodes.CopyFromJob
+    CopyWRFDay1FromJobTask:
+      type: org.lexis.datatransfer.nodes.CopyFromJobTask
       properties:
+        task_name: WRFTask
         source_files_patterns: [ "auxhist*" ]
         destination_directory:  { concat: [get_input: postprocessing_input_directory, "/wrf/1"] }
       requirements:
@@ -815,53 +821,53 @@ topology_template:
           activities:
             - call_operation: custom.enable_file_transfer
           on_success:
-            - CopyDay1ToJob_start
+            - CopyDay1ToJobTask_start
         WRF_DAY_2_enable_file_transfer:
           target: WRF_DAY_2
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: custom.enable_file_transfer
           on_success:
-            - CopyDay2ToJob_start
+            - CopyDay2ToJobTask_start
         WRF_DAY_3_enable_file_transfer:
           target: WRF_DAY_3
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: custom.enable_file_transfer
           on_success:
-            - CopyDay3ToJob_start
-        CopyDay1ToJob_start:
-          target: CopyDay1DataToJob
+            - CopyDay3ToJobTask_start
+        CopyDay1ToJobTask_start:
+          target: CopyDay1DataToJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyDay1ToJob_started
-        CopyDay1ToJob_started:
-          target: CopyDay1DataToJob
+            - CopyDay1ToJobTask_started
+        CopyDay1ToJobTask_started:
+          target: CopyDay1DataToJobTask
           activities:
             - set_state: started
           on_success:
             - WRF_DAY_1_submit
-        CopyDay2ToJob_start:
-          target: CopyDay2DataToJob
+        CopyDay2ToJobTask_start:
+          target: CopyDay2DataToJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyDay2ToJob_started
-        CopyDay2ToJob_started:
-          target: CopyDay2DataToJob
+            - CopyDay2ToJobTask_started
+        CopyDay2ToJobTask_started:
+          target: CopyDay2DataToJobTask
           activities:
             - set_state: started
           on_success:
             - WRF_DAY_2_submit
-        CopyDay3ToJob_start:
-          target: CopyDay3DataToJob
+        CopyDay3ToJobTask_start:
+          target: CopyDay3DataToJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyDay3ToJob_started
-        CopyDay3ToJob_started:
-          target: CopyDay3DataToJob
+            - CopyDay3ToJobTask_started
+        CopyDay3ToJobTask_started:
+          target: CopyDay3DataToJobTask
           activities:
             - set_state: started
           on_success:
@@ -968,9 +974,9 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - CopyWRFDay1FromJob_start
-            - CopyWRFDay2FromJob_start
-            - CopyWRFDay3FromJob_start
+            - CopyWRFDay1FromJobTask_start
+            - CopyWRFDay2FromJobTask_start
+            - CopyWRFDay3FromJobTask_start
             - Webdrops_start
         Webdrops_start:
           target: Webdrops
@@ -984,42 +990,42 @@ topology_template:
             - set_state: started
           on_success:
             - RISICO_create
-        CopyWRFDay1FromJob_start:
-          target: CopyWRFDay1FromJob
+        CopyWRFDay1FromJobTask_start:
+          target: CopyWRFDay1FromJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyWRFDay1FromJob_started
-        CopyWRFDay1FromJob_started:
-          target: CopyWRFDay1FromJob
+            - CopyWRFDay1FromJobTask_started
+        CopyWRFDay1FromJobTask_started:
+          target: CopyWRFDay1FromJobTask
           activities:
             - set_state: started
           on_success:
             - RISICO_create
             - WRF_DAY_1_disable_file_transfer
             - StageWRFResults_start
-        CopyWRFDay2FromJob_start:
-          target: CopyWRFDay2FromJob
+        CopyWRFDay2FromJobTask_start:
+          target: CopyWRFDay2FromJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyWRFDay2FromJob_started
-        CopyWRFDay2FromJob_started:
-          target: CopyWRFDay2FromJob
+            - CopyWRFDay2FromJobTask_started
+        CopyWRFDay2FromJobTask_started:
+          target: CopyWRFDay2FromJobTask
           activities:
             - set_state: started
           on_success:
             - RISICO_create
             - WRF_DAY_2_disable_file_transfer
             - StageWRFResults_start
-        CopyWRFDay3FromJob_start:
-          target: CopyWRFDay3FromJob
+        CopyWRFDay3FromJobTask_start:
+          target: CopyWRFDay3FromJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyWRFDay3FromJob_started
-        CopyWRFDay3FromJob_started:
-          target: CopyWRFDay3FromJob
+            - CopyWRFDay3FromJobTask_started
+        CopyWRFDay3FromJobTask_started:
+          target: CopyWRFDay3FromJobTask
           activities:
             - set_state: started
           on_success:
@@ -1338,53 +1344,53 @@ topology_template:
           activities:
             - call_operation: custom.enable_file_transfer
           on_success:
-            - CopyDay1ToJob_start
+            - CopyDay1ToJobTask_start
         WRF_DAY_2_enable_file_transfer:
           target: WRF_DAY_2
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: custom.enable_file_transfer
           on_success:
-            - CopyDay2ToJob_start
+            - CopyDay2ToJobTask_start
         WRF_DAY_3_enable_file_transfer:
           target: WRF_DAY_3
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: custom.enable_file_transfer
           on_success:
-            - CopyDay3ToJob_start
-        CopyDay1ToJob_start:
-          target: CopyDay1DataToJob
+            - CopyDay3ToJobTask_start
+        CopyDay1ToJobTask_start:
+          target: CopyDay1DataToJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyDay1ToJob_started
-        CopyDay1ToJob_started:
-          target: CopyDay1DataToJob
+            - CopyDay1ToJobTask_started
+        CopyDay1ToJobTask_started:
+          target: CopyDay1DataToJobTask
           activities:
             - set_state: started
           on_success:
             - WRF_DAY_1_submit
-        CopyDay2ToJob_start:
-          target: CopyDay2DataToJob
+        CopyDay2ToJobTask_start:
+          target: CopyDay2DataToJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyDay2ToJob_started
-        CopyDay2ToJob_started:
-          target: CopyDay2DataToJob
+            - CopyDay2ToJobTask_started
+        CopyDay2ToJobTask_started:
+          target: CopyDay2DataToJobTask
           activities:
             - set_state: started
           on_success:
             - WRF_DAY_2_submit
-        CopyDay3ToJob_start:
-          target: CopyDay3DataToJob
+        CopyDay3ToJobTask_start:
+          target: CopyDay3DataToJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyDay3ToJob_started
-        CopyDay3ToJob_started:
-          target: CopyDay3DataToJob
+            - CopyDay3ToJobTask_started
+        CopyDay3ToJobTask_started:
+          target: CopyDay3DataToJobTask
           activities:
             - set_state: started
           on_success:
@@ -1491,9 +1497,9 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - CopyWRFDay1FromJob_start
-            - CopyWRFDay2FromJob_start
-            - CopyWRFDay3FromJob_start
+            - CopyWRFDay1FromJobTask_start
+            - CopyWRFDay2FromJobTask_start
+            - CopyWRFDay3FromJobTask_start
             - Webdrops_start
         Webdrops_start:
           target: Webdrops
@@ -1507,42 +1513,42 @@ topology_template:
             - set_state: started
           on_success:
             - RISICO_create
-        CopyWRFDay1FromJob_start:
-          target: CopyWRFDay1FromJob
+        CopyWRFDay1FromJobTask_start:
+          target: CopyWRFDay1FromJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyWRFDay1FromJob_started
-        CopyWRFDay1FromJob_started:
-          target: CopyWRFDay1FromJob
+            - CopyWRFDay1FromJobTask_started
+        CopyWRFDay1FromJobTask_started:
+          target: CopyWRFDay1FromJobTask
           activities:
             - set_state: started
           on_success:
             - RISICO_create
             - WRF_DAY_1_disable_file_transfer
             - StageWRFResults_start
-        CopyWRFDay2FromJob_start:
-          target: CopyWRFDay2FromJob
+        CopyWRFDay2FromJobTask_start:
+          target: CopyWRFDay2FromJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyWRFDay2FromJob_started
-        CopyWRFDay2FromJob_started:
-          target: CopyWRFDay2FromJob
+            - CopyWRFDay2FromJobTask_started
+        CopyWRFDay2FromJobTask_started:
+          target: CopyWRFDay2FromJobTask
           activities:
             - set_state: started
           on_success:
             - RISICO_create
             - WRF_DAY_2_disable_file_transfer
             - StageWRFResults_start
-        CopyWRFDay3FromJob_start:
-          target: CopyWRFDay3FromJob
+        CopyWRFDay3FromJobTask_start:
+          target: CopyWRFDay3FromJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyWRFDay3FromJob_started
-        CopyWRFDay3FromJob_started:
-          target: CopyWRFDay3FromJob
+            - CopyWRFDay3FromJobTask_started
+        CopyWRFDay3FromJobTask_started:
+          target: CopyWRFDay3FromJobTask
           activities:
             - set_state: started
           on_success:
@@ -2016,9 +2022,9 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - CopyWRFDay1FromJob_start
-            - CopyWRFDay2FromJob_start
-            - CopyWRFDay3FromJob_start
+            - CopyWRFDay1FromJobTask_start
+            - CopyWRFDay2FromJobTask_start
+            - CopyWRFDay3FromJobTask_start
             - Webdrops_start
         Webdrops_start:
           target: Webdrops
@@ -2032,42 +2038,42 @@ topology_template:
             - set_state: started
           on_success:
             - RISICO_create
-        CopyWRFDay1FromJob_start:
-          target: CopyWRFDay1FromJob
+        CopyWRFDay1FromJobTask_start:
+          target: CopyWRFDay1FromJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyWRFDay1FromJob_started
-        CopyWRFDay1FromJob_started:
-          target: CopyWRFDay1FromJob
+            - CopyWRFDay1FromJobTask_started
+        CopyWRFDay1FromJobTask_started:
+          target: CopyWRFDay1FromJobTask
           activities:
             - set_state: started
           on_success:
             - RISICO_create
             - WRF_DAY_1_disable_file_transfer
             - StageWRFResults_start
-        CopyWRFDay2FromJob_start:
-          target: CopyWRFDay2FromJob
+        CopyWRFDay2FromJobTask_start:
+          target: CopyWRFDay2FromJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyWRFDay2FromJob_started
-        CopyWRFDay2FromJob_started:
-          target: CopyWRFDay2FromJob
+            - CopyWRFDay2FromJobTask_started
+        CopyWRFDay2FromJobTask_started:
+          target: CopyWRFDay2FromJobTask
           activities:
             - set_state: started
           on_success:
             - RISICO_create
             - WRF_DAY_2_disable_file_transfer
             - StageWRFResults_start
-        CopyWRFDay3FromJob_start:
-          target: CopyWRFDay3FromJob
+        CopyWRFDay3FromJobTask_start:
+          target: CopyWRFDay3FromJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyWRFDay3FromJob_started
-        CopyWRFDay3FromJob_started:
-          target: CopyWRFDay3FromJob
+            - CopyWRFDay3FromJobTask_started
+        CopyWRFDay3FromJobTask_started:
+          target: CopyWRFDay3FromJobTask
           activities:
             - set_state: started
           on_success:

@@ -14,13 +14,11 @@ imports:
   - alien-base-types:3.0.0
   - ddi-types:0.1.2
   #- heappe-types:1.0.2
-  #- org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
+  - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.ystia.docker.images:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
-  #- org.lexis.weather.wps:0.1.1
-  #- org.lexis.weather.continuum:0.1.0
-  #- org.lexis.weather.webdrops:0.1.0
+  #- org.lexis.weather.wps:0.1.1-SNAPSHOT
 
 topology_template:
   inputs:
@@ -36,7 +34,26 @@ topology_template:
     postprocessing_dataset_docker_image_path:
       type: string
       description: Post-processing docker image tar archive path in DDI
-      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/1c3a51ac-1879-11eb-ae7c-0050568fc9b5"
+      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/89ddda90-1918-11eb-b6d1-0050568fc9b5"
+      required: false
+    postprocessing_dataset_ncl_script:
+      type: string
+      description: Post-processing NCL script path in DDI
+      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/7fc89bf4-1d13-11eb-ae7e-0050568fc9b5"
+      required: false
+    postprocessing_input_directory:
+      type: string
+      description: Directory where postprocessing data will be stored
+      default: /adms_data/
+      required: false
+    postprocessing_volumes:
+      type: list
+      entry_schema:
+        type: string
+      description: |
+        List of volumes to mount within the post-processing container.
+        Use docker CLI-style syntax: /host:/container[:mode]
+      default: ["/adms_data/:/wrfdata"]
       required: false
   node_templates:
     PublicNet:
@@ -112,10 +129,10 @@ topology_template:
             node: ADMS_VM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
-    CreateStagingAreaADMSArchiveDir:
+    CreateStagingAreaADMSTempDir:
       type: org.lexis.datatransfer.nodes.CreateStagingAreaDirectory
       properties:
-        directory: "adms_archive"
+        directory: "adms_tmp"
         create_timestamp_destination_subdirectory: true
       requirements:
         - mountedCloudStagingArea:
@@ -128,7 +145,7 @@ topology_template:
             node: ADMS_VM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
-    DDIToCloudJob:
+    DDIToCloudDockerImageJob:
       type: org.ddi.nodes.DDIToCloudJob
       properties:
         token: { get_input: token }
@@ -136,27 +153,28 @@ topology_template:
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
-            node: CreateStagingAreaADMSArchiveDir
+            node: CreateStagingAreaADMSTempDir
             capability: org.ddi.capabilities.CloudAreaDirectoryProvider
             relationship: org.ddi.relationships.CloudAreaDirectoryProvider
-    DeleteCloudDataJob:
-      type: org.ddi.nodes.DeleteCloudDataJob
+    DDIToCloudNCLScriptJob:
+      type: org.ddi.nodes.DDIToCloudJob
       properties:
         token: { get_input: token }
+        ddi_dataset_path: { get_input: postprocessing_dataset_ncl_script }
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
-            node: CreateStagingAreaADMSArchiveDir
+            node: CreateStagingAreaADMSTempDir
             capability: org.ddi.capabilities.CloudAreaDirectoryProvider
             relationship: org.ddi.relationships.CloudAreaDirectoryProvider
     FindArchive:
-      type: org.lexis.datatransfer.nodes.FindFileInStagingAreaDirectory
+      type: org.lexis.datatransfer.nodes.FindArchiveInStagingAreaDirectory
       properties:
         patterns: ["*.tar*", "*.tgz"]
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
-            node: CreateStagingAreaADMSArchiveDir
+            node: CreateStagingAreaADMSTempDir
             capability: org.ddi.capabilities.CloudAreaDirectoryProvider
             relationship: org.ddi.relationships.CloudAreaDirectoryProvider
         - hostedOnComputeHost:
@@ -180,6 +198,72 @@ topology_template:
             node: ADMS_VM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
+    FindNCLScript:
+      type: org.lexis.datatransfer.nodes.FindFileInStagingAreaDirectory
+      properties:
+        patterns: ["*.ncl"]
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaADMSTempDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    CopyNCLScriptFromStagingArea:
+      type: org.lexis.datatransfer.nodes.CopyFromStagingArea
+      properties:
+        destination_directory:  {get_input: postprocessing_input_directory}
+      requirements:
+        - file_provider:
+            type_requirement: file_provider
+            node: FindNCLScript
+            capability: org.lexis.datatransfer.capabilities.FileProvider
+            relationship: org.lexis.datatransfer.relationships.FileProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    WRFToMet:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        mem_share: "128 MB"
+        volumes: {get_input: postprocessing_volumes}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+    DeleteCloudDataJob:
+      type: org.ddi.nodes.DeleteCloudDataJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaADMSTempDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
   workflows:
     install:
       steps:
@@ -229,19 +313,8 @@ topology_template:
           target: Docker
           activities:
             - set_state: started
-          on_success:
-            - ImageLoader_create
-            - EnableCloudAcessJob_create
-        ImageLoader_create:
-          target: ImageLoader
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - ImageLoader_created
-        ImageLoader_created:
-          target: ImageLoader
-          activities:
-            - set_state: created
+    wfCloudAccess:
+      steps:
         EnableCloudAcessJob_create:
           target: EnableCloudAcessJob
           operation_host: ORCHESTRATOR
@@ -298,51 +371,18 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - CreateStagingAreaADMSArchiveDir_start
-        CreateStagingAreaADMSArchiveDir_start:
-          target: CreateStagingAreaADMSArchiveDir
+            - CreateStagingAreaADMSTempDir_start
+        CreateStagingAreaADMSTempDir_start:
+          target: CreateStagingAreaADMSTempDir
           activities:
             - call_operation: Standard.start
           on_success:
-            - CreateStagingAreaADMSArchiveDir_started
-        CreateStagingAreaADMSArchiveDir_started:
-          target: CreateStagingAreaADMSArchiveDir
+            - CreateStagingAreaADMSTempDir_started
+        CreateStagingAreaADMSTempDir_started:
+          target: CreateStagingAreaADMSTempDir
           activities:
             - set_state: started
-          on_success:
-            - DDIToCloudJob_create
-        DDIToCloudJob_create:
-          target: DDIToCloudJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DDIToCloudJob_submit
-        DDIToCloudJob_submit:
-          target: DDIToCloudJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DDIToCloudJob_submitted
-        DDIToCloudJob_submitted:
-          target: DDIToCloudJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DDIToCloudJob_run
-        DDIToCloudJob_run:
-          target: DDIToCloudJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DDIToCloudJob_executed
-        DDIToCloudJob_executed:
-          target: DDIToCloudJob
-          activities:
-            - set_state: executed
-    uninstall:
+    wfCleanupCloudArea:
       steps:
         DeleteCloudDataJob_create:
           target: DeleteCloudDataJob
@@ -381,8 +421,8 @@ topology_template:
           target: DeleteCloudDataJob
           activities:
             - set_state: executed
-          on_success:
-            - DisableCloudAcessJob_create
+    wfDisableCloudAccess:
+      steps:
         DisableCloudAcessJob_create:
           target: DisableCloudAcessJob
           operation_host: ORCHESTRATOR
@@ -414,8 +454,8 @@ topology_template:
           target: DisableCloudAcessJob
           activities:
             - set_state: executed
-          on_success:
-            - Compute_uninstall
+    uninstall:
+      steps:
         Compute_uninstall:
           target: ADMS_VM
           activities:
@@ -452,6 +492,63 @@ topology_template:
             - set_state: stopped
     Run:
       steps:
+        DDIToCloudDockerImageJob_create:
+          target: DDIToCloudDockerImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToCloudDockerImageJob_submit
+        DDIToCloudDockerImageJob_submit:
+          target: DDIToCloudDockerImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToCloudDockerImageJob_submitted
+        DDIToCloudDockerImageJob_submitted:
+          target: DDIToCloudDockerImageJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToCloudDockerImageJob_run
+        DDIToCloudDockerImageJob_run:
+          target: DDIToCloudDockerImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToCloudDockerImageJob_executed
+        DDIToCloudDockerImageJob_executed:
+          target: DDIToCloudDockerImageJob
+          activities:
+            - set_state: executed
+          on_success:
+            - FindArchive_start
+        FindArchive_start:
+          target: FindArchive
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - FindArchive_started
+        FindArchive_started:
+          target: FindArchive
+          activities:
+            - set_state: started
+          on_success:
+            - ImageLoader_create
+        ImageLoader_create:
+          target: ImageLoader
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ImageLoader_created
+        ImageLoader_created:
+          target: ImageLoader
+          activities:
+            - set_state: created
+          on_success:
+            - ImageLoader_start
         ImageLoader_start:
           target: ImageLoader
           activities:
@@ -460,6 +557,75 @@ topology_template:
             - ImageLoader_started
         ImageLoader_started:
           target: ImageLoader
+          activities:
+            - set_state: started
+          on_success:
+            - DDIToCloudNCLScriptJob_create
+        DDIToCloudNCLScriptJob_create:
+          target: DDIToCloudNCLScriptJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToCloudNCLScriptJob_submit
+        DDIToCloudNCLScriptJob_submit:
+          target: DDIToCloudNCLScriptJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToCloudNCLScriptJob_submitted
+        DDIToCloudNCLScriptJob_submitted:
+          target: DDIToCloudNCLScriptJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToCloudNCLScriptJob_run
+        DDIToCloudNCLScriptJob_run:
+          target: DDIToCloudNCLScriptJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToCloudNCLScriptJob_executed
+        DDIToCloudNCLScriptJob_executed:
+          target: DDIToCloudNCLScriptJob
+          activities:
+            - set_state: executed
+          on_success:
+            - FindNCLScript_start
+        FindNCLScript_start:
+          target: FindNCLScript
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - FindNCLScript_started
+        FindNCLScript_started:
+          target: FindNCLScript
+          activities:
+            - set_state: started
+          on_success:
+            - CopyNCLScriptFromStagingArea_start
+        CopyNCLScriptFromStagingArea_start:
+          target: CopyNCLScriptFromStagingArea
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - WRFToMet_create
+        WRFToMet_create:
+          target: WRFToMet
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - WRFToMet_start
+        WRFToMet_start:
+          target: WRFToMet
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - WRFToMet_started
+        WRFToMet_started:
+          target: WRFToMet
           activities:
             - set_state: started
     RemoveImage:
