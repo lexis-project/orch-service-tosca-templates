@@ -112,7 +112,7 @@ that will launch our program [../../components/events/scripts/wait_and_get_file_
 
 ```bash
 cd ../../examples/components/events
-zip -r $HOME//csar-lexis-components-events.zip *
+zip -r $HOME/csar-lexis-components-events.zip *
 $HOME/upload -url https://1.2.3.4:8088 \
          -user myuser \
          -password mypasswd \
@@ -123,7 +123,7 @@ Then, upload the application template in Alien4Cloud catalog.
 
 ```bash
 cd ../../applications/eventTrigger
-zip -r /Users/laurentganne/dev/go/src/github.com/ystia/csar/csar-event-trigger-app.zip event_trigger_template.yaml
+zip -r $HOME/csar-event-trigger-app.zip event_trigger_template.yaml
 $HOME/upload -url https://1.2.3.4:8088 \
          -user myuser \
          -password mypasswd \

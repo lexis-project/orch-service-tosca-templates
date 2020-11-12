@@ -5,11 +5,13 @@ while true; do
   res=$?
   if [ $res -eq 0 ]
   then
-    event=`/bin/cat event.txt`
-    if [ -n "$event" ]
-    then
-      echo $event
-      break
+    if [ -f event.txt ]; then
+      event=`/bin/cat event.txt`
+      if [ -n "$event" ]
+      then
+        echo $event
+        break
+      fi
     fi
   fi
   /bin/sleep 1
