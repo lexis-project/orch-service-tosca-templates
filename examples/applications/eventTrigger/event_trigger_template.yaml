@@ -1,0 +1,193 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: EventTriggerTemplate
+  template_version: 0.1.0-SNAPSHOT
+  template_author: lexis
+
+description: ""
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - heappe-types:1.0.2
+  - org.lexis.common.noscheduler.job:0.1.0
+  - org.lexis.examples.events:0.1.0
+topology_template:
+  inputs:
+    preprocessing_event_file_url:
+      type: string
+      description: "URL of the file"
+      required: true
+    preprocessing_wait_time_seconds:
+      type: integer
+      description: "Time to wait for an event (0 to wait forever)"
+      default: 0
+      required: false
+    computation_heappe_job:
+      type: org.heappe.types.JobSpecification
+      description: Description of the HEAppE job/tasks
+      required: false
+      default:
+        Name: TestJob
+        Project: "DD-19-14"
+        ClusterId: 2
+        Tasks:
+          - Name: TestTemplate
+            ClusterNodeTypeId: 8
+            CommandTemplateId: 2
+            TemplateParameterValues:
+              - CommandParameterIdentifier: inputParam
+                ParameterValue: "value"
+            WalltimeLimit: 3600
+            MinCores: 1
+            MaxCores: 1
+            Priority: 4
+            StandardOutputFile: "stdout"
+            StandardErrorFile: "stderr"
+            ProgressFile: "stdprog"
+            LogFile: "stdlog"
+  node_templates:
+    PublicNet:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+    EventVM:
+      type: tosca.nodes.Compute
+      requirements:
+        - networkPublicNetConnection:
+            type_requirement: network
+            node: PublicNet
+            capability: tosca.capabilities.Connectivity
+            relationship: tosca.relationships.Network
+      capabilities:
+        host:
+          properties:
+            num_cpus: 1
+        os:
+          properties:
+            type: linux
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        endpoint:
+          properties:
+            secure: true
+            protocol: tcp
+            network_name: PRIVATE
+            initiator: source
+    WaitForEventJob:
+      type: org.lexis.examples.events.WaitForEventJob
+      metadata:
+        task: preprocessing
+      properties:
+        file_url: { get_input: preprocessing_event_file_url }
+        walltime_seconds: { get_input: preprocessing_wait_time_seconds }
+        fail_after_walltime: true
+        stdout_file_path: "/tmp/stdout_event_example"
+        stderr_file_path: "/tmp/stderr_event_example"
+      requirements:
+        - hostedOnEventVmHost:
+            type_requirement: host
+            node: EventVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    HEAppEJob:
+      type: org.heappe.nodes.Job
+      metadata:
+        task: computation
+      properties:
+        JobSpecification: { get_input: computation_heappe_job }
+  outputs:
+    EventReceived:
+      value: { get_attribute: [ WaitForEventJob, stdout ] }
+  workflows:
+    install:
+      steps:
+        Network_install:
+          target: PublicNet
+          activities:
+            - delegate: install
+    uninstall:
+      steps:
+        Compute_uninstall:
+          target: EventVM
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: PublicNet
+          activities:
+            - delegate: uninstall
+    Run:
+      steps:
+        Compute_install:
+          target: EventVM
+          activities:
+            - delegate: install
+          on_success:
+            - WaitForEventJob_submit
+        WaitForEventJob_submit:
+          target: WaitForEventJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - WaitForEventJob_submitted
+        WaitForEventJob_submitted:
+          target: WaitForEventJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - WaitForEventJob_run
+        WaitForEventJob_run:
+          target: WaitForEventJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - WaitForEventJob_executed
+        WaitForEventJob_executed:
+          target: WaitForEventJob
+          activities:
+            - set_state: executed
+          on_success:
+            - Compute_uninstall
+            - HEAppEJob_create
+        Compute_uninstall:
+          target: EventVM
+          activities:
+            - delegate: uninstall
+        HEAppEJob_create:
+          target: HEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+           - HEAppEJob_submit
+        HEAppEJob_submit:
+          target: HEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - HEAppEJob_submitted
+        HEAppEJob_submitted:
+          target: HEAppEJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - HEAppEJob_run
+        HEAppEJob_run:
+          target: HEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - HEAppEJob_executed
+        HEAppEJob_executed:
+          target: HEAppEJob
+          activities:
+            - set_state: executed
