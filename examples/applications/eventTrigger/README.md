@@ -1,6 +1,6 @@
 # Example of workflow triggered on event
 
-In the case when a workflow execution needs to be triggered by an event,
+In the case where a workflow execution needs to be triggered by an event,
 it is possible to implement the waiting for the event in the workflow itself, as
 a pre-processing phase.
 
