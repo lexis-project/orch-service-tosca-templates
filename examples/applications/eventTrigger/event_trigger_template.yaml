@@ -191,3 +191,10 @@ topology_template:
           target: HEAppEJob
           activities:
             - set_state: executed
+          on_success:
+           - HEAppEJob_delete
+        HEAppEJob_delete:
+          target: HEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
