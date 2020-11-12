@@ -107,7 +107,7 @@ CSAR uploaded!
 and will provide details about the archive uploaded.
 
 Then, upload the archive describing the TOSCA component `WaitForEventJob`,
-which inherits from the generic 'no scheduler job' uploaed above and define a submit operation
+which inherits from the generic 'no scheduler job' uploaded above and define a submit operation
 that will launch our program [../../components/events/scripts/wait_and_get_file_content.sh](../../components/events/scripts/wait_and_get_file_content.sh).
 
 ```bash
