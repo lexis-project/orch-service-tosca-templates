@@ -1,0 +1,85 @@
+- name: Get Job status
+  hosts: all
+  strategy: free
+  tasks:
+    - name: Check that the PID status file exists
+      stat:
+        path: "/proc/{{ TOSCA_JOB_ID }}/status"
+      register: job_pid
+    - name: Init variables
+      set_fact:
+        TOSCA_JOB_STATUS: ""
+        STDERR: ""
+        STDOUT: ""
+    - name: Get elasped time
+      set_fact:
+        elapsedTime: "{{ (ansible_date_time.epoch | int)  - (SUBMIT_DATE_EPOCH | int) }}"
+    - name: Job status is running if wall time is not yet reached
+      set_fact:
+        TOSCA_JOB_STATUS: "RUNNING"
+      when: job_pid.stat.exists and (WALLTIME|int == 0 or elapsedTime|int < WALLTIME|int)
+    - name: Job status is FAILED if wall time is reached
+      set_fact:
+        TOSCA_JOB_STATUS: "FAILED"
+      when: job_pid.stat.exists and WALLTIME|int > 0 and elapsedTime|int >= WALLTIME|int and FAIL_AFTER_WALLTIME|bool
+    - name: Job status is COMPLETED if wall time is reached
+      set_fact:
+        TOSCA_JOB_STATUS: "COMPLETED"
+      when: job_pid.stat.exists and WALLTIME|int > 0 and elapsedTime|int >= WALLTIME|int and not FAIL_AFTER_WALLTIME|bool 
+
+    - meta: end_play
+      when: TOSCA_JOB_STATUS == "RUNNING"
+
+    - name: End process if wall time exceeded
+      command: "/bin/kill -TERM {{ TOSCA_JOB_ID }}"
+      when: TOSCA_JOB_STATUS != ""
+    - name: Waiting until running process is killed
+      wait_for:
+        path: "/proc/{{ TOSCA_JOB_ID }}/status"
+        state: absent
+      when: TOSCA_JOB_STATUS != ""
+
+    # Return now as the wall time is exceeded
+    - meta: end_play
+      when: TOSCA_JOB_STATUS != ""
+
+    # Job finished
+    - name: Job is done, check if there were errors
+      stat: 
+        path: "{{ STDERR_FILE_PATH }}"
+      register: stderr_file
+      when: STDERR_FILE_PATH != ""
+    - name: Get stderr content
+      slurp:
+        src: "{{ STDERR_FILE_PATH }}"
+      register: stderr_slurp
+      when: STDERR_FILE_PATH != "" and stderr_file.stat.exists
+    - name: Set stderr output
+      set_fact:
+        STDERR: "{{ stderr_slurp['content'] | b64decode }}"
+      when: STDERR_FILE_PATH != "" and stderr_file.stat.exists
+
+    - name: Get outputs
+      stat: 
+        path: "{{ STDOUT_FILE_PATH }}"
+      register: stdout_file
+      when: STDOUT_FILE_PATH != ""
+    - name: Get stdout content
+      slurp:
+        src: "{{ STDOUT_FILE_PATH }}"
+      register: stdout_slurp
+      when: STDOUT_FILE_PATH != "" and stdout_file.stat.exists
+    - name: Set stdout output
+      set_fact:
+        STDOUT: "{{ stdout_slurp['content'] | b64decode }}"
+      when: STDOUT_FILE_PATH != "" and stdout_file.stat.exists
+
+    - name: Job status is FAILED if there are errors
+      set_fact:
+        TOSCA_JOB_STATUS: "FAILED"
+      when: STDERR != ""
+
+    - name: Job status is COMPLETED if there are no error
+      set_fact:
+        TOSCA_JOB_STATUS: "COMPLETED"
+      when: STDERR == ""

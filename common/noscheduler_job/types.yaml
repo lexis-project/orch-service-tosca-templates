@@ -1,0 +1,58 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: org.lexis.common.noscheduler.job
+  template_version: 0.1.0
+  template_author: lexis
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - yorc-types:1.1.0
+node_types:
+  org.lexis.noscheduler.Job:
+    derived_from: tosca.nodes.SoftwareComponent
+    abstract: true
+    properties:
+      walltime_seconds:
+        type: integer
+        description: Maximum duration in seconds of the job execution (0 means no timeout)
+        default: 0
+        required: false
+      fail_after_walltime:
+        type: boolean
+        description: Should this job end on failure if not finished after wall time (else ends on success)
+        default: true
+        required: false 
+      stdout_file_path:
+        type: string
+        description: Path to the stdout file produced by the job
+        required: false
+      stderr_file_path:
+        type: string
+        description: Path to the stderr file produced by the job
+        required: false
+    attributes:
+      stdout: { get_operation_output: [SELF, tosca.interfaces.node.lifecycle.Runnable, run, STDOUT] }
+      stderr: { get_operation_output: [SELF, tosca.interfaces.node.lifecycle.Runnable, run, STDERR] }
+      submit_date_epoch: { get_operation_output: [SELF, tosca.interfaces.node.lifecycle.Runnable, submit, SUBMIT_DATE_EPOCH] }
+    interfaces:
+      tosca.interfaces.node.lifecycle.Runnable:
+        # Children inheriting from this component must implement a submit operation
+        # that needs to provide these values:
+        # - TOSCA_JOB_ID, providing the PID of the command launched
+        # - SUBMIT_DATE_EPOCH, providing the epoch time of the submission
+        # submit:
+        #   inputs:
+        #     STDOUT_FILE: {get_property: [SELF, stdout_file_path] }
+        #     STDERR_FILE: {get_property: [SELF, stderr_file_path] }
+        #   implementation: playbooks/submit_job.yaml
+        run:
+          inputs:
+            SUBMIT_DATE_EPOCH: {get_attribute: [SELF, submit_date_epoch] }
+            WALLTIME: {get_property: [SELF, walltime_seconds] }
+            FAIL_AFTER_WALLTIME: {get_property: [SELF, fail_after_walltime] }
+            STDOUT_FILE_PATH: {get_attribute: [SELF, stdout_file_path] }
+            STDERR_FILE_PATH: {get_attribute: [SELF, stderr_file_path] }
+          implementation: playbooks/get_job_status.yaml
+        cancel:
+          implementation: playbooks/cancel_job.yaml

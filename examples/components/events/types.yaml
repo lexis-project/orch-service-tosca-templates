@@ -1,0 +1,38 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: org.lexis.examples.events
+  template_version: 0.1.0
+  template_author: lexis
+  
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20 
+  - org.lexis.common.noscheduler.job:0.1.0
+  - yorc-types:1.1.0
+node_types:
+  org.lexis.examples.events.WaitForEventJob:
+    derived_from: org.lexis.noscheduler.Job
+    description: >
+      Waits for a file at a given URL to be non empty
+      and returns its content in the attribute stdout declared in parent type org.lexis.noscheduler.Job
+    properties:
+      file_url:
+        description: URL of the file 
+        type: string
+        required: true
+    interfaces:
+      tosca.interfaces.node.lifecycle.Runnable:
+        # This component child of org.lexis.noscheduler.Job must implement a 
+        # submit operation that needs to provide these values:
+        # - TOSCA_JOB_ID, providing the PID of the command launched
+        # - SUBMIT_DATE_EPOCH, providing the epoch time of the submission
+        submit:
+          inputs:
+            FILE_URL: {get_property: [SELF, file_url] }
+            STDOUT_FILE: {get_property: [SELF, stdout_file_path] }
+            STDERR_FILE: {get_property: [SELF, stderr_file_path] }
+          implementation: scripts/submit_job.sh
+    artifacts:
+      - script_to_execute:
+          type: tosca.artifacts.File
+          file: scripts/wait_and_get_file_content.sh
