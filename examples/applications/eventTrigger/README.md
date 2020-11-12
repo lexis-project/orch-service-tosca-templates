@@ -219,7 +219,7 @@ Steps completed appear in green, steps currently running appear in blue:
 
 ![A4C workflow](images/a4c_workflow.png)
 
-If you update the file at the URL to add some content to it, after a few seconds,
+If you update the file at the URL provided in input, to add some content to it, after a few seconds,
 the job should appear as done, and the workflow will continue.
 In our implementation, the workflow will in parallel delete the cloud compute instance,
 and submit/monitor a HEAppE job on a HPC cluster.
