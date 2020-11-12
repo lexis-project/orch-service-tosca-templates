@@ -131,7 +131,6 @@ topology_template:
             - WaitForEventJob_submit
         WaitForEventJob_submit:
           target: WaitForEventJob
-          operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
@@ -144,7 +143,6 @@ topology_template:
             - WaitForEventJob_run
         WaitForEventJob_run:
           target: WaitForEventJob
-          operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
           on_success:
