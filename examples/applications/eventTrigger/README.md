@@ -217,7 +217,7 @@ Logs appear on the CLI every n seconds; and show the job is still in state `RUNN
 On the Alien4Cloud UI, the workflow appears this way.
 Steps completed appear in green, steps currently running appear in blue:
 
-![A4C workflow](images/runworkflow.png)
+![A4C workflow](images/a4c_workflow.png)
 
 If you update the file at the URL to add some content to it, after a few seconds,
 the job should appear as done, and the workflow will continue.
