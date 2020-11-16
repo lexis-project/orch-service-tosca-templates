@@ -508,6 +508,30 @@ node_types:
             user_name: {get_attribute: [REQ_TARGET, file_provider, user]}
             destination_directory: {get_property: [SELF, destination_directory]}
           implementation: playbooks/copy_from_staging_area.yaml
+  org.lexis.datatransfer.nodes.CopyFilesFromProvider:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+       Copy files provided by a files provider
+    properties:
+      destination_directory:
+        description: destination directory (will be created if it does not exist)
+        type: string
+        required: true
+    requirements:
+      - files_provider:
+          capability: org.lexis.datatransfer.capabilities.FilesProvider
+          relationship: org.lexis.datatransfer.relationships.FilesProvider
+          occurrences: [1, 1]
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            source_paths: {get_attribute: [REQ_TARGET, files_provider, paths]}
+            user_name: {get_attribute: [REQ_TARGET, files_provider, user]}
+            destination_directory: {get_property: [SELF, destination_directory]}
+          implementation: playbooks/copy_files_from_provider.yaml
 capability_types:
   org.lexis.datatransfer.capabilities.MountedStagingAreaAccess:
     derived_from: tosca.capabilities.Root

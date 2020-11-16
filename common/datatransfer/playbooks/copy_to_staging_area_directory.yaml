@@ -14,10 +14,13 @@
         state: directory
         recurse: yes
         mode: 0744
+    - name: "Get source files to copy"
+      set_fact:
+        patterns: "{{ source_files_patterns | from_json }}"
     - name: "Copying source directory {{ source_directory }} content to staging area"
       command: "/bin/cp -R {{ source_directory }}/. {{ DIRECTORY_ABSOLUTE_PATH }}"
-      when: source_files_patterns | length == 0
+      when: patterns | length == 0
     - name: "Copying source files to staging area"
-      command: "/bin/cp {{ source_directory }}/{{ item }} {{ DIRECTORY_ABSOLUTE_PATH }}"
-      with_items: "{{ source_files_patterns }}"
-      when: source_files_patterns | length > 0
+      shell: "/bin/cp {{ source_directory }}/{{ item }} {{ DIRECTORY_ABSOLUTE_PATH }}"
+      with_items: "{{ patterns }}"
+      when: patterns | length > 0
