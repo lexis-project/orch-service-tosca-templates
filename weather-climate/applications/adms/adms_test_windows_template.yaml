@@ -15,57 +15,12 @@ imports:
 
 topology_template:
   inputs:
-    aai_lexis_user_uuid:
-      type: string
-      description: Subject ID of the Lexis User from Keycloak.
-      required: true 
-    aai_broker_token:
-      type: string
-      description: Application token for auth_microservice to generate a token
+    metadata:
+      description: Compute Instance metadata
+      type: map
+      entry_schema:
+        type: string
       required: true
-    postprocessing_adms_type:
-      type: string
-      description: type of ADMS simulation executed, urban or industrial
-      required: true
-    postprocessing_dataset_title_adms_result:
-      type: string
-      description: Which will be the title of the dataset containing ADMS results
-      required: true
-    postprocessing_dataset_title_ncl_result:
-      type: string
-      description: Title of the dataset containing NCL results
-      default: "ADMS Workflow result - 2020102700"
-      required: false
-    postprocessing_dataset_id_adms_urban_app:
-      type: string
-      description: Dataset which contains the ADMSUrban.exe and corresponding files. The DDI dataset has to contain single file called adms_urban.zip
-      default: "f284db6c-2588-11eb-bbae-0050568fcecc"
-      required: false
-    postprocessing_dataset_id_adms_urban_static_data:
-      type: string
-      description: Dataset which contains the static data for ADMSUrban
-      default: "f1275722-25b5-11eb-bbae-0050568fcecc"
-      required: false
-    postprocessing_dataset_id_adms_industrial_app:
-      type: string
-      description: Dataset which contains the ADMSIndustrial.exe and corresponding files. The DDI dataset has to contain single file called adms_industrial.zip
-      default: "317feadc-25ac-11eb-bbae-0050568fcecc"
-      required: false
-    postprocessing_dataset_id_adms_industrial_static_data:
-      type: string
-      description: Dataset which contains the static data for ADMSIndustrial
-      default: "b6e09a96-25ac-11eb-bbae-0050568fcecc"
-      required: false
-    tmp_aai_broker_endpoint:
-      type: string
-      description: Temporary input for tests - REST Ednpoint of the auth_microservice
-      default: https://irods-api.msad.it4i.lexis.tech/auth/token
-      required: false
-    tmp_ddi_endpoint:
-      type: string
-      description: Temporary input for tests - REST Endpoint of the DDI
-      default: https://lexis-ddi.srv.lrz.de
-      required: false
   node_templates:
     PublicNet:
       type: tosca.nodes.Network
@@ -76,7 +31,7 @@ topology_template:
       properties:
         boot_volume:
           source: image
-        metadata: {concat: ["{\"adms_urban_app_dataset\": \"", get_input: postprocessing_dataset_id_adms_urban_app, "\", \"adms_urban_static_dataset\": \"", get_input: postprocessing_dataset_id_adms_urban_static_data, "\", \"adms_industrial_app_dataset\": \"", get_input: postprocessing_dataset_id_adms_industrial_app, "\", \"adms_industrial_static_dataset\": \"", get_input: postprocessing_dataset_id_adms_industrial_static_data, "\", \"adms_type\": \"", get_input: postprocessing_adms_type, "\", \"adms_result_dataset_name\": \"", get_input: postprocessing_dataset_title_adms_result, "\", \"meteo_dataset_name\": \"", get_input: postprocessing_dataset_title_ncl_result, "\", \"ddi_endpoint\": \"", get_input: tmp_ddi_endpoint, "\", \"aai_lexis_user_uuid\": \"", get_input: aai_lexis_user_uuid, "\", \"aai_broker_token\": \"", get_input: aai_broker_token, "\", \"aai_broker_endpoint\": \"", get_input: tmp_aai_broker_endpoint, "\"}"]}
+        metadata: { get_input: metadata }
       requirements:
         - networkNetworkConnection:
             type_requirement: network
