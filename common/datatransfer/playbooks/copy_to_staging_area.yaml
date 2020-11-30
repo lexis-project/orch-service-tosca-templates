@@ -5,17 +5,20 @@
   become_user: "{{ user_name }}"
   become_method: sudo
   tasks:
+    - name: Check if the directory must be timestamped
+      set_fact:
+        add_timestamp: "{{ create_timestamp_destination_subdirectory | bool }}"
     - name: Get staging area destination directory
       set_fact:
         STAGING_AREA_DIRECTORY: "{{ destination_directory }}"
-      when: not create_timestamp_destination_subdirectory
+      when: not add_timestamp
     - name: Compute staging area destination directory 
       set_fact:
         STAGING_AREA_DIRECTORY: "{{ destination_directory }}/{{ '%Y-%m-%d-%H:%M:%S' | strftime(ansible_date_time.epoch) }}"
-      when: create_timestamp_destination_subdirectory
+      when: add_timestamp
     - name: Compute destination directory absolute path
       set_fact:
-        DIRECTORY_ABSOLUTE_PATH: "{{ mount_point }}/{{ STAGING_AREA_DIRECTORY }}"
+        DIRECTORY_ABSOLUTE_PATH: "{{ directory_absolute_path }}/{{ STAGING_AREA_DIRECTORY }}"
     - name: "Create destination directory {{ STAGING_AREA_DIRECTORY }}"
       file:
         path: "{{ DIRECTORY_ABSOLUTE_PATH }}"

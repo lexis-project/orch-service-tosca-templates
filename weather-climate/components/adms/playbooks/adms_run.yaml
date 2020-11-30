@@ -1,0 +1,15 @@
+- name: ADMS run
+  hosts: all
+  strategy: free
+  tasks:
+    - name: Create ADMS script
+      template:
+        src: adms_runner.ps1.j2
+        dest: "{{ansible_env.HOME}}\\adms_runner.ps1"
+        mode: "u=rwx,g=rwx,o=r"
+    - name: Run script
+      raw: "{{ansible_env.HOME}}\\adms_runner.ps1"
+      register: result
+    - name: Get the ID of the result dataset
+      set_fact:
+        DATASET_ID_RESULT: "{{ result.stdout | regex_search('Result dataset ID: (.+)', '\\1') | first | trim}}"

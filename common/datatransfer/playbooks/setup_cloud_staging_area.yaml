@@ -4,9 +4,9 @@
   become: true
   become_method: sudo
   tasks:
-    - name: "Create mount point {{ mount_point }}"
+    - name: "Create mount point {{ directory_absolute_path }}"
       file:
-        path: "{{ mount_point }}"
+        path: "{{ directory_absolute_path }}"
         state: directory
         recurse: yes
         mode: 0777
@@ -16,7 +16,7 @@
         opts: "{{ mount_options }}"
         state: mounted
         src: "{{ remote_file_system }}"
-        path: "{{ mount_point }}"
+        path: "{{ directory_absolute_path }}"
     - name: "Create group {{ group_name }}"
       group:
         name: "{{ group_name }}"

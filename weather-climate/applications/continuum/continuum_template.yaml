@@ -1,7 +1,7 @@
 tosca_definitions_version: alien_dsl_2_0_0
 
 metadata:
-  template_name: Continuum
+  template_name: ContinuumTemplate
   template_version: 0.1.0-SNAPSHOT
   template_author: lexis
 
@@ -79,7 +79,7 @@ topology_template:
       description: |
         List of volumes to mount within the Hyde post-processing container.
         Use docker CLI-style syntax: /host:/container[:mode]
-      default: ["/continuum/datasets_hyde/static_data/land/marche:/home/fp/fp_mount/datasets_hyde/static", "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw", "/continuum/datasets_hyde/docker_data:/home/fp/fp_mount/datasets_hyde/dynamic_processed"]
+      default: ["/continuum/datasets_hyde/static_data/marche:/home/fp/fp_mount/datasets_hyde/static", "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw", "/continuum/datasets_hyde/docker_data:/home/fp/fp_mount/datasets_hyde/dynamic_processed"]
     postprocessing_hmc_image:
       type: string
       description: HMC post-processing container repository path
@@ -96,11 +96,11 @@ topology_template:
       description: |
         List of volumes to mount within the HMC post-processing container.
         Use docker CLI-style syntax: /host:/container[:mode]
-      default: ["/continuum/datasets_hmc/static_data/land:/home/fp/fp_mount/datasets_hmc/static_land", "/continuum/datasets_hmc/static_data/point:/home/fp/fp_mount/datasets_hmc/static_point", "/continuum/datasets_hmc/dynamic_data:/home/fp/fp_mount/datasets_hmc/dynamic_source", "/continuum/datasets_hmc/docker_data/:/home/fp/fp_mount/datasets_hmc/dynamic_archive"]
+      default: ["/continuum/datasets_hmc/static_data/gridded/marche:/home/fp/fp_mount/datasets_hmc/static/gridded","/continuum/datasets_hmc/static_data/point/marche:/home/fp/fp_mount/datasets_hmc/static/point","/continuum/datasets_hmc/dynamic_data/restart/marche:/home/fp/fp_mount/datasets_hmc/dynamic_restart","/continuum/datasets_hmc/dynamic_data/source/marche:/home/fp/fp_mount/datasets_hmc/dynamic_source","/continuum/datasets_hmc/dynamic_data/destination/marche/:/home/fp/fp_mount/datasets_hmc/dynamic_destination"]
     postprocessing_ddi_path:
       type: string
       description: "Path where to transfer the post-processing results in DDI"
-      default: "project/wp7"
+      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c"
   node_templates:
     PublicNet:
       type: tosca.nodes.Network
@@ -214,7 +214,7 @@ topology_template:
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     GEOGData:
-      type: org.lexis.nodes.GEOGData
+      type: org.lexis.nodes.DownloadGEOGData
       properties:
         output_directory: "/wps_data/geog"
       requirements:
@@ -230,7 +230,7 @@ topology_template:
       properties:
         JobSpecification:
           Name: WRFJob
-          Project: "DD-19-14"
+          Project: "OPEN-20-47"
           ClusterId: 2
           Tasks:
             - Name: WRFTask
@@ -311,8 +311,8 @@ topology_template:
       properties:
         url: https://code.it4i.cz/gan0035/artifacts/-/raw/master
         # Dataset created from git LFS (Large File Storage) at:
-        # https://github.com/cima-lexis/fp-docker/tree/master/docker_testcase/datasets_hyde/static_data
-        dataset: continuum_hyde_static_data_1.0.3.zip
+        # https://github.com/cima-lexis/fp-docker/tree/master/docker_testcase/datasets_hyde/static_data/gridded
+        dataset: continuum_hyde_static_data_1.0.4.zip
         destination: { concat: [get_input: postprocessing_hyde_inputs_directory, "/static_data"] }
       requirements:
         - hostedOnVirtualMachineHost:
@@ -325,8 +325,8 @@ topology_template:
       properties:
         url: https://code.it4i.cz/gan0035/artifacts/-/raw/master
         # Dataset created from git LFS (Large File Storage) at:
-        # https://github.com/cima-lexis/fp-docker/tree/master/docker_testcase/datasets_hyde/static_data
-        dataset: continuum_hmc_static_data_1.0.3.zip
+        # https://github.com/cima-lexis/fp-docker/tree/master/docker_testcase/datasets_hmc/static_data
+        dataset: continuum_hmc_static_data_1.0.4.zip
         destination: { concat: [get_input: postprocessing_hmc_inputs_directory, "/static_data"] }
       requirements:
         - hostedOnVirtualMachineHost:
@@ -337,8 +337,8 @@ topology_template:
     Move_Hyde_Results:
       type: org.lexis.datatransfer.nodes.MoveFile
       properties:
-        source_file: { concat: [get_input: postprocessing_hyde_inputs_directory, "/docker_data/wrf_*.nc.gz"] }
-        destination_file: { concat: [get_input: postprocessing_hmc_inputs_directory, "/dynamic_data"] }
+        source_file: { concat: [get_input: postprocessing_hyde_inputs_directory, "/docker_data/*.nc.gz"] }
+        destination: { concat: [get_input: postprocessing_hmc_inputs_directory, "/dynamic_data/source/marche"] }
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -373,7 +373,7 @@ topology_template:
         cpu_share: 1.0
         workdir: "/home/fp/fp_entrypoint/"
         volumes: {get_input: postprocessing_hyde_volumes}
-        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"10\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hyde_wrf\",\"RUN_DOMAIN\": \"marche\",\"RUN_ENS\": \"false\"}"]}
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"36\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hyde_run\",\"RUN_DOMAIN\": \"marche\",\"RUN_ENS\": \"false\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
@@ -398,7 +398,7 @@ topology_template:
         cpu_share: 1.0
         workdir: "/home/fp/fp_entrypoint/"
         volumes: {get_input: postprocessing_hmc_volumes}
-        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hmc.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hmc.json\",\"TARGET_DATA_STATIC_LAND\": \"/home/fp/fp_mount/datasets_hmc/static_land/\",\"TARGET_DATA_STATIC_POINT\": \"/home/fp/fp_mount/datasets_hmc/static_point/\",\"TARGET_DATA_DYNAMIC_RESTART\": \"/home/fp/fp_mount/datasets_hmc/dynamic_restart/\",\"TARGET_DATA_DYNAMIC_SOURCE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_source/\",\"TARGET_DATA_DYNAMIC_ARCHIVE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_archive/\",\"RUN_TIME_STEPS_OBS\": \"10\",\"RUN_TIME_STEPS_FOR\": \"15\",\"RUN_NAME\": \"fp_run\",\"RUN_ENS\": \"false\"}"]}
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hmc.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hmc.json\",\"TARGET_DATA_STATIC_GRIDDED\": \"/home/fp/fp_mount/datasets_hmc/static/gridded/\",\"TARGET_DATA_STATIC_POINT\": \"/home/fp/fp_mount/datasets_hmc/static/point/\",\"TARGET_DATA_DYNAMIC_RESTART\": \"/home/fp/fp_mount/datasets_hmc/dynamic_restart/\",\"TARGET_DATA_DYNAMIC_SOURCE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_source/\",\"TARGET_DATA_DYNAMIC_DESTINATION\": \"/home/fp/fp_mount/datasets_hmc/dynamic_destination/\",\"RUN_TIME_STEPS_OBS\": \"24\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hmc_run\",\"RUN_DOMAIN\": \"marche\",\"RUN_ENS\": \"false\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
@@ -434,7 +434,7 @@ topology_template:
     MountStagingArea:
       type: org.lexis.datatransfer.nodes.MountStagingArea
       properties:
-        mount_point: "/mnt/cloud_staging_area"
+        destination_directory: "/mnt/cloud_staging_area"
         user_name: lexisclouduser
         group_name: lexiscloudgroup
       requirements:
@@ -499,7 +499,7 @@ topology_template:
     StageContinuumResults:
       type: org.lexis.datatransfer.nodes.CopyToStagingAreaDirectory
       properties:
-        source_directory: "/continuum/datasets_hmc/docker_data"
+        source_directory: "/continuum/datasets_hmc/dynamic_data/destination/marche"
         destination_subdirectory: "continuum"
       requirements:
         - staging_area_directory:

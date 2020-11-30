@@ -1,7 +1,7 @@
 tosca_definitions_version: alien_dsl_2_0_0
 
 metadata:
-  template_name: Risico
+  template_name: RisicoTemplate
   template_version: 0.1.0-SNAPSHOT
   template_author: lexis
 
@@ -95,7 +95,7 @@ topology_template:
     postprocessing_ddi_path:
       type: string
       description: "Path where to transfer the post-processing results in DDI"
-      default: "project/wp7"
+      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c"
       required: false
   node_templates:
     PublicNet:
@@ -200,7 +200,7 @@ topology_template:
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     GEOGData:
-      type: org.lexis.nodes.GEOGData
+      type: org.lexis.nodes.DownloadGEOGData
       properties:
         output_directory: "/wps_data/geog"
       requirements:
@@ -216,7 +216,7 @@ topology_template:
       properties:
         JobSpecification:
           Name: WRFJob
-          Project: "DD-19-14"
+          Project: "OPEN-20-47"
           ClusterId: 2
           Tasks:
             - Name: WRFTask
@@ -265,7 +265,7 @@ topology_template:
       properties:
         JobSpecification:
           Name: WRFJob
-          Project: "DD-19-14"
+          Project: "OPEN-20-47"
           ClusterId: 2
           Tasks:
             - Name: WRFTask
@@ -314,7 +314,7 @@ topology_template:
       properties:
         JobSpecification:
           Name: WRFJob
-          Project: "DD-19-14"
+          Project: "OPEN-20-47"
           ClusterId: 2
           Tasks:
             - Name: WRFTask
@@ -533,7 +533,7 @@ topology_template:
     MountStagingArea:
       type: org.lexis.datatransfer.nodes.MountStagingArea
       properties:
-        mount_point: "/mnt/cloud_staging_area"
+        destination_directory: "/mnt/cloud_staging_area"
         user_name: lexisclouduser
         group_name: lexiscloudgroup
       requirements:

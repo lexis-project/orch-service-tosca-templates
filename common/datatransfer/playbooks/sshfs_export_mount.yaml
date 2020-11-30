@@ -1,0 +1,77 @@
+- name: Export sshfs and mount it
+  hosts: all
+  strategy: free
+  become: true
+  become_method: sudo
+  tasks:
+    - name: Create temporary file
+      tempfile:
+        state: file
+        suffix: key
+      register: privatekey
+    - name: Set private key path (operation output)
+      set_fact:
+        PRIVATE_KEY_PATH: "{{ privatekey.path }}"
+    - name: Generate keys
+      openssh_keypair:
+        path: "{{ privatekey.path }}"
+        type: ed25519
+        force: true
+        mode: 0400
+    - name: Get public key file content
+      slurp:
+        src: "{{ privatekey.path }}.pub"
+      register: publickey_slurp
+    - name: Decode public key file content
+      set_fact:
+        public_key: "{{ publickey_slurp['content'] | b64decode }}"
+    - name: TEMPORARY step while DDI API returns an absolute path to staging area
+      set_fact:
+        splitval: "{{ STAGING_AREA_DIRECTORY.split('computeCloud/') }}"
+    - name: Get relative path to staging area directory
+      set_fact:
+        STAGING_AREA_DIRECTORY_PATH: "{{ STAGING_AREA_DIRECTORY }}"
+      when: splitval | length == 1
+    - name: Get relative path to staging area directory
+      set_fact:
+        STAGING_AREA_DIRECTORY_PATH: "{{ splitval[1] }}"
+      when: splitval | length > 1
+    - name: Get root directory as the sshfs export API only allows to share the root dir
+      set_fact:
+        STAGING_AREA_ROOT_DIRECTORY: "{{ STAGING_AREA_DIRECTORY_PATH.split('/') | first}}"
+    - name: Get subdir from this root dir
+      set_fact:
+        STAGING_AREA_SUB_DIRECTORY: "{{ STAGING_AREA_DIRECTORY_PATH.split('/') | reject('search','0') | list  | join('/')}}"
+    - name: "Request sshfs export"
+      uri:
+        url: "{{URL}}"
+        method: POST
+        return_content: yes
+        validate_certs: no
+        headers:
+          Authorization: "Bearer {{ TOKEN }}"
+        body:
+          host: "{{ IP_ADDRESS }}"
+          pubkey: "{{ public_key }}"
+          path: "{{ STAGING_AREA_ROOT_DIRECTORY }}"
+        body_format: json
+        status_code: 201
+      register: result
+    - name: Get result
+      set_fact:
+        response: "{{ result.json }}"
+    - name: Set user and sshfs user (operation output)
+      set_fact:
+        USER: "root"
+        SSHFS_USER: "{{ response.user }}"
+    - name: Compute the absolute path of staging area directory on mount point (operation output)
+      set_fact:
+        DIRECTORY_PATH: "{{ MOUNT_POINT_DIRECTORY }}/{{ STAGING_AREA_SUB_DIRECTORY }}"
+    - name: Create the mount point directory
+      file:
+        path: "{{ MOUNT_POINT_DIRECTORY }}"
+        state: directory
+        recurse: yes
+        mode: 0744
+    - name: Mount the sshfs file system
+      command: "sshfs  -o StrictHostKeyChecking=no,reconnect,IdentityFile={{ privatekey.path }} {{ response.sshfs }} {{ MOUNT_POINT_DIRECTORY }}"

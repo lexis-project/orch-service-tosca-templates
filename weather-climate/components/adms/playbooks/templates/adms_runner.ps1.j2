@@ -1,0 +1,199 @@
+#ps1
+# ADMS Launcher script
+# Executes ADMS simulation
+#
+# Template values:
+#
+# ADMS_TYPE:                      Type of ADMS simulation executed, urban or industrial
+# TOKEN:                          Access token
+# METEO_DATASET_NAME:             Title of the dataset containing NCL results
+# ADMS_RESULT_DATASET_NAME:       Which will be the title of the dataset containing ADMS results
+# ADMS_URBAN_APP_DATASET:         ID of the dataset containing the ADMSUrban.exe and corresponding files.
+#                                 The DDI dataset has to contain single file called adms_urban.zip
+# ADMS_URBAN_STATIC_DATASET:      ID of the dataset containing the static data for ADMSUrban
+# ADMS_INDUSTRIAL_APP_DATASET:    ID of the dataset containing the ADMSIndustrial.exe and corresponding files.
+#                                 The DDI dataset has to contain single file called adms_industrial.zip
+# ADMS_INDUSTRIAL_STATIC_DATASET: ID of the dataset containing the static data for ADMSIndustrial
+# DDI_ENDPOINT:                   REST Endpoint of the DDI
+
+
+#industrial
+# ADMSModel.exe /E2 190513.apl
+
+# Main: apl
+# Static: aai, asp
+# Dynamic: met, var
+
+#urban
+# ADMSUrbanModel.exe /E2 J+0_Zone1.UPL
+
+# Main: upl
+# Static: fac, asp, bgd, csv, uai
+# Dynamic: bgd, met,
+
+####
+# FUNCTIONS
+####
+
+# Call DDI and pull the dataset to dataset.zip in current directory
+function PullDatasetDDI( $dataset, $token ,$ddi_endpoint)
+{
+
+$header_auth = @{Authorization="Bearer $token"}
+$body = @{push_method="directupload";internalID="$dataset";access="project";project="wp7"} | ConvertTo-Json
+
+try
+{
+$response = Invoke-RestMethod -ContentType "application/json" -Method Post -Uri "$ddi_endpoint/demo/dataset/download" -Headers $header_auth -Body $body -OutFile "dataset_$dataset.zip"
+}
+catch [System.Net.WebException]
+{
+"Unable to download dataset:  $_"
+exit
+}
+
+Expand-Archive  "dataset_$dataset.zip"
+"C:\adms\dataset_$dataset\$dataset"
+}
+
+# Find dataset ID by supplied name
+function FindDatasetByName( $name, $token, $ddi_endpoint)
+{
+$header_auth = @{Authorization="Bearer $token"}
+$body = @{title="$name"} | ConvertTo-Json
+
+try
+{
+$response = Invoke-RestMethod -ContentType "application/json" -Method Post -Uri "$ddi_endpoint/demo/dataset/search/metadata" -Headers $header_auth -Body $body
+}
+catch [System.Net.WebException]
+{
+"Unable to find dataset:  $_"
+exit
+}
+
+if ($response.Length > 1)
+{
+    echo "Found more than one dataset, using $response[0].location.internalID"
+}
+
+$response[0].location.internalID
+}
+
+# Expand zips found in path and return directory with the contents
+function ExpandZipsInPlace($path)
+{
+Get-ChildItem -Filter "*.zip" $path | ForEach-Object { Expand-Archive "$path/$_" $path }
+Get-ChildItem -Directory $path
+
+}
+
+# Upload results to the DDI
+function UploadResults($file, $name, $token, $ddi_endpoint)
+{
+# Encode file
+$header_auth = @{Authorization="Bearer $token"}
+$file_enc = [Convert]::ToBase64String((Get-Content -Path $file -Encoding Byte))
+
+# Create JSON body
+$meta = @{contributor=@("ADMS Workflow");creator=@("ADMS Workflow");owner=@("ADMS Workflow");publicationYear="2020";publisher=@("ADMS Workflow");resourceType="Workflow result";title="$name"}
+$body = @{push_method="directupload";name="adms_run_result.zip";access="project";project="wp7";metadata=$meta;file="$file_enc"} | ConvertTo-Json
+
+# Upload
+try
+{
+    $response = Invoke-RestMethod -ContentType "application/json" -Method Post -Uri "$ddi_endpoint/demo/dataset" -Headers $header_auth -Body $body
+}
+catch [System.Net.WebException]
+{
+    "Unable to upload dataset:  $_"
+    exit
+}
+$response
+$ddiID = ($response | where { $_.status -eq "201" }).internalID
+echo "Result dataset ID: $ddiID"
+}
+
+####
+# PARAMETERS
+####
+
+# Set vars based on the ADMS type
+echo "ADMS Type: {{ADMS_TYPE}}"
+
+{% if ADMS_TYPE == "urban" %}
+$app_dataset = "{{ADMS_URBAN_APP_DATASET}}"
+$app_bin = "ADMSUrbanModel.exe"
+$app_static_dataset = "{{ADMS_URBAN_STATIC_DATASET}}"
+$app_suffix = "*.upl"
+{% elif ADMS_TYPE == "industrial" %}
+$app_dataset = "{{ADMS_INDUSTRIAL_APP_DATASET}}"
+$app_bin = "ADMSModel.exe"
+$app_static_dataset = "{{ADMS_INDUSTRIAL_STATIC_DATASET}}"
+$app_suffix = "*.apl"
+{% else %}
+echo "Unknown ADMS type, check adms_type value";
+{% endif %}
+
+####
+# Main script
+####
+
+# Create dir for all data
+echo "Creating C:\adms"
+New-Item -Path C:\adms -ItemType "directory"
+Set-Location C:\adms
+
+#Download app
+echo "Pulling ADMS app dataset"
+$app_dataset_path = PullDatasetDDI $app_dataset {{TOKEN}} {{DDI_ENDPOINT}}
+$app_path = $(ExpandZipsInPlace $app_dataset_path)[0].FullName
+
+echo "Copying licence files"
+Copy-Item "$app_path\cc-a2" C:\Windows
+Copy-Item "$app_path\systme" C:\Windows
+
+
+# Download the static dataset
+echo "Pulling static dataset"
+$static_dataset = PullDatasetDDI $app_static_dataset "{{TOKEN}}" "{{DDI_ENDPOINT}}"
+$static_data_path = $(ExpandZipsInPlace $static_dataset)[0].FullName
+
+
+# Download the meteo data
+echo "Looking for dataset by name: {{METEO_DATASET_NAME}}"
+$meteo_dataset_id = FindDatasetByName "{{METEO_DATASET_NAME}}" "{{TOKEN}}" "{{DDI_ENDPOINT}}"
+echo "Pulling meteo data set: $meteo_dataset_id"
+$meteo_data_path = PullDatasetDDI $meteo_dataset_id "{{TOKEN}}" "{{DDI_ENDPOINT}}"
+$met_files = Get-ChildItem -Filter "*.met" $meteo_data_path\met
+
+if ($met_files.Length -eq 0)
+{
+echo "No MET files found in: $meteo_data_path"
+}
+
+echo "Found " $met_files.Length " MET files"
+
+# Copy *.met files to the static dataset dir
+echo "Copying .met files to static data dir"
+$met_files | Foreach-Object {Copy-Item -Force -Path $_.FullName -Destination $static_data_path}
+
+# Run ADMS for each project file based on suffix
+echo "Running ADMS"
+Set-Location $static_data_path
+Get-ChildItem $static_data_path -Filter $app_suffix |
+Foreach-Object {
+echo "Running ADMS for:" $_.BaseName
+Start-Process -Wait -FilePath "$app_path/$app_bin" -ArgumentList "/E2",$_.FullName
+}
+
+# Compress the results
+Compress-Archive -Path $static_data_path -DestinationPath C:\adms\results.zip
+
+# Upload them
+UploadResults C:\adms\results.zip "{{ADMS_RESULT_DATASET_NAME}}" "{{TOKEN}}" "{{DDI_ENDPOINT}}"
+
+# Cleanup
+#Set-Location C:\
+#Remove-Item -Force -Recurse C:\adms
+
