@@ -110,6 +110,10 @@ node_types:
         description: Directory where to copy files
         type: string
         required: true
+      as_user:
+        description: Name of user to use to copy files in destination directory
+        type: string
+        required: false
     requirements:
       - job:
           capability: org.heappe.capabilities.HeappeJob
@@ -130,6 +134,7 @@ node_types:
             tasks_name_id: {get_attribute: [REQ_TARGET, job, tasks_name_id]}
             task_name: {get_property: [SELF, task_name]}
             destination_directory: {get_property: [SELF, destination_directory]}
+            as_user: {get_property: [SELF, as_user]}
           implementation: playbooks/copyfromjobtask.yaml
         delete:
           implementation: playbooks/noop.yaml
@@ -148,6 +153,10 @@ node_types:
         description: Destination file or directory
         type: string
         required: true
+      as_user:
+        description: Name of user to use to move files in destination directory
+        type: string
+        required: false
     interfaces:
       Standard:
         create:
@@ -156,6 +165,7 @@ node_types:
           inputs:
             source_file: {get_property: [SELF, source_file]}
             destination: {get_property: [SELF, destination]}
+            as_user: {get_property: [SELF, as_user]}
           implementation: playbooks/movefile.yaml
         delete:
           implementation: playbooks/noop.yaml
@@ -224,7 +234,7 @@ node_types:
   org.lexis.datatransfer.nodes.FindFilesInStagingAreaDirectory:
     derived_from: tosca.nodes.SoftwareComponent
     description: >
-      Find all files based on given patterns in a staging area directory
+      Find all files or directories based on given patterns in a staging area directory
     properties:
       patterns:
         type: list
@@ -417,7 +427,7 @@ node_types:
   org.lexis.datatransfer.nodes.CopyToStagingAreaDirectory:
     derived_from: tosca.nodes.SoftwareComponent
     description: >
-       Copy a source directory to a staging area directory
+       Copy a source directory content to a staging area directory
     properties:
       source_directory:
         description: Source directory
@@ -449,6 +459,49 @@ node_types:
             destination_directory: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, directory_absolute_path]}
             user_name: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, user_name]}
           implementation: playbooks/copy_to_staging_area_directory.yaml
+  org.lexis.datatransfer.nodes.MoveToStagingAreaDirectory:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+       Move files from a source directory to a staging area directory
+    properties:
+      source_directory:
+        description: Source directory
+        type: string
+        required: true
+      source_files_patterns:
+        type: list
+        entry_schema:
+          type: string
+        description: |
+          List of file patterns to copy from source directory
+        required: false
+        default: []
+      destination_subdirectory:
+        description: Subdirectory in staging area where to store the source directory content
+        type: string
+        required: false
+    attributes:
+      directory_absolute_path: {get_operation_output: [SELF, Standard, start, DIRECTORY_ABSOLUTE_PATH]}
+    capabilities:
+      cloud_area_directory_provider:
+        type: org.ddi.capabilities.CloudAreaDirectoryProvider
+    requirements:
+      - cloud_area_directory_provider:
+          capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+          relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+          occurrences: [1, 1]
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            source_directory: {get_property: [SELF, source_directory]}
+            source_files_patterns:  {get_property: [SELF, source_files_patterns]}
+            destination_subdirectory: {get_property: [SELF, destination_subdirectory]}
+            destination_directory: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, directory_absolute_path]}
+            user_name: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, user_name]}
+          implementation: playbooks/move_to_staging_area_directory.yaml
   org.lexis.datatransfer.nodes.CopyToStagingArea:
     derived_from: tosca.nodes.SoftwareComponent
     description: >

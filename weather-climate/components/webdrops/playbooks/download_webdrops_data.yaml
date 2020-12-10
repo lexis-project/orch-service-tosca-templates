@@ -24,5 +24,13 @@
         state: directory
         recurse: yes
         mode: 0777
+    - name: "Moving files to destination directory as default user"
+      shell: "mv  {{ DOWNLOAD_TYPE }}/SENSORS/* {{ DESTINATION_DIRECTORY }}"
+      when: AS_USER == ""
     - name: "Moving files to destination directory"
       shell: "mv  {{ DOWNLOAD_TYPE }}/SENSORS/* {{ DESTINATION_DIRECTORY }}"
+      become_user: "{{ AS_USER }}"
+      become: true
+      become_method: sudo
+      when: AS_USER != ""
+

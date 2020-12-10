@@ -1,4 +1,4 @@
-- name: Export sshfs and mount it
+- name: unmount and unexport sshfs
   hosts: all
   strategy: free
   become: true

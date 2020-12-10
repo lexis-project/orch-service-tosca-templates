@@ -2,5 +2,12 @@
   hosts: all
   strategy: free
   tasks:
-    - name: "Moving file"
+    - name: "Moving file as default user"
       shell: "mv  {{ source_file }} {{ destination }}"
+      when: as_user == ""
+    - name: "Moving file "
+      shell: "mv  {{ source_file }} {{ destination }}"
+      become_user: "{{ as_user }}"
+      become: true
+      become_method: sudo
+      when: as_user != ""

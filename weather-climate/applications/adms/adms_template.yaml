@@ -135,6 +135,14 @@ topology_template:
             node: ADMS_VM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
+    GetDDIAccess:
+      type: org.ddi.nodes.DDIAccess
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: os
+            node: ADMS_VM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.ddi.relationships.SameSite
     CreatePreProcessDirs:
       type: org.lexis.datatransfer.nodes.CreateDirectories
       properties:
@@ -215,8 +223,8 @@ topology_template:
       type: org.lexis.datatransfer.nodes.MountStagingArea
       properties:
         destination_directory: "/mnt/cloud_staging_area"
-        user_name: lexisclouduser
-        group_name: lexiscloudgroup
+        user: lexisclouduser
+        group: lexiscloudgroup
       requirements:
         - mountCloudStagingAreaEnableCloudAcessJobCloud_staging_area_access:
             type_requirement: cloud_staging_area_access
@@ -259,12 +267,29 @@ topology_template:
       properties:
         token: { get_input: token }
         ddi_dataset_path: { get_input: preprocessing_dataset_geographical_data }
+        cloud_staging_area_directory_path: "adms_preprocessing_geog"
+        timestamp_cloud_staging_area_directory: true
+    MountGEOGDataset:
+      type: org.lexis.datatransfer.nodes.SSHMountStagingAreaDataset
+      properties:
+        token: { get_input: token }
+        mount_point_directory: "/mnt/cloud_staging_area/geog"
       requirements:
-        - cloud_area_directory_provider:
-            type_requirement: cloud_area_directory_provider
-            node: CreateStagingAreaADMSPreprocessDir
-            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
-            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+        - ddi_access:
+            type_requirement: ddi_access
+            node: GetDDIAccess
+            capability: org.ddi.capabilities.DDIAccess
+            relationship: org.ddi.relationships.DDIAccessProvider
+        - data_transfer:
+            type_requirement: data_transfer
+            node: DDIToCloudGEOGDatasetJob
+            capability: org.ddi.capabilities.DataTransferCloud
+            relationship: org.ddi.relationships.CloudAreaDatasetProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
     FindGeoDataFiles:
       type: org.lexis.datatransfer.nodes.FindFilesInStagingAreaDirectory
       properties:
@@ -399,23 +424,36 @@ topology_template:
       properties:
         token: { get_input: token }
         ddi_dataset_path: { get_input: postprocessing_dataset_docker_image_path }
-      requirements:
-        - cloud_area_directory_provider:
-            type_requirement: cloud_area_directory_provider
-            node: CreateStagingAreaADMSPostProcDir
-            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
-            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+        cloud_staging_area_directory_path: "adms_postprocessing_image"
+        timestamp_cloud_staging_area_directory: true
     DDIToCloudNCLScriptJob:
       type: org.ddi.nodes.DDIToCloudJob
       properties:
         token: { get_input: token }
         ddi_dataset_path: { get_input: postprocessing_dataset_ncl_script }
+        cloud_staging_area_directory_path: "adms_postprocessing_ncl"
+        timestamp_cloud_staging_area_directory: true
+    MountNCLScriptDataset:
+      type: org.lexis.datatransfer.nodes.SSHMountStagingAreaDataset
+      properties:
+        token: { get_input: token }
+        mount_point_directory: "/mnt/cloud_staging_area/ncl_script"
       requirements:
-        - cloud_area_directory_provider:
-            type_requirement: cloud_area_directory_provider
-            node: CreateStagingAreaADMSPostProcDir
-            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
-            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+        - ddi_access:
+            type_requirement: ddi_access
+            node: GetDDIAccess
+            capability: org.ddi.capabilities.DDIAccess
+            relationship: org.ddi.relationships.DDIAccessProvider
+        - data_transfer:
+            type_requirement: data_transfer
+            node: DDIToCloudNCLScriptJob
+            capability: org.ddi.capabilities.DataTransferCloud
+            relationship: org.ddi.relationships.CloudAreaDatasetProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
     FindArchive:
       type: org.lexis.datatransfer.nodes.FindDockerImageArchiveInStagingAreaDirectory
       properties:
@@ -733,15 +771,15 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - GFSData_download
+            - GFSData_start
             - EnableCloudAcessJob_create
-        GFSData_download:
+        GFSData_start:
           target: GFSData
           activities:
-            - call_operation: custom.download
+            - call_operation: Standard.start
           on_success:
-            - GFSData_done
-        GFSData_done:
+            - GFSData_started
+        GFSData_started:
           target: GFSData
           activities:
             - set_state: started

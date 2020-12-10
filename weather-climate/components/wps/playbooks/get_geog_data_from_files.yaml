@@ -54,6 +54,8 @@
         src: "{{ item }}"
         dest: "{{ OUTPUT_DIRECTORY }}"
         remote_src: yes
+        extra_opts:
+          - --no-same-owner
       when: item is search("geog_high_res_mandatory")
       with_items: "{{ paths }}"
 - name: Get additional data
@@ -68,5 +70,7 @@
         src: "{{ item }}"
         dest: "{{ OUTPUT_DIRECTORY }}/WPS_GEOG"
         remote_src: yes
+        extra_opts:
+          - --no-same-owner
       when: not item is search("geog_high_res_mandatory")
       with_items: "{{ paths }}"

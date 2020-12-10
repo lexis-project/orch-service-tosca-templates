@@ -48,8 +48,7 @@ node_types:
       Standard:
         create:
           implementation: playbooks/noop.yaml
-      custom:
-        download:
+        start:
           inputs:
             START_DATE: {get_property: [SELF, start_date]}
             END_DATE: {get_property: [SELF, end_date]}
@@ -97,8 +96,7 @@ node_types:
       Standard:
         create:
           implementation: playbooks/noop.yaml
-      custom:
-        download:
+        start:
           inputs:
             OUTPUT_DIRECTORY: {get_property: [SELF, output_directory]}
           implementation: playbooks/download_geog.yaml

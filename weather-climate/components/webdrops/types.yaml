@@ -34,6 +34,10 @@ node_types:
         description: webdrops base URL
         default: http://webdrops.cimafoundation.org/app/
         required: false
+      as_user:
+        description: Name of user to use to create files in destination directory
+        type: string
+        required: false
     artifacts:
       - lexisdn:
           type: tosca.artifacts.File
@@ -51,4 +55,5 @@ node_types:
             DESTINATION_DIRECTORY: {get_property: [SELF, destination]}
             AUTH_URL: {get_property: [SELF, auth_url]}
             URL: {get_property: [SELF, url]}
+            AS_USER:  {get_property: [SELF, as_user]}
           implementation: playbooks/download_webdrops_data.yaml

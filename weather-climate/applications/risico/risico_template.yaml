@@ -43,6 +43,11 @@ topology_template:
       description: Pre-processing container repository path
       default: "laurentg/wps.gfs:0.4.2"
       required: false
+    preprocessing_dataset_geographical_data:
+      type: string
+      description: Dataset containing geographical data
+      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/69c0f740-33f0-11eb-8f85-0050568fcecc"
+      required: false
     preprocessing_volumes:
       type: list
       entry_schema:
@@ -50,47 +55,11 @@ topology_template:
       description: |
         List of volumes to mount within the pre-processing container.
         Use docker CLI-style syntax: /host:/container[:mode]
-      default: ["/wps_data/gfs:/input", "/wps_data/output:/output", "/wps_data/geog/WPS_GEOG:/geogrid"]
-      required: false
-#    preprocessing_environment_variables:
-#      type: map
-#      entry_schema:
-#        type: string
-#      description: |
-#        Environment variables for the pre-processing container.
-      # default: {WPS_START_DATE: "2020030112", WPS_END_DATE: "2020030115"}
-#      required: false
-    preprocessing_output_directory:
-      type: string
-      description: Directory where preprocessing results will be stored
-      default: /wps_data/output
-      required: false
+      default: ["/wps_data/gfs:/input", "/wps_data/output:/output", "/mnt/cloud_staging_area/adms/69c0f740-33f0-11eb-8f85-0050568fcecc:/geogrid"]
     postprocessing_image:
       type: string
       description: Post-processing container repository path
       default: "laurentg/risico:0.3.1"
-      required: false
-    postprocessing_input_directory:
-      type: string
-      description: Directory where postprocessing data will be stored
-      default: /risico_data/
-      required: false
-    postprocessing_volumes:
-      type: list
-      entry_schema:
-        type: string
-      description: |
-        List of volumes to mount within the post-processing container.
-        Use docker CLI-style syntax: /host:/container[:mode]
-      default: ["/risico_data/:/home/risico/data"]
-      required: false
-    postprocessing_environment_variables:
-      type: map
-      entry_schema:
-        type: string
-      description: |
-        Environment variables for the pre-processing container.
-      # default: { RISICO_RUN_DATE: "202003010000" }
       required: false
     postprocessing_ddi_path:
       type: string
@@ -125,10 +94,38 @@ topology_template:
             protocol: tcp
             network_name: PRIVATE
             initiator: source
-    Docker:
-      type: org.ystia.docker.ansible.nodes.Docker
+    GetDDIAccess:
+      type: org.ddi.nodes.DDIAccess
       requirements:
-        - hostedOnVirtualMachineHost:
+        - hostedOnComputeHost:
+            type_requirement: os
+            node: RisicoVM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.ddi.relationships.SameSite
+    DDIToCloudGEOGDatasetJob:
+      type: org.ddi.nodes.DDIToCloudJob
+      properties:
+        token: { get_input: token }
+        ddi_dataset_path: { get_input: preprocessing_dataset_geographical_data }
+        cloud_staging_area_directory_path: "risico_preprocessing_geog"
+        timestamp_cloud_staging_area_directory: true
+    MountGEOGDataset:
+      type: org.lexis.datatransfer.nodes.SSHMountStagingAreaDataset
+      properties:
+        token: { get_input: token }
+        mount_point_directory: "/mnt/cloud_staging_area/risico"
+      requirements:
+        - ddi_access:
+            type_requirement: ddi_access
+            node: GetDDIAccess
+            capability: org.ddi.capabilities.DDIAccess
+            relationship: org.ddi.relationships.DDIAccessProvider
+        - data_transfer:
+            type_requirement: data_transfer
+            node: DDIToCloudGEOGDatasetJob
+            capability: org.ddi.capabilities.DataTransferCloud
+            relationship: org.ddi.relationships.CloudAreaDatasetProvider
+        - hostedOnComputeHost:
             type_requirement: host
             node: RisicoVM
             capability: tosca.capabilities.Container
@@ -136,7 +133,15 @@ topology_template:
     CreatePreProcessDirs:
       type: org.lexis.datatransfer.nodes.CreateDirectories
       properties:
-        directories: {get_input: preprocessing_volumes}
+        directories: ["/wps_data/gfs", "/wps_data/output"]
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: RisicoVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    Docker:
+      type: org.ystia.docker.ansible.nodes.Docker
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -146,7 +151,9 @@ topology_template:
     CreatePostProcessDirs:
       type: org.lexis.datatransfer.nodes.CreateDirectories
       properties:
-        directories: {concat: ["[\"", get_input: postprocessing_input_directory, "/wrf\", \"", get_input: postprocessing_input_directory, "/output\"]"]}
+        directories:
+          - "/risico_data/wrf"
+          - "/risico_data/output"
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -167,7 +174,6 @@ topology_template:
         cpu_share: 1.0
         mem_share: "128 MB"
         volumes: {get_input: preprocessing_volumes}
-        # docker_env_vars:  {get_input: preprocessing_environment_variables}
         docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_end_date, "\", \"WPS_MODE\": \"WARMUP\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
@@ -193,16 +199,6 @@ topology_template:
         top_latitude: "64.0"
         bottom_latitude: "24.0"
         output_directory: "/wps_data/gfs"
-      requirements:
-        - hostedOnVirtualMachineHost:
-            type_requirement: host
-            node: RisicoVM
-            capability: tosca.capabilities.Container
-            relationship: tosca.relationships.HostedOn
-    GEOGData:
-      type: org.lexis.nodes.DownloadGEOGData
-      properties:
-        output_directory: "/wps_data/geog"
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -360,7 +356,7 @@ topology_template:
       type: org.lexis.datatransfer.nodes.CopySubDirToJobTask
       properties:
         task_name: WRFTask
-        parent_directory: {get_input: preprocessing_output_directory}
+        parent_directory: /wps_data/output
         subdirectory_index: 2
       requirements:
         - hostedOnVirtualMachineHost:
@@ -377,7 +373,7 @@ topology_template:
       type: org.lexis.datatransfer.nodes.CopySubDirToJobTask
       properties:
         task_name: WRFTask
-        parent_directory: {get_input: preprocessing_output_directory}
+        parent_directory: /wps_data/output
         subdirectory_index: 1
       requirements:
         - hostedOnVirtualMachineHost:
@@ -394,7 +390,7 @@ topology_template:
       type: org.lexis.datatransfer.nodes.CopySubDirToJobTask
       properties:
         task_name: WRFTask
-        parent_directory: {get_input: preprocessing_output_directory}
+        parent_directory: /wps_data/output
         subdirectory_index: 0
       requirements:
         - hostedOnVirtualMachineHost:
@@ -412,7 +408,7 @@ topology_template:
       properties:
         task_name: WRFTask
         source_files_patterns: [ "auxhist*" ]
-        destination_directory:  { concat: [get_input: postprocessing_input_directory, "/wrf/3"] }
+        destination_directory: "/risico_data/wrf/3"
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -429,7 +425,7 @@ topology_template:
       properties:
         task_name: WRFTask
         source_files_patterns: [ "auxhist*" ]
-        destination_directory:  { concat: [get_input: postprocessing_input_directory, "/wrf/2"] }
+        destination_directory: "/risico_data/wrf/2"
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -446,7 +442,7 @@ topology_template:
       properties:
         task_name: WRFTask
         source_files_patterns: [ "auxhist*" ]
-        destination_directory:  { concat: [get_input: postprocessing_input_directory, "/wrf/1"] }
+        destination_directory: "/risico_data/wrf/1"
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -458,22 +454,12 @@ topology_template:
             node: WRF_DAY_1
             capability: org.heappe.capabilities.HeappeJob
             relationship: org.heappe.relationships.GetResultsFromJob
-    DeletePreProcessDirs:
-      type: org.lexis.datatransfer.nodes.DeleteDirectories
-      properties:
-        directories: {get_input: preprocessing_volumes}
-      requirements:
-        - hostedOnVirtualMachineHost:
-            type_requirement: host
-            node: RisicoVM
-            capability: tosca.capabilities.Container
-            relationship: tosca.relationships.HostedOn
     Webdrops:
       type: org.lexis.nodes.Webdrops
       properties:
         start_date: { concat: [get_input: postprocessing_risico_run_date, "00"] }
         download_type: "RISICO"
-        destination: { concat: [get_input: postprocessing_input_directory, "/observations"] }
+        destination: "/risico_data/observations"
         auth_url: "https://testauth.cimafoundation.org/auth/realms/webdrops/protocol/openid-connect/token"
         url: "http://webdrops.cimafoundation.org/app/"
       requirements:
@@ -495,8 +481,7 @@ topology_template:
         restart_policy: no
         cpu_share: 1.0
         mem_share: "128 MB"
-        volumes: {get_input: postprocessing_volumes}
-        # docker_env_vars:  {get_input: postprocessing_environment_variables}
+        volumes: ["/risico_data/:/home/risico/data"]
         docker_env_vars:  {concat: ["{\"RISICO_RUN_DATE\": \"", get_input: postprocessing_risico_run_date, "0000\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
@@ -510,52 +495,14 @@ topology_template:
             min_instances: 1
             max_instances: 1
             default_instances: 1
-    EnableCloudAcessJob:
-      type: org.ddi.nodes.EnableCloudStagingAreaAccessJob
-      properties:
-        token: { get_input: token }
-      requirements:
-        - sameSiteComputeOs:
-            type_requirement: os
-            node: RisicoVM
-            capability: tosca.capabilities.OperatingSystem
-            relationship: org.ddi.relationships.SameSite
-    DisableCloudAcessJob:
-      type: org.ddi.nodes.DisableCloudStagingAreaAccessJob
-      properties:
-        token: { get_input: token }
-      requirements:
-        - sameSiteComputeOs:
-            type_requirement: os
-            node: RisicoVM
-            capability: tosca.capabilities.OperatingSystem
-            relationship: org.ddi.relationships.SameSite
-    MountStagingArea:
-      type: org.lexis.datatransfer.nodes.MountStagingArea
-      properties:
-        destination_directory: "/mnt/cloud_staging_area"
-        user_name: lexisclouduser
-        group_name: lexiscloudgroup
-      requirements:
-        - mountCloudStagingAreaEnableCloudAcessJobCloud_staging_area_access:
-            type_requirement: cloud_staging_area_access
-            node: EnableCloudAcessJob
-            capability: org.ddi.capabilities.CloudStagingAreaAccess
-            relationship: org.lexis.datatransfer.relationships.MountCloudStagingArea
-        - hostedOnComputeHost:
-            type_requirement: host
-            node: RisicoVM
-            capability: tosca.capabilities.Container
-            relationship: tosca.relationships.HostedOn
-    CreateStagingAreaResultDir:
+    CreateStagingAreaWRFResultDir:
       type: org.lexis.datatransfer.nodes.CreateStagingAreaDirectory
       properties:
-        directory: "risico_results"
-        create_timestamp_destination_subdirectory: true
+        directory: "wrf"
       requirements:
         - mountedCloudStagingArea:
             type_requirement: mounted_staging_area
-            node: MountStagingArea
+            node: MountGEOGDataset
             capability: org.lexis.datatransfer.capabilities.MountedStagingAreaAccess
             relationship: org.lexis.datatransfer.relationships.MountedCloudStagingArea
         - hostedOnComputeHost:
@@ -566,14 +513,40 @@ topology_template:
     StageWRFResults:
       type: org.lexis.datatransfer.nodes.CopyToStagingAreaDirectory
       properties:
-        source_directory: { concat: [get_input: postprocessing_input_directory, "/wrf"] }
-        destination_subdirectory: "wrf"
+        source_directory: "/risico_data/wrf"
       requirements:
         - staging_area_directory:
             type_requirement: cloud_area_directory_provider
-            node: CreateStagingAreaResultDir
+            node: CreateStagingAreaWRFResultDir
             capability: org.ddi.capabilities.CloudAreaDirectoryProvider
             relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: RisicoVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    CloudToDDIWRFJob:
+      type: org.ddi.nodes.CloudToDDIJob
+      properties:
+        metadata: {concat: ["{\"creator\": [\"RISICO workflow\"], \"contributor\": [\"RISICO workflow\"], \"publisher\": [\"RISICO workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"RISICO Workflow WRF result - ", get_input: postprocessing_risico_run_date, "\"}"]}
+        token: { get_input: token }
+        ddi_path: { get_input: postprocessing_ddi_path }
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaWRFResultDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+    CreateStagingAreaResultDir:
+      type: org.lexis.datatransfer.nodes.CreateStagingAreaDirectory
+      properties:
+        directory: "risico_results"
+      requirements:
+        - mountedCloudStagingArea:
+            type_requirement: mounted_staging_area
+            node: MountGEOGDataset
+            capability: org.lexis.datatransfer.capabilities.MountedStagingAreaAccess
+            relationship: org.lexis.datatransfer.relationships.MountedCloudStagingArea
         - hostedOnComputeHost:
             type_requirement: host
             node: RisicoVM
@@ -582,8 +555,7 @@ topology_template:
     StageRISICOResults:
       type: org.lexis.datatransfer.nodes.CopyToStagingAreaDirectory
       properties:
-        source_directory: {concat: [get_input: postprocessing_input_directory, "/output"]}
-        destination_subdirectory: "risico"
+        source_directory: "/risico_data/output"
       requirements:
         - staging_area_directory:
             type_requirement: cloud_area_directory_provider
@@ -607,20 +579,24 @@ topology_template:
             node: CreateStagingAreaResultDir
             capability: org.ddi.capabilities.CloudAreaDirectoryProvider
             relationship: org.ddi.relationships.CloudAreaDirectoryProvider
-    DeleteCloudDataJob:
+    DeleteCloudGEOGDataJob:
       type: org.ddi.nodes.DeleteCloudDataJob
       properties:
         token: { get_input: token }
       requirements:
-        - cloud_area_directory_provider:
-            type_requirement: cloud_area_directory_provider
-            node: CreateStagingAreaResultDir
-            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
-            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+        - cloud_area_dataset_provider:
+            type_requirement: cloud_area_dataset_provider
+            node: DDIToCloudGEOGDatasetJob
+            capability: org.ddi.capabilities.DataTransferCloud
+            relationship: org.ddi.relationships.CloudAreaDatasetProvider
   outputs:
     ddi_post_process_results:
       description: DDI path to RISICO post-processing results
       value: { get_attribute: [ CloudToDDIJob, destination_directory_path ] }
+    ddi_wrf_results:
+      description: DDI path to RISICO WRF results
+      value: { get_attribute: [ CloudToDDIWRFJob, destination_directory_path ] }
+
   workflows:
     install:
       steps:
@@ -630,6 +606,12 @@ topology_template:
             - delegate: install
     uninstall:
       steps:
+        Compute_uninstall:
+          target: RisicoVM
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
         Network_uninstall:
           target: PublicNet
           activities:
@@ -641,7 +623,77 @@ topology_template:
           activities:
             - delegate: install
           on_success:
+            - GetDDIAccess_start
             - CreatePreProcessDirs_start
+        GetDDIAccess_start:
+          target: GetDDIAccess
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetDDIAccess_started
+        GetDDIAccess_started:
+          target: GetDDIAccess
+          activities:
+            - set_state: started
+          on_success:
+            - DDIToCloudGEOGDatasetJob_create
+        DDIToCloudGEOGDatasetJob_create:
+          target: DDIToCloudGEOGDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToCloudGEOGDatasetJob_submit
+        DDIToCloudGEOGDatasetJob_submit:
+          target: DDIToCloudGEOGDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToCloudGEOGDatasetJob_submitted
+        DDIToCloudGEOGDatasetJob_submitted:
+          target: DDIToCloudGEOGDatasetJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToCloudGEOGDatasetJob_run
+        DDIToCloudGEOGDatasetJob_run:
+          target: DDIToCloudGEOGDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToCloudGEOGDatasetJob_executed
+        DDIToCloudGEOGDatasetJob_executed:
+          target: DDIToCloudGEOGDatasetJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountGEOGDataset_create
+        MountGEOGDataset_create:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - MountGEOGDataset_created
+        MountGEOGDataset_created:
+          target: MountGEOGDataset
+          activities:
+            - set_state: created
+          on_success:
+            - MountGEOGDataset_start
+        MountGEOGDataset_start:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountGEOGDataset_started
+        MountGEOGDataset_started:
+          target: MountGEOGDataset
+          activities:
+            - set_state: started
+          on_success:
+            - Docker_create
         CreatePreProcessDirs_start:
           target: CreatePreProcessDirs
           activities:
@@ -653,103 +705,19 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - GFSData_download
-            - GEOGData_download
-            - EnableCloudAcessJob_create
-        GFSData_download:
+            - GFSData_start
+        GFSData_start:
           target: GFSData
-          activities:
-            - call_operation: custom.download
-          on_success:
-            - GFSData_done
-        GFSData_done:
-          target: GFSData
-          activities:
-            - set_state: started
-          on_success:
-            - Docker_create
-        GEOGData_download:
-          target: GEOGData
-          activities:
-            - call_operation: custom.download
-          on_success:
-            - GEOGData_done
-        GEOGData_done:
-          target: GEOGData
-          activities:
-            - set_state: started
-          on_success:
-            - Docker_create
-        EnableCloudAcessJob_create:
-          target: EnableCloudAcessJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - EnableCloudAcessJob_submit
-        EnableCloudAcessJob_submit:
-          target: EnableCloudAcessJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - EnableCloudAcessJob_submitted
-        EnableCloudAcessJob_submitted:
-          target: EnableCloudAcessJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - EnableCloudAcessJob_run
-        EnableCloudAcessJob_run:
-          target: EnableCloudAcessJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - EnableCloudAcessJob_executed
-        EnableCloudAcessJob_executed:
-          target: EnableCloudAcessJob
-          activities:
-            - set_state: executed
-          on_success:
-            - MountStagingArea_create
-        MountStagingArea_create:
-          target: MountStagingArea
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - MountStagingArea_created
-        MountStagingArea_created:
-          target: MountStagingArea
-          activities:
-            - set_state: created
-          on_success:
-            - MountStagingArea_start
-        MountStagingArea_start:
-          target: MountStagingArea
           activities:
             - call_operation: Standard.start
           on_success:
-            - MountStagingArea_started
-        MountStagingArea_started:
-          target: MountStagingArea
+            - GFSData_started
+        GFSData_started:
+          target: GFSData
           activities:
             - set_state: started
           on_success:
             - Docker_create
-            - CreateStagingAreaResultDir_start
-        CreateStagingAreaResultDir_start:
-          target: CreateStagingAreaResultDir
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CreateStagingAreaResultDir_started
-        CreateStagingAreaResultDir_started:
-          target: CreateStagingAreaResultDir
-          activities:
-            - set_state: started
-          on_success:
-            - StageWRFResults_start
         Docker_create:
           target: Docker
           activities:
@@ -794,6 +762,17 @@ topology_template:
             - WRF_DAY_1_create
             - WRF_DAY_2_create
             - WRF_DAY_3_create
+            - WPS_GFS_delete
+        WPS_GFS_delete:
+          target: WPS_GFS
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WPS_GFS_deleted
+        WPS_GFS_deleted:
+          target: WPS_GFS
+          activities:
+            - set_state: deleted
         WRF_DAY_1_create:
           target: WRF_DAY_1
           operation_host: ORCHESTRATOR
@@ -897,7 +876,6 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - DeletePreProcessDirs_start
             - CreatePostProcessDirs_start
         WRF_DAY_2_submit:
           target: WRF_DAY_2
@@ -924,7 +902,6 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - DeletePreProcessDirs_start
             - CreatePostProcessDirs_start
         WRF_DAY_3_submit:
           target: WRF_DAY_3
@@ -951,18 +928,7 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - DeletePreProcessDirs_start
             - CreatePostProcessDirs_start
-        DeletePreProcessDirs_start:
-          target: DeletePreProcessDirs
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - DeletePreProcessDirs_started
-        DeletePreProcessDirs_started:
-          target: DeletePreProcessDirs
-          activities:
-            - set_state: started
         CreatePostProcessDirs_start:
           target: CreatePostProcessDirs
           activities:
@@ -1043,7 +1009,42 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - StageRISICOResults_start
+            - CloudToDDIWRFJob_create
+        CloudToDDIWRFJob_create:
+          target: CloudToDDIWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CloudToDDIWRFJob_submit
+        CloudToDDIWRFJob_submit:
+          target: CloudToDDIWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CloudToDDIWRFJob_submitted
+        CloudToDDIWRFJob_submitted:
+          target: CloudToDDIWRFJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CloudToDDIWRFJob_run
+        CloudToDDIWRFJob_run:
+          target: CloudToDDIWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CloudToDDIWRFJob_executed
+        CloudToDDIWRFJob_executed:
+          target: CloudToDDIWRFJob
+          activities:
+            - set_state: executed
+          on_success:
+            - WRF_DAY_1_disable_file_transfer
+            - WRF_DAY_2_disable_file_transfer
+            - WRF_DAY_3_disable_file_transfer
         WRF_DAY_1_disable_file_transfer:
           target: WRF_DAY_1
           operation_host: ORCHESTRATOR
@@ -1160,75 +1161,54 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - DeleteCloudDataJob_create
-        DeleteCloudDataJob_create:
-          target: DeleteCloudDataJob
+            - MountGEOGDataset_stop
+        MountGEOGDataset_stop:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountGEOGDataset_stopped
+        MountGEOGDataset_stopped:
+          target: MountGEOGDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - DeleteCloudGEOGDataJob_create
+        DeleteCloudGEOGDataJob_create:
+          target: DeleteCloudGEOGDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
           on_success:
-            - DeleteCloudDataJob_created
-        DeleteCloudDataJob_created:
-          target: DeleteCloudDataJob
+            - DeleteCloudGEOGDataJob_created
+        DeleteCloudGEOGDataJob_created:
+          target: DeleteCloudGEOGDataJob
           activities:
             - set_state: created
           on_success:
-            - DeleteCloudDataJob_submit
-        DeleteCloudDataJob_submit:
-          target: DeleteCloudDataJob
+            - DeleteCloudGEOGDataJob_submit
+        DeleteCloudGEOGDataJob_submit:
+          target: DeleteCloudGEOGDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
-            - DeleteCloudDataJob_submitted
-        DeleteCloudDataJob_submitted:
-          target: DeleteCloudDataJob
+            - DeleteCloudGEOGDataJob_submitted
+        DeleteCloudGEOGDataJob_submitted:
+          target: DeleteCloudGEOGDataJob
           activities:
             - set_state: submitted
           on_success:
-            - DeleteCloudDataJob_run
-        DeleteCloudDataJob_run:
-          target: DeleteCloudDataJob
+            - DeleteCloudGEOGDataJob_run
+        DeleteCloudGEOGDataJob_run:
+          target: DeleteCloudGEOGDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
           on_success:
-            - DeleteCloudDataJob_executed
-        DeleteCloudDataJob_executed:
-          target: DeleteCloudDataJob
-          activities:
-            - set_state: executed
-          on_success:
-            - DisableCloudAcessJob_create
-        DisableCloudAcessJob_create:
-          target: DisableCloudAcessJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DisableCloudAcessJob_submit
-        DisableCloudAcessJob_submit:
-          target: DisableCloudAcessJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DisableCloudAcessJob_submitted
-        DisableCloudAcessJob_submitted:
-          target: DisableCloudAcessJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DisableCloudAcessJob_run
-        DisableCloudAcessJob_run:
-          target: DisableCloudAcessJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DisableCloudAcessJob_executed
-        DisableCloudAcessJob_executed:
-          target: DisableCloudAcessJob
+            - DeleteCloudGEOGDataJob_executed
+        DeleteCloudGEOGDataJob_executed:
+          target: DeleteCloudGEOGDataJob
           activities:
             - set_state: executed
           on_success:
@@ -1239,74 +1219,53 @@ topology_template:
             - delegate: uninstall
     cleanupRun:
       steps:
-        DeleteCloudDataJob_create:
-          target: DeleteCloudDataJob
+        MountGEOGDataset_stop:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountGEOGDataset_stopped
+        MountGEOGDataset_stopped:
+          target: MountGEOGDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - DeleteCloudGEOGDataJob_create
+        DeleteCloudGEOGDataJob_create:
+          target: DeleteCloudGEOGDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
           on_success:
-            - DeleteCloudDataJob_created
-        DeleteCloudDataJob_created:
-          target: DeleteCloudDataJob
+            - DeleteCloudGEOGDataJob_created
+        DeleteCloudGEOGDataJob_created:
+          target: DeleteCloudGEOGDataJob
           activities:
             - set_state: created
           on_success:
-            - DeleteCloudDataJob_submit
-        DeleteCloudDataJob_submit:
-          target: DeleteCloudDataJob
+            - DeleteCloudGEOGDataJob_submit
+        DeleteCloudGEOGDataJob_submit:
+          target: DeleteCloudGEOGDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
-            - DeleteCloudDataJob_submitted
-        DeleteCloudDataJob_submitted:
-          target: DeleteCloudDataJob
+            - DeleteCloudGEOGDataJob_submitted
+        DeleteCloudGEOGDataJob_submitted:
+          target: DeleteCloudGEOGDataJob
           activities:
             - set_state: submitted
           on_success:
-            - DeleteCloudDataJob_run
-        DeleteCloudDataJob_run:
-          target: DeleteCloudDataJob
+            - DeleteCloudGEOGDataJob_run
+        DeleteCloudGEOGDataJob_run:
+          target: DeleteCloudGEOGDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
           on_success:
-            - DeleteCloudDataJob_executed
-        DeleteCloudDataJob_executed:
-          target: DeleteCloudDataJob
-          activities:
-            - set_state: executed
-          on_success:
-            - DisableCloudAcessJob_create
-        DisableCloudAcessJob_create:
-          target: DisableCloudAcessJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DisableCloudAcessJob_submit
-        DisableCloudAcessJob_submit:
-          target: DisableCloudAcessJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DisableCloudAcessJob_submitted
-        DisableCloudAcessJob_submitted:
-          target: DisableCloudAcessJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DisableCloudAcessJob_run
-        DisableCloudAcessJob_run:
-          target: DisableCloudAcessJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DisableCloudAcessJob_executed
-        DisableCloudAcessJob_executed:
-          target: DisableCloudAcessJob
+            - DeleteCloudGEOGDataJob_executed
+        DeleteCloudGEOGDataJob_executed:
+          target: DeleteCloudGEOGDataJob
           activities:
             - set_state: executed
           on_success:
@@ -1420,7 +1379,6 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - DeletePreProcessDirs_start
             - CreatePostProcessDirs_start
         WRF_DAY_2_submit:
           target: WRF_DAY_2
@@ -1447,7 +1405,6 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - DeletePreProcessDirs_start
             - CreatePostProcessDirs_start
         WRF_DAY_3_submit:
           target: WRF_DAY_3
@@ -1474,18 +1431,7 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - DeletePreProcessDirs_start
             - CreatePostProcessDirs_start
-        DeletePreProcessDirs_start:
-          target: DeletePreProcessDirs
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - DeletePreProcessDirs_started
-        DeletePreProcessDirs_started:
-          target: DeletePreProcessDirs
-          activities:
-            - set_state: started
         CreatePostProcessDirs_start:
           target: CreatePostProcessDirs
           activities:
@@ -1566,7 +1512,42 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - StageRISICOResults_start
+            - CloudToDDIWRFJob_create
+        CloudToDDIWRFJob_create:
+          target: CloudToDDIWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CloudToDDIWRFJob_submit
+        CloudToDDIWRFJob_submit:
+          target: CloudToDDIWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CloudToDDIWRFJob_submitted
+        CloudToDDIWRFJob_submitted:
+          target: CloudToDDIWRFJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CloudToDDIWRFJob_run
+        CloudToDDIWRFJob_run:
+          target: CloudToDDIWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CloudToDDIWRFJob_executed
+        CloudToDDIWRFJob_executed:
+          target: CloudToDDIWRFJob
+          activities:
+            - set_state: executed
+          on_success:
+            - WRF_DAY_1_disable_file_transfer
+            - WRF_DAY_2_disable_file_transfer
+            - WRF_DAY_3_disable_file_transfer
         WRF_DAY_1_disable_file_transfer:
           target: WRF_DAY_1
           operation_host: ORCHESTRATOR
@@ -1683,623 +1664,59 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - DeleteCloudDataJob_create
-        DeleteCloudDataJob_create:
-          target: DeleteCloudDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DeleteCloudDataJob_created
-        DeleteCloudDataJob_created:
-          target: DeleteCloudDataJob
-          activities:
-            - set_state: created
-          on_success:
-            - DeleteCloudDataJob_submit
-        DeleteCloudDataJob_submit:
-          target: DeleteCloudDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DeleteCloudDataJob_submitted
-        DeleteCloudDataJob_submitted:
-          target: DeleteCloudDataJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DeleteCloudDataJob_run
-        DeleteCloudDataJob_run:
-          target: DeleteCloudDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DeleteCloudDataJob_executed
-        DeleteCloudDataJob_executed:
-          target: DeleteCloudDataJob
-          activities:
-            - set_state: executed
-          on_success:
-            - DisableCloudAcessJob_create
-        DisableCloudAcessJob_create:
-          target: DisableCloudAcessJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DisableCloudAcessJob_submit
-        DisableCloudAcessJob_submit:
-          target: DisableCloudAcessJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DisableCloudAcessJob_submitted
-        DisableCloudAcessJob_submitted:
-          target: DisableCloudAcessJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DisableCloudAcessJob_run
-        DisableCloudAcessJob_run:
-          target: DisableCloudAcessJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DisableCloudAcessJob_executed
-        DisableCloudAcessJob_executed:
-          target: DisableCloudAcessJob
-          activities:
-            - set_state: executed
-          on_success:
-            - Compute_uninstall
-        Compute_uninstall:
-          target: RisicoVM
-          activities:
-            - delegate: uninstall
-    testpostprocess:
-      steps:
-        RISICO_create:
-          target: RISICO
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - RISICO_start
-        RISICO_start:
-          target: RISICO
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - RISICO_started
-        RISICO_started:
-          target: RISICO
-          activities:
-            - set_state: started
-          on_success:
-            - StageRISICOResults_start
-        StageRISICOResults_start:
-          target: StageRISICOResults
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - StageRISICOResults_started
-        StageRISICOResults_started:
-          target: StageRISICOResults
-          activities:
-            - set_state: started
-          on_success:
-            - CloudToDDIJob_create
-        CloudToDDIJob_create:
-          target: CloudToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - CloudToDDIJob_submit
-        CloudToDDIJob_submit:
-          target: CloudToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - CloudToDDIJob_submitted
-        CloudToDDIJob_submitted:
-          target: CloudToDDIJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - CloudToDDIJob_run
-        CloudToDDIJob_run:
-          target: CloudToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - CloudToDDIJob_executed
-        CloudToDDIJob_executed:
-          target: CloudToDDIJob
-          activities:
-            - set_state: executed
-          on_success:
-            - DeleteCloudDataJob_create
-        DeleteCloudDataJob_create:
-          target: DeleteCloudDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DeleteCloudDataJob_created
-        DeleteCloudDataJob_created:
-          target: DeleteCloudDataJob
-          activities:
-            - set_state: created
-          on_success:
-            - DeleteCloudDataJob_submit
-        DeleteCloudDataJob_submit:
-          target: DeleteCloudDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DeleteCloudDataJob_submitted
-        DeleteCloudDataJob_submitted:
-          target: DeleteCloudDataJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DeleteCloudDataJob_run
-        DeleteCloudDataJob_run:
-          target: DeleteCloudDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DeleteCloudDataJob_executed
-        DeleteCloudDataJob_executed:
-          target: DeleteCloudDataJob
-          activities:
-            - set_state: executed
-          on_success:
-            - DisableCloudAcessJob_create
-        DisableCloudAcessJob_create:
-          target: DisableCloudAcessJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DisableCloudAcessJob_submit
-        DisableCloudAcessJob_submit:
-          target: DisableCloudAcessJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DisableCloudAcessJob_submitted
-        DisableCloudAcessJob_submitted:
-          target: DisableCloudAcessJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DisableCloudAcessJob_run
-        DisableCloudAcessJob_run:
-          target: DisableCloudAcessJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DisableCloudAcessJob_executed
-        DisableCloudAcessJob_executed:
-          target: DisableCloudAcessJob
-          activities:
-            - set_state: executed
-          on_success:
-            - Compute_uninstall
-        Compute_uninstall:
-          target: RisicoVM
-          activities:
-            - delegate: uninstall
-    testcomputeuninstall:
-      steps:
-        Compute_uninstall:
-          target: RisicoVM
-          activities:
-            - delegate: uninstall
-          on_success:
-            - Network_uninstall
-        Network_uninstall:
-          target: PublicNet
-          activities:
-            - delegate: uninstall
-    testdisablecloudaccess:
-      steps:
-        DisableCloudAcessJob_create:
-          target: DisableCloudAcessJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DisableCloudAcessJob_submit
-        DisableCloudAcessJob_submit:
-          target: DisableCloudAcessJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DisableCloudAcessJob_submitted
-        DisableCloudAcessJob_submitted:
-          target: DisableCloudAcessJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DisableCloudAcessJob_run
-        DisableCloudAcessJob_run:
-          target: DisableCloudAcessJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DisableCloudAcessJob_executed
-        DisableCloudAcessJob_executed:
-          target: DisableCloudAcessJob
-          activities:
-            - set_state: executed
-    testdeletewrf:
-      steps:
-        WRF_DAY_1_delete:
-          target: WRF_DAY_1
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.delete
-          on_success:
-            - WRF_DAY_1_deleted
-        WRF_DAY_1_deleted:
-          target: WRF_DAY_1
-          activities:
-            - set_state: deleted
-        WRF_DAY_2_delete:
-          target: WRF_DAY_2
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.delete
-          on_success:
-            - WRF_DAY_2_deleted
-        WRF_DAY_2_deleted:
-          target: WRF_DAY_2
-          activities:
-            - set_state: deleted
-        WRF_DAY_3_delete:
-          target: WRF_DAY_3
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.delete
-          on_success:
-            - WRF_DAY_3_deleted
-        WRF_DAY_3_deleted:
-          target: WRF_DAY_3
-          activities:
-            - set_state: deleted
-    testrisico:
-      steps:
-        RISICO_create:
-          target: RISICO
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - RISICO_start
-        RISICO_start:
-          target: RISICO
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - RISICO_started
-        RISICO_started:
-          target: RISICO
-          activities:
-            - set_state: started
-    testPostRun:
-      steps:
-        DeletePreProcessDirs_start:
-          target: DeletePreProcessDirs
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - DeletePreProcessDirs_started
-        DeletePreProcessDirs_started:
-          target: DeletePreProcessDirs
-          activities:
-            - set_state: started
-        CreatePostProcessDirs_start:
-          target: CreatePostProcessDirs
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CreatePostProcessDirs_started
-        CreatePostProcessDirs_started:
-          target: CreatePostProcessDirs
-          activities:
-            - set_state: started
-          on_success:
-            - CopyWRFDay1FromJobTask_start
-            - CopyWRFDay2FromJobTask_start
-            - CopyWRFDay3FromJobTask_start
-            - Webdrops_start
-        Webdrops_start:
-          target: Webdrops
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Webdrops_started
-        Webdrops_started:
-          target: Webdrops
-          activities:
-            - set_state: started
-          on_success:
-            - RISICO_create
-        CopyWRFDay1FromJobTask_start:
-          target: CopyWRFDay1FromJobTask
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CopyWRFDay1FromJobTask_started
-        CopyWRFDay1FromJobTask_started:
-          target: CopyWRFDay1FromJobTask
-          activities:
-            - set_state: started
-          on_success:
-            - RISICO_create
-            - WRF_DAY_1_disable_file_transfer
-            - StageWRFResults_start
-        CopyWRFDay2FromJobTask_start:
-          target: CopyWRFDay2FromJobTask
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CopyWRFDay2FromJobTask_started
-        CopyWRFDay2FromJobTask_started:
-          target: CopyWRFDay2FromJobTask
-          activities:
-            - set_state: started
-          on_success:
-            - RISICO_create
-            - WRF_DAY_2_disable_file_transfer
-            - StageWRFResults_start
-        CopyWRFDay3FromJobTask_start:
-          target: CopyWRFDay3FromJobTask
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CopyWRFDay3FromJobTask_started
-        CopyWRFDay3FromJobTask_started:
-          target: CopyWRFDay3FromJobTask
-          activities:
-            - set_state: started
-          on_success:
-            - RISICO_create
-            - WRF_DAY_3_disable_file_transfer
-            - StageWRFResults_start
-        StageWRFResults_start:
-          target: StageWRFResults
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - StageWRFResults_started
-        StageWRFResults_started:
-          target: StageWRFResults
-          activities:
-            - set_state: started
-          on_success:
-            - StageRISICOResults_start
-        WRF_DAY_1_disable_file_transfer:
-          target: WRF_DAY_1
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: custom.disable_file_transfer
-          on_success:
-            - WRF_DAY_1_delete
-        WRF_DAY_1_delete:
-          target: WRF_DAY_1
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.delete
-          on_success:
-            - WRF_DAY_1_deleted
-        WRF_DAY_1_deleted:
-          target: WRF_DAY_1
-          activities:
-            - set_state: deleted
-        WRF_DAY_2_disable_file_transfer:
-          target: WRF_DAY_2
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: custom.disable_file_transfer
-          on_success:
-            - WRF_DAY_2_delete
-        WRF_DAY_2_delete:
-          target: WRF_DAY_2
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.delete
-          on_success:
-            - WRF_DAY_2_deleted
-        WRF_DAY_2_deleted:
-          target: WRF_DAY_2
-          activities:
-            - set_state: deleted
-        WRF_DAY_3_disable_file_transfer:
-          target: WRF_DAY_3
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: custom.disable_file_transfer
-          on_success:
-            - WRF_DAY_3_delete
-        WRF_DAY_3_delete:
-          target: WRF_DAY_3
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.delete
-          on_success:
-            - WRF_DAY_3_deleted
-        WRF_DAY_3_deleted:
-          target: WRF_DAY_3
-          activities:
-            - set_state: deleted
-        RISICO_create:
-          target: RISICO
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - RISICO_start
-        RISICO_start:
-          target: RISICO
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - RISICO_started
-        RISICO_started:
-          target: RISICO
-          activities:
-            - set_state: started
-          on_success:
-            - StageRISICOResults_start
-        StageRISICOResults_start:
-          target: StageRISICOResults
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - StageRISICOResults_started
-        StageRISICOResults_started:
-          target: StageRISICOResults
-          activities:
-            - set_state: started
-          on_success:
-            - CloudToDDIJob_create
-        CloudToDDIJob_create:
-          target: CloudToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - CloudToDDIJob_submit
-        CloudToDDIJob_submit:
-          target: CloudToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - CloudToDDIJob_submitted
-        CloudToDDIJob_submitted:
-          target: CloudToDDIJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - CloudToDDIJob_run
-        CloudToDDIJob_run:
-          target: CloudToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - CloudToDDIJob_executed
-        CloudToDDIJob_executed:
-          target: CloudToDDIJob
-          activities:
-            - set_state: executed
-          on_success:
-            - DeleteCloudDataJob_create
-        DeleteCloudDataJob_create:
-          target: DeleteCloudDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DeleteCloudDataJob_created
-        DeleteCloudDataJob_created:
-          target: DeleteCloudDataJob
-          activities:
-            - set_state: created
-          on_success:
-            - DeleteCloudDataJob_submit
-        DeleteCloudDataJob_submit:
-          target: DeleteCloudDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DeleteCloudDataJob_submitted
-        DeleteCloudDataJob_submitted:
-          target: DeleteCloudDataJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DeleteCloudDataJob_run
-        DeleteCloudDataJob_run:
-          target: DeleteCloudDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DeleteCloudDataJob_executed
-        DeleteCloudDataJob_executed:
-          target: DeleteCloudDataJob
-          activities:
-            - set_state: executed
-          on_success:
-            - DisableCloudAcessJob_create
-        DisableCloudAcessJob_create:
-          target: DisableCloudAcessJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DisableCloudAcessJob_submit
-        DisableCloudAcessJob_submit:
-          target: DisableCloudAcessJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DisableCloudAcessJob_submitted
-        DisableCloudAcessJob_submitted:
-          target: DisableCloudAcessJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DisableCloudAcessJob_run
-        DisableCloudAcessJob_run:
-          target: DisableCloudAcessJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DisableCloudAcessJob_executed
-        DisableCloudAcessJob_executed:
-          target: DisableCloudAcessJob
-          activities:
-            - set_state: executed
-          on_success:
-            - Compute_uninstall
-        Compute_uninstall:
-          target: RisicoVM
-          activities:
-            - delegate: uninstall
-    start:
-      steps:
-        start_step:
-          target: PublicNet
-          activities:
-            - set_state: started
-    stop:
-      steps:
-        stop_step:
-          target: PublicNet
+            - MountGEOGDataset_stop
+        MountGEOGDataset_stop:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountGEOGDataset_stopped
+        MountGEOGDataset_stopped:
+          target: MountGEOGDataset
           activities:
             - set_state: stopped
-    cancel:
-      steps:
-        start_step:
-          target: PublicNet
+          on_success:
+            - DeleteCloudGEOGDataJob_create
+        DeleteCloudGEOGDataJob_create:
+          target: DeleteCloudGEOGDataJob
+          operation_host: ORCHESTRATOR
           activities:
-            - set_state: canceled
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudGEOGDataJob_created
+        DeleteCloudGEOGDataJob_created:
+          target: DeleteCloudGEOGDataJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudGEOGDataJob_submit
+        DeleteCloudGEOGDataJob_submit:
+          target: DeleteCloudGEOGDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudGEOGDataJob_submitted
+        DeleteCloudGEOGDataJob_submitted:
+          target: DeleteCloudGEOGDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudGEOGDataJob_run
+        DeleteCloudGEOGDataJob_run:
+          target: DeleteCloudGEOGDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudGEOGDataJob_executed
+        DeleteCloudGEOGDataJob_executed:
+          target: DeleteCloudGEOGDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - Compute_uninstall
+        Compute_uninstall:
+          target: RisicoVM
+          activities:
+            - delegate: uninstall

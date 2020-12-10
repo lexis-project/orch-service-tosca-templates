@@ -10,19 +10,36 @@
         state: directory
         recurse: yes
         mode: 0777
+    - name: Get user that will be the owner of files in destination directory
+      set_fact:
+        file_owner: "{{ as_user }}"
+      when: as_user != ""
+    - name: Get default user
+      set_fact:
+        file_owner: "{{ ansible_env.USER }}"
+      when: as_user == ""
     - name: create temporary file
       tempfile:
         state: file
         suffix: temp
       register: privatekeyfile
+      become_user: "{{ file_owner }}"
+      become: true
+      become_method: sudo
     - name: Add private key content
       copy:
         content: "{{ private_key }}"
         dest: "{{ privatekeyfile.path }}"
+      become_user: "{{ file_owner }}"
+      become: true
+      become_method: sudo
     - name: Change file ownership
       file:
         path: "{{ privatekeyfile.path }}"
         mode: '0400'
+      become_user: "{{ file_owner }}"
+      become: true
+      become_method: sudo
     - name : Get task ID
       set_fact:
         task_id: "{{ (tasks_name_id | from_json)[task_name]}}"
@@ -32,7 +49,13 @@
     - name: "Copying job outputs to  {{destination_directory}}"
       shell: "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {{ privatekeyfile.path }}  {{ user }}@{{ server }}:{{ source_directory }}/{{ item }} {{ destination_directory }}"
       with_items: "{{ source_files_patterns }}"
+      become_user: "{{ file_owner }}"
+      become: true
+      become_method: sudo
     - name: Remove private key
       file:
         path: "{{ privatekeyfile.path }}"
         state: absent
+      become_user: "{{ file_owner }}"
+      become: true
+      become_method: sudo

@@ -15,3 +15,10 @@
       become_user: "{{ user_name }}"
       become_method: sudo
       with_items: "{{ source_paths }}"
+    - name: "Update permissions"
+      file:
+        path: "{{ destination_directory }}"
+        recurse: yes
+        mode: 0777
+      become: true
+      become_method: sudo
