@@ -1,0 +1,13 @@
+- name: Cancel job
+  hosts: all
+  strategy: free
+  tasks:
+    - name: End process on cancellation
+      command: "/bin/kill -TERM {{ TOSCA_JOB_ID }}"
+    - name: Waiting until running process is killed
+      wait_for:
+        path: "/proc/{{ TOSCA_JOB_ID }}/status"
+        state: absent
+    - name: Job status is completed
+      set_fact:
+        TOSCA_JOB_STATUS: "COMPLETED"

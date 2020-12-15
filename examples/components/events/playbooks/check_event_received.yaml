@@ -1,0 +1,85 @@
+- name: Get Job status
+  hosts: all
+  strategy: free
+  tasks:
+    - name: Init variables
+      set_fact:
+        TOSCA_JOB_STATUS: "SUBMITTED"
+        STDERR: ""
+        STDOUT: ""
+        EVENT: ""
+        TASKS_PARAMETERS: ""
+    - name: Check that the PID status file exists
+      stat:
+        path: "/proc/{{ TOSCA_JOB_ID }}/status"
+      register: job_pid
+    - name: Job status is running if job is still running
+      set_fact:
+        TOSCA_JOB_STATUS: "RUNNING"
+      when: job_pid.stat.exists
+
+    - meta: end_play
+      when: TOSCA_JOB_STATUS == "RUNNING"
+
+    # Job finished
+    - name: Job is done, check if there were errors
+      stat: 
+        path: "{{ STDERR_FILE }}"
+      register: stderr_file
+      when: STDERR_FILE != ""
+    - name: Get stderr content
+      slurp:
+        src: "{{ STDERR_FILE }}"
+      register: stderr_slurp
+      when: STDERR_FILE != "" and stderr_file.stat.exists
+    - name: Set stderr output
+      set_fact:
+        STDERR: "{{ stderr_slurp['content'] | b64decode }}"
+      when: STDERR_FILE != "" and stderr_file.stat.exists
+
+    - name: Get outputs
+      stat: 
+        path: "{{ STDOUT_FILE }}"
+      register: stdout_file
+      when: STDOUT_FILE != ""
+    - name: Get stdout content
+      slurp:
+        src: "{{ STDOUT_FILE }}"
+      register: stdout_slurp
+      when: STDOUT_FILE != "" and stdout_file.stat.exists
+    - name: Set stdout output
+      set_fact:
+        STDOUT: "{{ stdout_slurp['content'] | b64decode }}"
+      when: STDOUT_FILE != "" and stdout_file.stat.exists
+
+    - name: Set EVENT operation output value
+      set_fact:
+        EVENT: "{{ STDOUT | trim}}"
+    - name: Set HEAppE job tasks parameters
+      set_fact:
+        tasks_params:
+          FirstTask:
+            - CommandParameterIdentifier: param1
+              ParameterValue: "{{EVENT}}"
+    - name: Set TASK_PARAMETERS operation output value
+      set_fact:
+        TASKS_PARAMETERS: "{{ tasks_params | to_json | b64encode}}"
+  
+    - name: Job status is FAILED if there are errors
+      set_fact:
+        TOSCA_JOB_STATUS: "FAILED"
+      when: STDERR != ""
+
+    - name: Job status is COMPLETED if there are no error
+      set_fact:
+        TOSCA_JOB_STATUS: "COMPLETED"
+      when: STDERR == ""
+
+    - name: Cleanup stdout file
+      file:
+        path: "{{ STDOUT_FILE }}"
+        state: absent
+    - name: Cleanup stderr file
+      file:
+        path: "{{ STDERR_FILE }}"
+        state: absent

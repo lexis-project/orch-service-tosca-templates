@@ -9,8 +9,63 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20 
   - org.lexis.common.noscheduler.job:0.1.0
   - yorc-types:1.1.0
+  - heappe-types:1.0.2
+
 node_types:
   org.lexis.examples.events.WaitForEventJob:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+      Waits for a file at a given URL to be non empty
+      and returns a list of tasks parameters to be used by a HEAppE job.
+    properties:
+      file_url:
+        description: URL of the file 
+        type: string
+        required: true
+      stdout_file_path:
+        description: path to file where to log stdout
+        type: string
+        default: /tmp/wait_for_event_stdout
+        required: false
+      stderr_file_path:
+        description: path to file where to logg stderr
+        type: string
+        default: /tmp/wait_for_event_stderr
+        required: false
+    attributes:
+      event: { get_operation_output: [SELF, tosca.interfaces.node.lifecycle.Runnable, run, EVENT] }
+      # tasks_parameters provides a list of tasks parameters that will be used by
+      # a HEAppE job in relationship with this component
+      # The HEAppE job in relationship with this component expects this
+      # tasks_parameters value to be a base64-encoded value of a json parameter
+      # providing in a map of task names, the list of HEAppE parameters with their value for this task
+      # Example of such json value:
+      # {"FirstTask": [{"CommandParameterIdentifier": "param1", "ParameterValue": "value1"}]}
+      # (must be base64-encoded)
+      tasks_parameters: { get_operation_output: [SELF, tosca.interfaces.node.lifecycle.Runnable, run, TASKS_PARAMETERS] }
+    capabilities:
+      tasks_parameters_provider:
+        type: org.heappe.capabilities.TasksParametersProvider
+    interfaces:
+      tosca.interfaces.node.lifecycle.Runnable:
+        submit:
+          inputs:
+            FILE_URL: {get_property: [SELF, file_url] }
+            STDOUT_FILE: {get_property: [SELF, stdout_file_path] }
+            STDERR_FILE: {get_property: [SELF, stderr_file_path] }
+          implementation: playbooks/submit_wait_for_event.yaml
+        run:
+          inputs:
+            STDOUT_FILE: {get_property: [SELF, stdout_file_path] }
+            STDERR_FILE: {get_property: [SELF, stderr_file_path] }
+          implementation: playbooks/check_event_received.yaml
+        cancel:
+          implementation: playbooks/cancel_wait_for_event.yaml
+    artifacts:
+      - script_to_execute:
+          type: tosca.artifacts.File
+          file: scripts/wait_and_get_file_content.sh
+  org.lexis.examples.events.WaitForEventJobWithTimeout:
     derived_from: org.lexis.noscheduler.Job
     description: >
       Waits for a file at a given URL to be non empty
@@ -36,3 +91,13 @@ node_types:
       - script_to_execute:
           type: tosca.artifacts.File
           file: scripts/wait_and_get_file_content.sh
+capability_types:
+  org.lexis.examples.events.capabilities.EventProvider:
+    derived_from: tosca.capabilities.Root
+    description: >
+      A capability fulfilling requirements of a node requiring to be
+      associated with an event provider
+    attributes:
+      event:
+        type: string
+        description: event

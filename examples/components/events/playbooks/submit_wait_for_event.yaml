@@ -1,0 +1,22 @@
+- name: Get Job status
+  hosts: all
+  strategy: free
+  tasks:
+    - name: Init variables
+      set_fact:
+        TOSCA_JOB_STATUS: "SUBMITTING"
+        TOSCA_JOB_ID: ""
+    - name: Submit command
+      shell: "nohup /bin/bash {{ script_to_execute }} {{ FILE_URL }} < /dev/null 2> {{ STDERR_FILE }} > {{ STDOUT_FILE }} & echo $! > waitforevent.pid"
+    - name: Get pid file content
+      slurp:
+        src: "waitforevent.pid"
+      register: pid_slurp
+    - name: Set TOSCA_JOB_ID
+      set_fact:
+        TOSCA_JOB_ID: "{{ pid_slurp['content'] | b64decode }}"
+      failed_when: TOSCA_JOB_ID == ""
+    - name: Cleanup pid file
+      file:
+        path: waitforevent.pid
+        state: absent
