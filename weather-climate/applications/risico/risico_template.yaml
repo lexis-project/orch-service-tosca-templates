@@ -55,7 +55,7 @@ topology_template:
       description: |
         List of volumes to mount within the pre-processing container.
         Use docker CLI-style syntax: /host:/container[:mode]
-      default: ["/wps_data/gfs:/input", "/wps_data/output:/output", "/mnt/cloud_staging_area/adms/69c0f740-33f0-11eb-8f85-0050568fcecc:/geogrid"]
+      default: ["/wps_data/gfs:/input", "/wps_data/output:/output", "/mnt/cloud_staging_area/risico/69c0f740-33f0-11eb-8f85-0050568fcecc:/geogrid"]
     postprocessing_image:
       type: string
       description: Post-processing container repository path
