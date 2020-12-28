@@ -10,16 +10,19 @@
         gfsStartHour: "{{START_DATE[8:]}}"
         nbHours: "{{ (((END_DATE|to_datetime('%Y%m%d%H')) - (START_DATE|to_datetime('%Y%m%d%H'))).total_seconds() / 3600) | int }}"
         dateSeconds: "{{ (START_DATE|to_datetime('%Y%m%d%H')).strftime('%s') }}"
+    - name: Check if data assimilation is requested
+      set_fact:
+        with_data_assimilation: "{{ WITH_DATA_ASSIMILATION | bool }}"
     - name: Compute date for data assimilation (6 hours before)
       set_fact:
         assimilationDate: "{{ '%Y%m%d%H' | strftime( (dateSeconds | int - (3600 * 6 ))) }}"
-      when: WITH_DATA_ASSIMILATION
+      when: with_data_assimilation
     - name: Compute day and hour for data assimilation
       set_fact:
         gfsDay: "{{assimilationDate[:8]}}"
         gfsStartHour: "{{assimilationDate[8:]}}"
         nbHours: "{{ nbHours|int + 6}}"
-      when: WITH_DATA_ASSIMILATION
+      when: with_data_assimilation
     - name: Add dates to collect
       set_fact:
         gfsdates: "{{ gfsdates + [ '%Y%m%d' | strftime( (dateSeconds | int)) ] }}"
