@@ -1,0 +1,259 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: WaitForDatasetFileHPCTemplate
+  template_version: 0.1.0-SNAPSHOT
+  template_author: lexis
+
+description: ""
+
+imports:
+  - yorc-types:1.1.0
+  - heappe-types:1.0.3
+  - ddi-types:0.1.3
+  - tosca-normative-types:1.0.0-ALIEN20
+  - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
+
+topology_template:
+  inputs:
+    token:
+      type: string
+      description: "Access token"
+      required: true
+    metadata:
+      type: org.ddi.types.Metadata
+      description: "Dataset metadata"
+      required: false
+      default:
+        resourceType: "NCL script"
+    needed_files_patterns:
+      type: list
+      entry_schema:
+        type: string
+      description: "List of patterns of files that need to be available in dataset"
+      required: false
+      default:
+        - "mkMET*"
+    file_to_copy_pattern:
+      type: string
+      description: "Pattern of the file to copy to the cloud staging area"
+      required: false
+      default: "mkMET*"
+  node_templates:
+    WaitForDDIDatasetJob:
+      type: org.ddi.nodes.WaitForDDIDatasetJob
+      properties:
+        token: { get_input: token }
+        metadata: { get_input: metadata }
+        needed_files_patterns: { get_input: needed_files_patterns }
+    HEAppEJob:
+      type: org.heappe.nodes.Job
+      metadata:
+        task: computation
+      properties:
+        token: { get_input: token }
+        JobSpecification:
+          Name: TestJob
+          Project: "OPEN-20-47"
+          ClusterId: 2
+          Tasks:
+            - Name: FirstTask
+              ClusterNodeTypeId: 8
+              CommandTemplateId: 2
+              TemplateParameterValues:
+                - CommandParameterIdentifier: inputParam
+                  ParameterValue: "value"
+              WalltimeLimit: 3600
+              MinCores: 1
+              MaxCores: 1
+              Priority: 4
+              StandardOutputFile: "stdout"
+              StandardErrorFile: "stderr"
+              ProgressFile: "stdprog"
+              LogFile: "stdlog"
+    DDIToHPCTransferJob:
+      type: org.ddi.nodes.DDIRuntimeToHPCTaskJob
+      properties:
+        token: { get_input: token }
+        task_name: FirstTask
+        file_pattern: { get_input: file_to_copy_pattern }
+      requirements:
+        - job:
+            type_requirement: job
+            capability: org.heappe.capabilities.HeappeJob
+            node: HEAppEJob
+            relationship: org.heappe.relationships.SendInputsToJob
+        - dataset_files:
+            type_requirement: dataset_files
+            node: WaitForDDIDatasetJob
+            capability: org.ddi.capabilities.DatasetFilesProvider
+            relationship: org.ddi.relationships.DatasetFilesProvider
+  outputs:
+    FilePath_result:
+      value: { get_attribute: [ DDIToHPCTransferJob, destination_path ] }
+  workflows:
+    install:
+      steps:
+        HEAppEJob_init:
+          target: HEAppEJob
+          activities:
+            - set_state: initial
+    uninstall:
+      steps:
+        HEAppEJob_delete:
+          target: HEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - HEAppEJob_deleted
+        HEAppEJob_deleted:
+          target: HEAppEJob
+          activities:
+            - set_state: deleted
+    Run:
+      steps:
+        WaitForDDIDatasetJob_create:
+          target: WaitForDDIDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - WaitForDDIDatasetJob_submit
+        WaitForDDIDatasetJob_submit:
+          target: WaitForDDIDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - WaitForDDIDatasetJob_submitted
+        WaitForDDIDatasetJob_submitted:
+          target: WaitForDDIDatasetJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - WaitForDDIDatasetJob_run
+        WaitForDDIDatasetJob_run:
+          target: WaitForDDIDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - WaitForDDIDatasetJob_executed
+        WaitForDDIDatasetJob_executed:
+          target: WaitForDDIDatasetJob
+          activities:
+            - set_state: executed
+          on_success:
+            - HEAppEJob_create
+        HEAppEJob_create:
+          target: HEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - HEAppEJob_enable_file_transfer
+        HEAppEJob_enable_file_transfer:
+          target: HEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - DDIToHPCTransferJob_create
+        DDIToHPCTransferJob_create:
+          target: DDIToHPCTransferJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToHPCTransferJob_submit
+        DDIToHPCTransferJob_submit:
+          target: DDIToHPCTransferJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToHPCTransferJob_submitted
+        DDIToHPCTransferJob_submitted:
+          target: DDIToHPCTransferJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToHPCTransferJob_run
+        DDIToHPCTransferJob_run:
+          target: DDIToHPCTransferJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToHPCTransferJob_executed
+        DDIToHPCTransferJob_executed:
+          target: DDIToHPCTransferJob
+          activities:
+            - set_state: executed
+    testWait:
+      steps:
+        WaitForDDIDatasetJob_create:
+          target: WaitForDDIDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - WaitForDDIDatasetJob_submit
+        WaitForDDIDatasetJob_submit:
+          target: WaitForDDIDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - WaitForDDIDatasetJob_submitted
+        WaitForDDIDatasetJob_submitted:
+          target: WaitForDDIDatasetJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - WaitForDDIDatasetJob_run
+        WaitForDDIDatasetJob_run:
+          target: WaitForDDIDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - WaitForDDIDatasetJob_executed
+        WaitForDDIDatasetJob_executed:
+          target: WaitForDDIDatasetJob
+          activities:
+            - set_state: executed
+    testTransfer:
+      steps:
+        DDIToHPCTransferJob_create:
+          target: DDIToHPCTransferJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToHPCTransferJob_submit
+        DDIToHPCTransferJob_submit:
+          target: DDIToHPCTransferJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToHPCTransferJob_submitted
+        DDIToHPCTransferJob_submitted:
+          target: DDIToHPCTransferJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToHPCTransferJob_run
+        DDIToHPCTransferJob_run:
+          target: DDIToHPCTransferJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToHPCTransferJob_executed
+        DDIToHPCTransferJob_executed:
+          target: DDIToHPCTransferJob
+          activities:
+            - set_state: executed

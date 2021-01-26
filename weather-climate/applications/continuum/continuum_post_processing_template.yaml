@@ -12,11 +12,10 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
-  - ddi-types:0.1.2
+  - ddi-types:0.1.3
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
-  - org.lexis.weather.wps:0.1.1-SNAPSHOT
   - org.lexis.weather.continuum:0.1.0
   - org.lexis.weather.webdrops:0.1.0
 
@@ -42,16 +41,16 @@ topology_template:
     postprocessing_dataset_continuum_static_data_path:
       type: string
       description: Continuum static data dataset path in DDI
-      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/d6600354-3d79-11eb-b264-0050568fcecc"
+      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/7eb5e3ee-446d-11eb-8958-0050568fcecc"
       required: false
     postprocessing_hyde_image:
       type: string
       description: Hyde post-processing container repository path 
-      default: "laurentg/fp_framework_hyde:1.0.4"
+      default: "laurentg/fp_framework_hyde:1.0.5"
     postprocessing_hmc_image:
       type: string
       description: HMC post-processing container repository path
-      default: "laurentg/fp_framework_hmc:1.0.4"
+      default: "laurentg/fp_framework_hmc:1.0.5"
     postprocessing_ddi_path:
       type: string
       description: "Path where to transfer the post-processing results in DDI"
@@ -1214,7 +1213,7 @@ topology_template:
   outputs:
     ddi_post_process_results:
       description: DDI path to Continuum post-processing results
-      value: { get_attribute: [ CloudToDDIJob, destination_directory_path ] }
+      value: { get_attribute: [ CloudToDDIJob, destination_path ] }
   workflows:
     install:
       steps:
@@ -2434,3 +2433,366 @@ topology_template:
           target: ContinuumVM
           activities:
             - delegate: uninstall
+    RunHMC:
+      steps:
+        Continuum_HMC_marche_create:
+          target: Continuum_HMC_marche
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_marche_start
+        Continuum_HMC_marche_start:
+          target: Continuum_HMC_marche
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_marche_started
+        Continuum_HMC_marche_started:
+          target: Continuum_HMC_marche
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_liguria_create:
+          target: Continuum_HMC_liguria
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_liguria_start
+        Continuum_HMC_liguria_start:
+          target: Continuum_HMC_liguria
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_liguria_started
+        Continuum_HMC_liguria_started:
+          target: Continuum_HMC_liguria
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_adige_create:
+          target: Continuum_HMC_adige
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_adige_start
+        Continuum_HMC_adige_start:
+          target: Continuum_HMC_adige
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_adige_started
+        Continuum_HMC_adige_started:
+          target: Continuum_HMC_adige
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_basilicata_create:
+          target: Continuum_HMC_basilicata
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_basilicata_start
+        Continuum_HMC_basilicata_start:
+          target: Continuum_HMC_basilicata
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_basilicata_started
+        Continuum_HMC_basilicata_started:
+          target: Continuum_HMC_basilicata
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_calabria_create:
+          target: Continuum_HMC_calabria
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_calabria_start
+        Continuum_HMC_calabria_start:
+          target: Continuum_HMC_calabria
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_calabria_started
+        Continuum_HMC_calabria_started:
+          target: Continuum_HMC_calabria
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_fvg_create:
+          target: Continuum_HMC_fvg
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_fvg_start
+        Continuum_HMC_fvg_start:
+          target: Continuum_HMC_fvg
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_fvg_started
+        Continuum_HMC_fvg_started:
+          target: Continuum_HMC_fvg
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_gargano_create:
+          target: Continuum_HMC_gargano
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_gargano_start
+        Continuum_HMC_gargano_start:
+          target: Continuum_HMC_gargano
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_gargano_started
+        Continuum_HMC_gargano_started:
+          target: Continuum_HMC_gargano
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_lazio_create:
+          target: Continuum_HMC_lazio
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_lazio_start
+        Continuum_HMC_lazio_start:
+          target: Continuum_HMC_lazio
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_lazio_started
+        Continuum_HMC_lazio_started:
+          target: Continuum_HMC_lazio
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_liri_create:
+          target: Continuum_HMC_liri
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_liri_start
+        Continuum_HMC_liri_start:
+          target: Continuum_HMC_liri
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_liri_started
+        Continuum_HMC_liri_started:
+          target: Continuum_HMC_liri
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_po_create:
+          target: Continuum_HMC_po
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_po_start
+        Continuum_HMC_po_start:
+          target: Continuum_HMC_po
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_po_started
+        Continuum_HMC_po_started:
+          target: Continuum_HMC_po
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_puglia_create:
+          target: Continuum_HMC_puglia
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_puglia_start
+        Continuum_HMC_puglia_start:
+          target: Continuum_HMC_puglia
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_puglia_started
+        Continuum_HMC_puglia_started:
+          target: Continuum_HMC_puglia
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_romagna_create:
+          target: Continuum_HMC_romagna
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_romagna_start
+        Continuum_HMC_romagna_start:
+          target: Continuum_HMC_romagna
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_romagna_started
+        Continuum_HMC_romagna_started:
+          target: Continuum_HMC_romagna
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_sardegna_create:
+          target: Continuum_HMC_sardegna
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_sardegna_start
+        Continuum_HMC_sardegna_start:
+          target: Continuum_HMC_sardegna
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_sardegna_started
+        Continuum_HMC_sardegna_started:
+          target: Continuum_HMC_sardegna
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_sicilia_create:
+          target: Continuum_HMC_sicilia
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_sicilia_start
+        Continuum_HMC_sicilia_start:
+          target: Continuum_HMC_sicilia
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_sicilia_started
+        Continuum_HMC_sicilia_started:
+          target: Continuum_HMC_sicilia
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_tevere_create:
+          target: Continuum_HMC_tevere
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_tevere_start
+        Continuum_HMC_tevere_start:
+          target: Continuum_HMC_tevere
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_tevere_started
+        Continuum_HMC_tevere_started:
+          target: Continuum_HMC_tevere
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_toscana_create:
+          target: Continuum_HMC_toscana
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_toscana_start
+        Continuum_HMC_toscana_start:
+          target: Continuum_HMC_toscana
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_toscana_started
+        Continuum_HMC_toscana_started:
+          target: Continuum_HMC_toscana
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_volturno_create:
+          target: Continuum_HMC_volturno
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_volturno_start
+        Continuum_HMC_volturno_start:
+          target: Continuum_HMC_volturno
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_volturno_started
+        Continuum_HMC_volturno_started:
+          target: Continuum_HMC_volturno
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        CreateStagingAreaResultDir_start:
+          target: CreateStagingAreaResultDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaResultDir_started
+        CreateStagingAreaResultDir_started:
+          target: CreateStagingAreaResultDir
+          activities:
+            - set_state: started
+          on_success:
+            - MoveContinuumResults_start
+        MoveContinuumResults_start:
+          target: MoveContinuumResults
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveContinuumResults_started
+        MoveContinuumResults_started:
+          target: MoveContinuumResults
+          activities:
+            - set_state: started
+          on_success:
+            - CloudToDDIJob_create
+        CloudToDDIJob_create:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CloudToDDIJob_submit
+        CloudToDDIJob_submit:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CloudToDDIJob_submitted
+        CloudToDDIJob_submitted:
+          target: CloudToDDIJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CloudToDDIJob_run
+        CloudToDDIJob_run:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CloudToDDIJob_executed
+        CloudToDDIJob_executed:
+          target: CloudToDDIJob
+          activities:
+            - set_state: executed

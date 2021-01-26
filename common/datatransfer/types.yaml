@@ -6,8 +6,8 @@ metadata:
   template_author: lexis
 
 imports:
-  - heappe-types:1.0.2
-  - ddi-types:0.1.2
+  - heappe-types:1.0.3
+  - ddi-types:0.1.3
   - org.ystia.docker.images:3.0.0-SNAPSHOT
   - yorc-types:1.1.0
 node_types:
@@ -433,6 +433,7 @@ node_types:
         description: Source directory
         type: string
         required: true
+      
       destination_subdirectory:
         description: Subdirectory in staging area where to store the source directory content
         type: string
@@ -552,6 +553,10 @@ node_types:
         description: destination directory (will be created if it does not exist)
         type: string
         required: true
+      destination_file_name:
+        description: "file name in destination directory (default: source file name)"
+        type: string
+        required: false
     requirements:
       - file_provider:
           capability: org.lexis.datatransfer.capabilities.FileProvider
@@ -631,6 +636,7 @@ node_types:
     attributes:
       user_name: {get_operation_output: [SELF, Standard, start, USER]}
       directory_absolute_path: {get_operation_output: [SELF, Standard, start, DIRECTORY_PATH]}
+      data_absolute_path: {get_operation_output: [SELF, Standard, start, DATA_PATH]}
       staging_area_directory_path: {get_operation_output: [SELF, Standard, start, STAGING_AREA_DIRECTORY_PATH]}
       sshfsuser: {get_operation_output: [SELF, Standard, start, SSHFS_USER]}
       staging_area_root_directory: {get_operation_output: [SELF, Standard, start, STAGING_AREA_ROOT_DIRECTORY]}
@@ -659,7 +665,8 @@ node_types:
             MOUNT_POINT_DIRECTORY: { get_property: [SELF, mount_point_directory] }
             URL: {get_attribute: [REQ_TARGET, ddi_access, sshfs_url]}
             IP_ADDRESS: { get_attribute: [HOST, public_address] }
-            STAGING_AREA_DIRECTORY: {get_attribute: [REQ_TARGET, data_transfer, destination_directory_path]}
+            STAGING_AREA_DIRECTORY: {get_attribute: [REQ_TARGET, data_transfer, staging_area_directory_path]}
+            TARGET_PATH: {get_attribute: [REQ_TARGET, data_transfer, destination_path]}
           implementation: playbooks/sshfs_export_mount.yaml
         stop:
           inputs:
@@ -680,6 +687,12 @@ capability_types:
       directory_absolute_path:
         type: string
         description: Directory where the cloud staging area file system is mounted
+      data_absolute_path:
+        type: string
+        description: >
+          Path to the cloud staging area data.
+          This is the same as directory_absolute_path when the data is a dataset.
+          This is a file path, when the data is a file copied in directory_absolute_path.
       user_name:
         type: string
         description: name of the user allowed to write in this staging area

@@ -9,11 +9,15 @@ description: ""
 
 imports:
   - tosca-normative-types:1.0.0-ALIEN20
-  - heappe-types:1.0.2
+  - heappe-types:1.0.3
   - org.lexis.common.noscheduler.job:0.1.0
   - org.lexis.examples.events:0.1.0
 topology_template:
   inputs:
+    token:
+      type: string
+      required: true
+      description: "Access token"
     preprocessing_event_file_url:
       type: string
       description: "URL of the file"
@@ -89,6 +93,7 @@ topology_template:
       metadata:
         task: computation
       properties:
+        token: { get_input: token }
         JobSpecification: { get_input: computation_heappe_job }
       requirements:
         - tasks_parameters_provider:
