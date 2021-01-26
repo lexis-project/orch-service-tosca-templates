@@ -1,0 +1,69 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: org.lexis.weather.adms
+  template_version: 0.1.0
+  template_author: lexis
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - yorc-types:1.1.0
+node_types:
+  org.lexis.nodes.ADMS:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      adms_type:
+        type: string
+        description: type of ADMS simulation executed, urban or industrial
+        required: true
+      token:
+        description: Access token
+        type: string
+        required: true
+      dataset_title_adms_result:
+        type: string
+        description: Which will be the title of the dataset containing ADMS results
+        required: true
+      dataset_title_ncl_result:
+        type: string
+        description: Title of the dataset containing NCL results
+        required: true
+      dataset_id_adms_urban_app:
+        type: string
+        description: ID of the dataset containing the ADMSUrban.exe and corresponding files. The DDI dataset has to contain single file called adms_urban.zip
+        required: true
+      dataset_id_adms_urban_static_data:
+        type: string
+        description: ID of the dataset containing the static data for ADMSUrban
+        required: true
+      dataset_id_adms_industrial_app:
+        type: string
+        description: ID of the dataset containing the ADMSIndustrial.exe and corresponding files. The DDI dataset has to contain single file called adms_industrial.zip
+        required: true
+      dataset_id_adms_industrial_static_data:
+        type: string
+        description: ID of the dataset containing the static data for ADMSIndustrial
+        required: true
+      tmp_ddi_endpoint:
+        type: string
+        description: Temporary input for tests - REST Endpoint of the DDI
+        default: https://lexis-ddi.srv.lrz.de
+        required: false
+    attributes:
+      dataset_id_result: {get_operation_output: [SELF, Standard, start, DATASET_ID_RESULT]}
+    interfaces:
+      Standard:
+        #create:
+        #  implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            ADMS_TYPE: {get_property: [SELF, adms_type]}
+            TOKEN: {get_property: [SELF, token]}
+            METEO_DATASET_NAME: {get_property: [SELF, dataset_title_ncl_result]}
+            ADMS_RESULT_DATASET_NAME: {get_property: [SELF, dataset_title_adms_result]}
+            ADMS_URBAN_APP_DATASET: {get_property: [SELF, dataset_id_adms_urban_app]}
+            ADMS_URBAN_STATIC_DATASET: {get_property: [SELF, dataset_id_adms_urban_static_data]}
+            ADMS_INDUSTRIAL_APP_DATASET: {get_property: [SELF, dataset_id_adms_industrial_app]}
+            ADMS_INDUSTRIAL_STATIC_DATASET: {get_property: [SELF, dataset_id_adms_industrial_static_data]}
+            DDI_ENDPOINT: {get_property: [SELF, tmp_ddi_endpoint]}
+          implementation: playbooks/adms_run.yaml

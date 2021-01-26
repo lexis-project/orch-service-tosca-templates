@@ -12,14 +12,32 @@ This example implements such a workflow, with :
 A graphical view of the application template shows:
 * a cloud compute instance `EventVM`
 * a component `WaitForEventJob` run on this compute instance, that will wait for an event
-* a HEAppE job
+  and once this event is received, will compute tasks input parameters of the HEAppE job that will run next
+* a HEAppE job in relationship with `WaitForEventJob`.
 
 ![App template](images/apptemplate.png)
 
+This HEAppE job is of type [org.heappe.nodes.JobWithRuntimeTaskParameters](https://github.com/lexis-project/yorc-heappe-plugin/blob/v1.0.2/tosca/heappe-types.yaml#L257-L266).
+It has the requirement to be associated with a component that will compute and provide the tasks parameters and value
+to use by this Job.
+(while this other type of HEAppE job `org.heappe.nodes.Job` has these values defined as properties that can't be changed at runtime).
+
+The component `WaitForEventJob` implements the capability [org.heappe.capabilities.TasksParametersProvider](https://github.com/lexis-project/yorc-heappe-plugin/blob/v1.0.2/tosca/heappe-types.yaml#L429-L438) as expected by the associated HEAppE job,
+and provides an attribute `tasks_parameters` that it computes to provide the event value in a parameter of a task of this HEAppE job.
+ 
 For this example, the progran launched by the job `WaitForEventJob` to wait for an event is
-a script avaiable at [../../components/events/scripts/wait_and_get_file_content.sh](../../components/events/scripts/wait_and_get_file_content.sh).
+a script available at [../../components/events/scripts/wait_and_get_file_content.sh](../../components/events/scripts/wait_and_get_file_content.sh).
 It loops on downloading a file from a URL provided by the user in input of the Application,
 until the file is not empty. When the file is not empty, the script prints it content and exits.
+The ansible playbook [./../components/events/playbooks/check_event_received.yaml](./../components/events/playbooks/check_event_received.yaml) run regulary by the orchestrator to monitor the status of `WaitForEventJob` will then detect an event was received
+and compute the `tasks_parameters` attribute to provide to the associated HEAppE job.
+
+The HEAppE job expects this tasks_parameters attribute value to be a base64-encoded string of a json value,
+providing a map of task name with associated parameter values. For example:
+```json
+{"FirstTask": [{"CommandParameterIdentifier": "param1", "ParameterValue": "value1"}]}
+```
+
 The job `WaitForEventJob`, that submitted the execution of this script, will then be done.
 
 This application template is providing a `Run` workflow that will:
@@ -29,9 +47,11 @@ This application template is providing a `Run` workflow that will:
   * monitor the job execution:
     * this job will be running while the event is not received (workflow step `run` in the mage below)
     * the job will be completed when an event is received
+    * a value for `tasks_parameters` attribute will be compute
   * once the job `WaitForEventJob` is completed, ie. once an event was received, the workflow executes in parallel:
     * the deletion of the cloud compute instance `EventVM`
-    * the submission and monitoring og a HEAppE job on a HPC cluster
+    * the submission of a HEAppE job on a HPC cluster, using in tasks pamaters the value computed at runtime by `WaitForEventJob`,
+      and the monitoring of this job execution.
 
 A graphical view of this workflow shows:
 

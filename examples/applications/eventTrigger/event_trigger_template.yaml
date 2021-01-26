@@ -18,21 +18,16 @@ topology_template:
       type: string
       description: "URL of the file"
       required: true
-    preprocessing_wait_time_seconds:
-      type: integer
-      description: "Time to wait for an event (0 to wait forever)"
-      default: 0
-      required: false
     computation_heappe_job:
       type: org.heappe.types.JobSpecification
       description: Description of the HEAppE job/tasks
       required: false
       default:
         Name: TestJob
-        Project: "DD-19-14"
+        Project: "OPEN-20-47"
         ClusterId: 2
         Tasks:
-          - Name: TestTemplate
+          - Name: FirstTask
             ClusterNodeTypeId: 8
             CommandTemplateId: 2
             TemplateParameterValues:
@@ -83,10 +78,6 @@ topology_template:
         task: preprocessing
       properties:
         file_url: { get_input: preprocessing_event_file_url }
-        walltime_seconds: { get_input: preprocessing_wait_time_seconds }
-        fail_after_walltime: true
-        stdout_file_path: "/tmp/stdout_event_example"
-        stderr_file_path: "/tmp/stderr_event_example"
       requirements:
         - hostedOnEventVmHost:
             type_requirement: host
@@ -94,11 +85,16 @@ topology_template:
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     HEAppEJob:
-      type: org.heappe.nodes.Job
+      type: org.heappe.nodes.JobWithRuntimeTaskParameters
       metadata:
         task: computation
       properties:
         JobSpecification: { get_input: computation_heappe_job }
+      requirements:
+        - tasks_parameters_provider:
+            capability: org.heappe.capabilities.TasksParametersProvider
+            node: WaitForEventJob
+            relationship: org.heappe.relationships.TasksParametersProvider
   outputs:
     EventReceived:
       value: { get_attribute: [ WaitForEventJob, stdout ] }

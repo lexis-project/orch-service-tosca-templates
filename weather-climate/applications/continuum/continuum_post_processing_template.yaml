@@ -1,0 +1,2436 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: ContinuumPostProcessTemplate
+  template_version: 0.1.0-SNAPSHOT
+  template_author: lexis
+
+description: Continuum Post processing template
+
+imports:
+  - yorc-types:1.1.0
+  - tosca-normative-types:1.0.0-ALIEN20
+  - docker-types:3.0.0
+  - alien-base-types:3.0.0
+  - ddi-types:0.1.2
+  - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
+  - org.ystia.docker.ansible:3.0.0-SNAPSHOT
+  - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
+  - org.lexis.weather.wps:0.1.1-SNAPSHOT
+  - org.lexis.weather.continuum:0.1.0
+  - org.lexis.weather.webdrops:0.1.0
+
+topology_template:
+  inputs:
+    token:
+      type: string
+      required: true
+      description: "Access token"
+    preprocessing_start_date:
+      type: string
+      description: Download GFS files from this date, format YYYYMMDDHH
+      required: true
+    postprocessing_run_date:
+      type: string
+      description: Continuum run date, format YYYY-MM-DD HH:MM
+      required: true
+    postprocessing_dataset_wrf_results_path:
+      type: string
+      description: WRF results dataset path in DDI
+      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/ff1ec282-38fe-11eb-9717-0050568fc9b5"
+      required: false
+    postprocessing_dataset_continuum_static_data_path:
+      type: string
+      description: Continuum static data dataset path in DDI
+      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/d6600354-3d79-11eb-b264-0050568fcecc"
+      required: false
+    postprocessing_hyde_image:
+      type: string
+      description: Hyde post-processing container repository path 
+      default: "laurentg/fp_framework_hyde:1.0.4"
+    postprocessing_hmc_image:
+      type: string
+      description: HMC post-processing container repository path
+      default: "laurentg/fp_framework_hmc:1.0.4"
+    postprocessing_ddi_path:
+      type: string
+      description: "Path where to transfer the post-processing results in DDI"
+      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c"
+  node_templates:
+    PublicNet:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+    ContinuumVM:
+      type: tosca.nodes.Compute
+      requirements:
+        - networkPublicNetConnection:
+            type_requirement: network
+            node: PublicNet
+            capability: tosca.capabilities.Connectivity
+            relationship: tosca.relationships.Network
+      capabilities:
+        host:
+          properties:
+            num_cpus: 10
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        endpoint:
+          properties:
+            secure: true
+            protocol: tcp
+            network_name: PRIVATE
+            initiator: source
+    GetDDIAccess:
+      type: org.ddi.nodes.DDIAccess
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: os
+            node: ContinuumVM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.ddi.relationships.SameSite
+    DDIToCloudWRFJob:
+      type: org.ddi.nodes.DDIToCloudJob
+      properties:
+        token: { get_input: token }
+        ddi_dataset_path: { get_input: postprocessing_dataset_wrf_results_path }
+        cloud_staging_area_directory_path: "continuum_postprocessing_wrf"
+        timestamp_cloud_staging_area_directory: true
+    MountWRFDataset:
+      type: org.lexis.datatransfer.nodes.SSHMountStagingAreaDataset
+      properties:
+        token: { get_input: token }
+        mount_point_directory: "/mnt/cloud_staging_area/postprocess"
+      requirements:
+        - ddi_access:
+            type_requirement: ddi_access
+            node: GetDDIAccess
+            capability: org.ddi.capabilities.DDIAccess
+            relationship: org.ddi.relationships.DDIAccessProvider
+        - data_transfer:
+            type_requirement: data_transfer
+            node: DDIToCloudWRFJob
+            capability: org.ddi.capabilities.DataTransferCloud
+            relationship: org.ddi.relationships.CloudAreaDatasetProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    FindWRFiles:
+      type: org.lexis.datatransfer.nodes.FindFilesInStagingAreaDirectory
+      properties:
+        patterns: ["auxhist*"]
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: MountWRFDataset
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    MoveWRFFiles:
+      type: org.lexis.datatransfer.nodes.MoveFilesFromProvider
+      properties:
+        destination_directory: "/continuum/datasets_hyde/dynamic_data"
+      requirements:
+        - files_provider:
+            type_requirement: files_provider
+            node: FindWRFiles
+            capability: org.lexis.datatransfer.capabilities.FilesProvider
+            relationship: org.lexis.datatransfer.relationships.FilesProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    DDIToCloudContinuumStaticDataJob:
+      type: org.ddi.nodes.DDIToCloudJob
+      properties:
+        token: { get_input: token }
+        ddi_dataset_path: { get_input: postprocessing_dataset_continuum_static_data_path }
+        cloud_staging_area_directory_path: "continuum_postprocessing_hyde"
+        timestamp_cloud_staging_area_directory: true
+    MountContinuumDataset:
+      type: org.lexis.datatransfer.nodes.SSHMountStagingAreaDataset
+      properties:
+        token: { get_input: token }
+        mount_point_directory: "/mnt/cloud_staging_area/postprocess_hyde"
+      requirements:
+        - ddi_access:
+            type_requirement: ddi_access
+            node: GetDDIAccess
+            capability: org.ddi.capabilities.DDIAccess
+            relationship: org.ddi.relationships.DDIAccessProvider
+        - data_transfer:
+            type_requirement: data_transfer
+            node: DDIToCloudContinuumStaticDataJob
+            capability: org.ddi.capabilities.DataTransferCloud
+            relationship: org.ddi.relationships.CloudAreaDatasetProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    FindContinuumStaticDataFiles:
+      type: org.lexis.datatransfer.nodes.FindFilesInStagingAreaDirectory
+      properties:
+        patterns:
+          - gridded
+          - point
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: MountContinuumDataset
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    MoveContinuumStaticDataFiles:
+      type: org.lexis.datatransfer.nodes.MoveFilesFromProvider
+      properties:
+        destination_directory: "/continuum/datasets_hyde/static_data"
+      requirements:
+        - files_provider:
+            type_requirement: files_provider
+            node: FindContinuumStaticDataFiles
+            capability: org.lexis.datatransfer.capabilities.FilesProvider
+            relationship: org.lexis.datatransfer.relationships.FilesProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    Docker:
+      type: org.ystia.docker.ansible.nodes.Docker
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    CreatePostProcessHydeDirs:
+      type: org.lexis.datatransfer.nodes.CreateDirectories
+      properties:
+        directories:
+          - continuum/datasets_hyde/static_data
+          - /continuum/datasets_hyde/dynamic_data
+          - /continuum/datasets_hyde/docker_data/marche
+          - /continuum/datasets_hyde/docker_data/liguria
+          - /continuum/datasets_hyde/docker_data/adige
+          - /continuum/datasets_hyde/docker_data/basilicata
+          - /continuum/datasets_hyde/docker_data/calabria
+          - /continuum/datasets_hyde/docker_data/fvg
+          - /continuum/datasets_hyde/docker_data/gargano
+          - /continuum/datasets_hyde/docker_data/lazio
+          - /continuum/datasets_hyde/docker_data/liri
+          - /continuum/datasets_hyde/docker_data/po
+          - /continuum/datasets_hyde/docker_data/puglia
+          - /continuum/datasets_hyde/docker_data/romagna
+          - /continuum/datasets_hyde/docker_data/sardegna
+          - /continuum/datasets_hyde/docker_data/sicilia
+          - /continuum/datasets_hyde/docker_data/tevere
+          - /continuum/datasets_hyde/docker_data/toscana
+          - /continuum/datasets_hyde/docker_data/volturno
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    CreatePostProcessHMCDirs:
+      type: org.lexis.datatransfer.nodes.CreateDirectories
+      properties:
+        directories:
+          - /continuum/datasets_hmc/dynamic_data/restart/marche
+          - /continuum/datasets_hmc/dynamic_data/source/marche
+          - /continuum/datasets_hmc/dynamic_data/destination/marche
+          - /continuum/datasets_hmc/dynamic_data/restart/liguria
+          - /continuum/datasets_hmc/dynamic_data/source/liguria
+          - /continuum/datasets_hmc/dynamic_data/destination/liguria
+          - /continuum/datasets_hmc/dynamic_data/restart/adige
+          - /continuum/datasets_hmc/dynamic_data/source/adige
+          - /continuum/datasets_hmc/dynamic_data/destination/adige
+          - /continuum/datasets_hmc/dynamic_data/restart/basilicata
+          - /continuum/datasets_hmc/dynamic_data/source/basilicata
+          - /continuum/datasets_hmc/dynamic_data/destination/basilicata
+          - /continuum/datasets_hmc/dynamic_data/restart/calabria
+          - /continuum/datasets_hmc/dynamic_data/source/calabria
+          - /continuum/datasets_hmc/dynamic_data/destination/calabria
+          - /continuum/datasets_hmc/dynamic_data/restart/fvg
+          - /continuum/datasets_hmc/dynamic_data/source/fvg
+          - /continuum/datasets_hmc/dynamic_data/destination/fvg
+          - /continuum/datasets_hmc/dynamic_data/restart/gargano
+          - /continuum/datasets_hmc/dynamic_data/source/gargano
+          - /continuum/datasets_hmc/dynamic_data/destination/gargano
+          - /continuum/datasets_hmc/dynamic_data/restart/lazio
+          - /continuum/datasets_hmc/dynamic_data/source/lazio
+          - /continuum/datasets_hmc/dynamic_data/destination/lazio
+          - /continuum/datasets_hmc/dynamic_data/restart/liri
+          - /continuum/datasets_hmc/dynamic_data/source/liri
+          - /continuum/datasets_hmc/dynamic_data/destination/liri
+          - /continuum/datasets_hmc/dynamic_data/restart/po
+          - /continuum/datasets_hmc/dynamic_data/source/po
+          - /continuum/datasets_hmc/dynamic_data/destination/po
+          - /continuum/datasets_hmc/dynamic_data/restart/puglia
+          - /continuum/datasets_hmc/dynamic_data/source/puglia
+          - /continuum/datasets_hmc/dynamic_data/destination/puglia
+          - /continuum/datasets_hmc/dynamic_data/restart/romagna
+          - /continuum/datasets_hmc/dynamic_data/source/romagna
+          - /continuum/datasets_hmc/dynamic_data/destination/romagna
+          - /continuum/datasets_hmc/dynamic_data/restart/sardegna
+          - /continuum/datasets_hmc/dynamic_data/source/sardegna
+          - /continuum/datasets_hmc/dynamic_data/destination/sardegna
+          - /continuum/datasets_hmc/dynamic_data/restart/sicilia
+          - /continuum/datasets_hmc/dynamic_data/source/sicilia
+          - /continuum/datasets_hmc/dynamic_data/destination/sicilia
+          - /continuum/datasets_hmc/dynamic_data/restart/tevere
+          - /continuum/datasets_hmc/dynamic_data/source/tevere
+          - /continuum/datasets_hmc/dynamic_data/destination/tevere
+          - /continuum/datasets_hmc/dynamic_data/restart/toscana
+          - /continuum/datasets_hmc/dynamic_data/source/toscana
+          - /continuum/datasets_hmc/dynamic_data/destination/toscana
+          - /continuum/datasets_hmc/dynamic_data/restart/volturno
+          - /continuum/datasets_hmc/dynamic_data/source/volturno
+          - /continuum/datasets_hmc/dynamic_data/destination/volturno
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    Webdrops:
+      type: org.lexis.nodes.Webdrops
+      properties:
+        start_date: {get_input: preprocessing_start_date}
+        download_type: "CONTINUUM"
+        destination: "/continuum/datasets_hyde/dynamic_data"
+        auth_url: "https://testauth.cimafoundation.org/auth/realms/webdrops/protocol/openid-connect/token"
+        url: "http://webdrops.cimafoundation.org/app/"
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    Continuum_Hyde_marche:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hyde_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/marche:/home/fp/fp_mount/datasets_hyde/static"
+          - "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw"
+          - "/continuum/datasets_hyde/docker_data/marche:/home/fp/fp_mount/datasets_hyde/dynamic_processed"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"36\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hyde_run\",\"RUN_DOMAIN\": \"marche\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_Hyde_liguria:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hyde_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/liguria:/home/fp/fp_mount/datasets_hyde/static"
+          - "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw"
+          - "/continuum/datasets_hyde/docker_data/liguria:/home/fp/fp_mount/datasets_hyde/dynamic_processed"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"36\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hyde_run\",\"RUN_DOMAIN\": \"liguria\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_Hyde_adige:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hyde_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/adige:/home/fp/fp_mount/datasets_hyde/static"
+          - "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw"
+          - "/continuum/datasets_hyde/docker_data/adige:/home/fp/fp_mount/datasets_hyde/dynamic_processed"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"36\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hyde_run\",\"RUN_DOMAIN\": \"adige\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_Hyde_basilicata:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hyde_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/basilicata:/home/fp/fp_mount/datasets_hyde/static"
+          - "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw"
+          - "/continuum/datasets_hyde/docker_data/basilicata:/home/fp/fp_mount/datasets_hyde/dynamic_processed"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"36\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hyde_run\",\"RUN_DOMAIN\": \"basilicata\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_Hyde_calabria:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hyde_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/calabria:/home/fp/fp_mount/datasets_hyde/static"
+          - "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw"
+          - "/continuum/datasets_hyde/docker_data/calabria:/home/fp/fp_mount/datasets_hyde/dynamic_processed"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"36\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hyde_run\",\"RUN_DOMAIN\": \"calabria\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_Hyde_fvg:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hyde_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/fvg:/home/fp/fp_mount/datasets_hyde/static"
+          - "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw"
+          - "/continuum/datasets_hyde/docker_data/fvg:/home/fp/fp_mount/datasets_hyde/dynamic_processed"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"36\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hyde_run\",\"RUN_DOMAIN\": \"fvg\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_Hyde_gargano:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hyde_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/gargano:/home/fp/fp_mount/datasets_hyde/static"
+          - "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw"
+          - "/continuum/datasets_hyde/docker_data/gargano:/home/fp/fp_mount/datasets_hyde/dynamic_processed"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"36\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hyde_run\",\"RUN_DOMAIN\": \"gargano\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_Hyde_lazio:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hyde_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/lazio:/home/fp/fp_mount/datasets_hyde/static"
+          - "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw"
+          - "/continuum/datasets_hyde/docker_data/lazio:/home/fp/fp_mount/datasets_hyde/dynamic_processed"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"36\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hyde_run\",\"RUN_DOMAIN\": \"lazio\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_Hyde_liri:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hyde_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/liri:/home/fp/fp_mount/datasets_hyde/static"
+          - "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw"
+          - "/continuum/datasets_hyde/docker_data/liri:/home/fp/fp_mount/datasets_hyde/dynamic_processed"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"36\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hyde_run\",\"RUN_DOMAIN\": \"liri\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_Hyde_po:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hyde_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/po:/home/fp/fp_mount/datasets_hyde/static"
+          - "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw"
+          - "/continuum/datasets_hyde/docker_data/po:/home/fp/fp_mount/datasets_hyde/dynamic_processed"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"36\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hyde_run\",\"RUN_DOMAIN\": \"po\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_Hyde_puglia:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hyde_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/puglia:/home/fp/fp_mount/datasets_hyde/static"
+          - "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw"
+          - "/continuum/datasets_hyde/docker_data/puglia:/home/fp/fp_mount/datasets_hyde/dynamic_processed"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"36\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hyde_run\",\"RUN_DOMAIN\": \"puglia\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_Hyde_romagna:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hyde_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/romagna:/home/fp/fp_mount/datasets_hyde/static"
+          - "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw"
+          - "/continuum/datasets_hyde/docker_data/romagna:/home/fp/fp_mount/datasets_hyde/dynamic_processed"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"36\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hyde_run\",\"RUN_DOMAIN\": \"romagna\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_Hyde_sardegna:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hyde_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/sardegna:/home/fp/fp_mount/datasets_hyde/static"
+          - "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw"
+          - "/continuum/datasets_hyde/docker_data/sardegna:/home/fp/fp_mount/datasets_hyde/dynamic_processed"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"36\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hyde_run\",\"RUN_DOMAIN\": \"sardegna\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_Hyde_sicilia:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hyde_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/sicilia:/home/fp/fp_mount/datasets_hyde/static"
+          - "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw"
+          - "/continuum/datasets_hyde/docker_data/sicilia:/home/fp/fp_mount/datasets_hyde/dynamic_processed"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"36\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hyde_run\",\"RUN_DOMAIN\": \"sicilia\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_Hyde_tevere:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hyde_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/tevere:/home/fp/fp_mount/datasets_hyde/static"
+          - "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw"
+          - "/continuum/datasets_hyde/docker_data/tevere:/home/fp/fp_mount/datasets_hyde/dynamic_processed"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"36\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hyde_run\",\"RUN_DOMAIN\": \"tevere\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_Hyde_toscana:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hyde_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/toscana:/home/fp/fp_mount/datasets_hyde/static"
+          - "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw"
+          - "/continuum/datasets_hyde/docker_data/toscana:/home/fp/fp_mount/datasets_hyde/dynamic_processed"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"36\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hyde_run\",\"RUN_DOMAIN\": \"toscana\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_Hyde_volturno:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hyde_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/volturno:/home/fp/fp_mount/datasets_hyde/static"
+          - "/continuum/datasets_hyde/dynamic_data/:/home/fp/fp_mount/datasets_hyde/dynamic_raw"
+          - "/continuum/datasets_hyde/docker_data/volturno:/home/fp/fp_mount/datasets_hyde/dynamic_processed"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hyde.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hyde.json\",\"TARGET_DATA_STATIC\": \"/home/fp/fp_mount/datasets_hyde/static/\",\"TARGET_DATA_DYNAMIC_RAW\": \"/home/fp/fp_mount/datasets_hyde/dynamic_raw/\",\"TARGET_DATA_DYNAMIC_PROCESSED\": \"/home/fp/fp_mount/datasets_hyde/dynamic_processed/\",\"RUN_TIME_STEPS_OBS\": \"36\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hyde_run\",\"RUN_DOMAIN\": \"volturno\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Move_Hyde_Results:
+      type: org.lexis.datatransfer.nodes.MoveFile
+      properties:
+        source_file: "/continuum/datasets_hyde/docker_data/*"
+        destination: "/continuum/datasets_hmc/dynamic_data/source/"
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    Continuum_HMC_marche:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hmc_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/marche:/home/fp/fp_mount/datasets_hmc/static/gridded"
+          - "/continuum/datasets_hyde/static_data/point/marche:/home/fp/fp_mount/datasets_hmc/static/point"
+          - "/continuum/datasets_hmc/dynamic_data/restart/marche:/home/fp/fp_mount/datasets_hmc/dynamic_restart"
+          - "/continuum/datasets_hmc/dynamic_data/source/marche:/home/fp/fp_mount/datasets_hmc/dynamic_source"
+          - "/continuum/datasets_hmc/dynamic_data/destination/marche/:/home/fp/fp_mount/datasets_hmc/dynamic_destination"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hmc.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hmc.json\",\"TARGET_DATA_STATIC_GRIDDED\": \"/home/fp/fp_mount/datasets_hmc/static/gridded/\",\"TARGET_DATA_STATIC_POINT\": \"/home/fp/fp_mount/datasets_hmc/static/point/\",\"TARGET_DATA_DYNAMIC_RESTART\": \"/home/fp/fp_mount/datasets_hmc/dynamic_restart/\",\"TARGET_DATA_DYNAMIC_SOURCE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_source/\",\"TARGET_DATA_DYNAMIC_DESTINATION\": \"/home/fp/fp_mount/datasets_hmc/dynamic_destination/\",\"RUN_TIME_STEPS_OBS\": \"24\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hmc_run\",\"RUN_DOMAIN\": \"marche\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_HMC_liguria:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hmc_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/liguria:/home/fp/fp_mount/datasets_hmc/static/gridded"
+          - "/continuum/datasets_hyde/static_data/point/liguria:/home/fp/fp_mount/datasets_hmc/static/point"
+          - "/continuum/datasets_hmc/dynamic_data/restart/liguria:/home/fp/fp_mount/datasets_hmc/dynamic_restart"
+          - "/continuum/datasets_hmc/dynamic_data/source/liguria:/home/fp/fp_mount/datasets_hmc/dynamic_source"
+          - "/continuum/datasets_hmc/dynamic_data/destination/liguria/:/home/fp/fp_mount/datasets_hmc/dynamic_destination"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hmc.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hmc.json\",\"TARGET_DATA_STATIC_GRIDDED\": \"/home/fp/fp_mount/datasets_hmc/static/gridded/\",\"TARGET_DATA_STATIC_POINT\": \"/home/fp/fp_mount/datasets_hmc/static/point/\",\"TARGET_DATA_DYNAMIC_RESTART\": \"/home/fp/fp_mount/datasets_hmc/dynamic_restart/\",\"TARGET_DATA_DYNAMIC_SOURCE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_source/\",\"TARGET_DATA_DYNAMIC_DESTINATION\": \"/home/fp/fp_mount/datasets_hmc/dynamic_destination/\",\"RUN_TIME_STEPS_OBS\": \"24\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hmc_run\",\"RUN_DOMAIN\": \"liguria\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_HMC_adige:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hmc_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/adige:/home/fp/fp_mount/datasets_hmc/static/gridded"
+          - "/continuum/datasets_hyde/static_data/point/adige:/home/fp/fp_mount/datasets_hmc/static/point"
+          - "/continuum/datasets_hmc/dynamic_data/restart/adige:/home/fp/fp_mount/datasets_hmc/dynamic_restart"
+          - "/continuum/datasets_hmc/dynamic_data/source/adige:/home/fp/fp_mount/datasets_hmc/dynamic_source"
+          - "/continuum/datasets_hmc/dynamic_data/destination/adige/:/home/fp/fp_mount/datasets_hmc/dynamic_destination"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hmc.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hmc.json\",\"TARGET_DATA_STATIC_GRIDDED\": \"/home/fp/fp_mount/datasets_hmc/static/gridded/\",\"TARGET_DATA_STATIC_POINT\": \"/home/fp/fp_mount/datasets_hmc/static/point/\",\"TARGET_DATA_DYNAMIC_RESTART\": \"/home/fp/fp_mount/datasets_hmc/dynamic_restart/\",\"TARGET_DATA_DYNAMIC_SOURCE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_source/\",\"TARGET_DATA_DYNAMIC_DESTINATION\": \"/home/fp/fp_mount/datasets_hmc/dynamic_destination/\",\"RUN_TIME_STEPS_OBS\": \"24\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hmc_run\",\"RUN_DOMAIN\": \"adige\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_HMC_basilicata:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hmc_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/basilicata:/home/fp/fp_mount/datasets_hmc/static/gridded"
+          - "/continuum/datasets_hyde/static_data/point/basilicata:/home/fp/fp_mount/datasets_hmc/static/point"
+          - "/continuum/datasets_hmc/dynamic_data/restart/basilicata:/home/fp/fp_mount/datasets_hmc/dynamic_restart"
+          - "/continuum/datasets_hmc/dynamic_data/source/basilicata:/home/fp/fp_mount/datasets_hmc/dynamic_source"
+          - "/continuum/datasets_hmc/dynamic_data/destination/basilicata/:/home/fp/fp_mount/datasets_hmc/dynamic_destination"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hmc.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hmc.json\",\"TARGET_DATA_STATIC_GRIDDED\": \"/home/fp/fp_mount/datasets_hmc/static/gridded/\",\"TARGET_DATA_STATIC_POINT\": \"/home/fp/fp_mount/datasets_hmc/static/point/\",\"TARGET_DATA_DYNAMIC_RESTART\": \"/home/fp/fp_mount/datasets_hmc/dynamic_restart/\",\"TARGET_DATA_DYNAMIC_SOURCE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_source/\",\"TARGET_DATA_DYNAMIC_DESTINATION\": \"/home/fp/fp_mount/datasets_hmc/dynamic_destination/\",\"RUN_TIME_STEPS_OBS\": \"24\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hmc_run\",\"RUN_DOMAIN\": \"basilicata\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_HMC_calabria:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hmc_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/calabria:/home/fp/fp_mount/datasets_hmc/static/gridded"
+          - "/continuum/datasets_hyde/static_data/point/calabria:/home/fp/fp_mount/datasets_hmc/static/point"
+          - "/continuum/datasets_hmc/dynamic_data/restart/calabria:/home/fp/fp_mount/datasets_hmc/dynamic_restart"
+          - "/continuum/datasets_hmc/dynamic_data/source/calabria:/home/fp/fp_mount/datasets_hmc/dynamic_source"
+          - "/continuum/datasets_hmc/dynamic_data/destination/calabria/:/home/fp/fp_mount/datasets_hmc/dynamic_destination"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hmc.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hmc.json\",\"TARGET_DATA_STATIC_GRIDDED\": \"/home/fp/fp_mount/datasets_hmc/static/gridded/\",\"TARGET_DATA_STATIC_POINT\": \"/home/fp/fp_mount/datasets_hmc/static/point/\",\"TARGET_DATA_DYNAMIC_RESTART\": \"/home/fp/fp_mount/datasets_hmc/dynamic_restart/\",\"TARGET_DATA_DYNAMIC_SOURCE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_source/\",\"TARGET_DATA_DYNAMIC_DESTINATION\": \"/home/fp/fp_mount/datasets_hmc/dynamic_destination/\",\"RUN_TIME_STEPS_OBS\": \"24\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hmc_run\",\"RUN_DOMAIN\": \"calabria\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_HMC_fvg:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hmc_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/fvg:/home/fp/fp_mount/datasets_hmc/static/gridded"
+          - "/continuum/datasets_hyde/static_data/point/fvg:/home/fp/fp_mount/datasets_hmc/static/point"
+          - "/continuum/datasets_hmc/dynamic_data/restart/fvg:/home/fp/fp_mount/datasets_hmc/dynamic_restart"
+          - "/continuum/datasets_hmc/dynamic_data/source/fvg:/home/fp/fp_mount/datasets_hmc/dynamic_source"
+          - "/continuum/datasets_hmc/dynamic_data/destination/fvg/:/home/fp/fp_mount/datasets_hmc/dynamic_destination"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hmc.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hmc.json\",\"TARGET_DATA_STATIC_GRIDDED\": \"/home/fp/fp_mount/datasets_hmc/static/gridded/\",\"TARGET_DATA_STATIC_POINT\": \"/home/fp/fp_mount/datasets_hmc/static/point/\",\"TARGET_DATA_DYNAMIC_RESTART\": \"/home/fp/fp_mount/datasets_hmc/dynamic_restart/\",\"TARGET_DATA_DYNAMIC_SOURCE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_source/\",\"TARGET_DATA_DYNAMIC_DESTINATION\": \"/home/fp/fp_mount/datasets_hmc/dynamic_destination/\",\"RUN_TIME_STEPS_OBS\": \"24\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hmc_run\",\"RUN_DOMAIN\": \"fvg\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_HMC_gargano:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hmc_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/gargano:/home/fp/fp_mount/datasets_hmc/static/gridded"
+          - "/continuum/datasets_hyde/static_data/point/gargano:/home/fp/fp_mount/datasets_hmc/static/point"
+          - "/continuum/datasets_hmc/dynamic_data/restart/gargano:/home/fp/fp_mount/datasets_hmc/dynamic_restart"
+          - "/continuum/datasets_hmc/dynamic_data/source/gargano:/home/fp/fp_mount/datasets_hmc/dynamic_source"
+          - "/continuum/datasets_hmc/dynamic_data/destination/gargano/:/home/fp/fp_mount/datasets_hmc/dynamic_destination"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hmc.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hmc.json\",\"TARGET_DATA_STATIC_GRIDDED\": \"/home/fp/fp_mount/datasets_hmc/static/gridded/\",\"TARGET_DATA_STATIC_POINT\": \"/home/fp/fp_mount/datasets_hmc/static/point/\",\"TARGET_DATA_DYNAMIC_RESTART\": \"/home/fp/fp_mount/datasets_hmc/dynamic_restart/\",\"TARGET_DATA_DYNAMIC_SOURCE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_source/\",\"TARGET_DATA_DYNAMIC_DESTINATION\": \"/home/fp/fp_mount/datasets_hmc/dynamic_destination/\",\"RUN_TIME_STEPS_OBS\": \"24\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hmc_run\",\"RUN_DOMAIN\": \"gargano\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_HMC_lazio:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hmc_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/lazio:/home/fp/fp_mount/datasets_hmc/static/gridded"
+          - "/continuum/datasets_hyde/static_data/point/lazio:/home/fp/fp_mount/datasets_hmc/static/point"
+          - "/continuum/datasets_hmc/dynamic_data/restart/lazio:/home/fp/fp_mount/datasets_hmc/dynamic_restart"
+          - "/continuum/datasets_hmc/dynamic_data/source/lazio:/home/fp/fp_mount/datasets_hmc/dynamic_source"
+          - "/continuum/datasets_hmc/dynamic_data/destination/lazio/:/home/fp/fp_mount/datasets_hmc/dynamic_destination"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hmc.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hmc.json\",\"TARGET_DATA_STATIC_GRIDDED\": \"/home/fp/fp_mount/datasets_hmc/static/gridded/\",\"TARGET_DATA_STATIC_POINT\": \"/home/fp/fp_mount/datasets_hmc/static/point/\",\"TARGET_DATA_DYNAMIC_RESTART\": \"/home/fp/fp_mount/datasets_hmc/dynamic_restart/\",\"TARGET_DATA_DYNAMIC_SOURCE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_source/\",\"TARGET_DATA_DYNAMIC_DESTINATION\": \"/home/fp/fp_mount/datasets_hmc/dynamic_destination/\",\"RUN_TIME_STEPS_OBS\": \"24\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hmc_run\",\"RUN_DOMAIN\": \"lazio\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_HMC_liri:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hmc_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/liri:/home/fp/fp_mount/datasets_hmc/static/gridded"
+          - "/continuum/datasets_hyde/static_data/point/liri:/home/fp/fp_mount/datasets_hmc/static/point"
+          - "/continuum/datasets_hmc/dynamic_data/restart/liri:/home/fp/fp_mount/datasets_hmc/dynamic_restart"
+          - "/continuum/datasets_hmc/dynamic_data/source/liri:/home/fp/fp_mount/datasets_hmc/dynamic_source"
+          - "/continuum/datasets_hmc/dynamic_data/destination/liri/:/home/fp/fp_mount/datasets_hmc/dynamic_destination"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hmc.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hmc.json\",\"TARGET_DATA_STATIC_GRIDDED\": \"/home/fp/fp_mount/datasets_hmc/static/gridded/\",\"TARGET_DATA_STATIC_POINT\": \"/home/fp/fp_mount/datasets_hmc/static/point/\",\"TARGET_DATA_DYNAMIC_RESTART\": \"/home/fp/fp_mount/datasets_hmc/dynamic_restart/\",\"TARGET_DATA_DYNAMIC_SOURCE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_source/\",\"TARGET_DATA_DYNAMIC_DESTINATION\": \"/home/fp/fp_mount/datasets_hmc/dynamic_destination/\",\"RUN_TIME_STEPS_OBS\": \"24\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hmc_run\",\"RUN_DOMAIN\": \"liri\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_HMC_po:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hmc_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/po:/home/fp/fp_mount/datasets_hmc/static/gridded"
+          - "/continuum/datasets_hyde/static_data/point/po:/home/fp/fp_mount/datasets_hmc/static/point"
+          - "/continuum/datasets_hmc/dynamic_data/restart/po:/home/fp/fp_mount/datasets_hmc/dynamic_restart"
+          - "/continuum/datasets_hmc/dynamic_data/source/po:/home/fp/fp_mount/datasets_hmc/dynamic_source"
+          - "/continuum/datasets_hmc/dynamic_data/destination/po/:/home/fp/fp_mount/datasets_hmc/dynamic_destination"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hmc.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hmc.json\",\"TARGET_DATA_STATIC_GRIDDED\": \"/home/fp/fp_mount/datasets_hmc/static/gridded/\",\"TARGET_DATA_STATIC_POINT\": \"/home/fp/fp_mount/datasets_hmc/static/point/\",\"TARGET_DATA_DYNAMIC_RESTART\": \"/home/fp/fp_mount/datasets_hmc/dynamic_restart/\",\"TARGET_DATA_DYNAMIC_SOURCE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_source/\",\"TARGET_DATA_DYNAMIC_DESTINATION\": \"/home/fp/fp_mount/datasets_hmc/dynamic_destination/\",\"RUN_TIME_STEPS_OBS\": \"24\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hmc_run\",\"RUN_DOMAIN\": \"po\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_HMC_puglia:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hmc_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/puglia:/home/fp/fp_mount/datasets_hmc/static/gridded"
+          - "/continuum/datasets_hyde/static_data/point/puglia:/home/fp/fp_mount/datasets_hmc/static/point"
+          - "/continuum/datasets_hmc/dynamic_data/restart/puglia:/home/fp/fp_mount/datasets_hmc/dynamic_restart"
+          - "/continuum/datasets_hmc/dynamic_data/source/puglia:/home/fp/fp_mount/datasets_hmc/dynamic_source"
+          - "/continuum/datasets_hmc/dynamic_data/destination/puglia/:/home/fp/fp_mount/datasets_hmc/dynamic_destination"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hmc.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hmc.json\",\"TARGET_DATA_STATIC_GRIDDED\": \"/home/fp/fp_mount/datasets_hmc/static/gridded/\",\"TARGET_DATA_STATIC_POINT\": \"/home/fp/fp_mount/datasets_hmc/static/point/\",\"TARGET_DATA_DYNAMIC_RESTART\": \"/home/fp/fp_mount/datasets_hmc/dynamic_restart/\",\"TARGET_DATA_DYNAMIC_SOURCE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_source/\",\"TARGET_DATA_DYNAMIC_DESTINATION\": \"/home/fp/fp_mount/datasets_hmc/dynamic_destination/\",\"RUN_TIME_STEPS_OBS\": \"24\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hmc_run\",\"RUN_DOMAIN\": \"puglia\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_HMC_romagna:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hmc_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/romagna:/home/fp/fp_mount/datasets_hmc/static/gridded"
+          - "/continuum/datasets_hyde/static_data/point/romagna:/home/fp/fp_mount/datasets_hmc/static/point"
+          - "/continuum/datasets_hmc/dynamic_data/restart/romagna:/home/fp/fp_mount/datasets_hmc/dynamic_restart"
+          - "/continuum/datasets_hmc/dynamic_data/source/romagna:/home/fp/fp_mount/datasets_hmc/dynamic_source"
+          - "/continuum/datasets_hmc/dynamic_data/destination/romagna/:/home/fp/fp_mount/datasets_hmc/dynamic_destination"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hmc.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hmc.json\",\"TARGET_DATA_STATIC_GRIDDED\": \"/home/fp/fp_mount/datasets_hmc/static/gridded/\",\"TARGET_DATA_STATIC_POINT\": \"/home/fp/fp_mount/datasets_hmc/static/point/\",\"TARGET_DATA_DYNAMIC_RESTART\": \"/home/fp/fp_mount/datasets_hmc/dynamic_restart/\",\"TARGET_DATA_DYNAMIC_SOURCE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_source/\",\"TARGET_DATA_DYNAMIC_DESTINATION\": \"/home/fp/fp_mount/datasets_hmc/dynamic_destination/\",\"RUN_TIME_STEPS_OBS\": \"24\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hmc_run\",\"RUN_DOMAIN\": \"romagna\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_HMC_sardegna:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hmc_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/sardegna:/home/fp/fp_mount/datasets_hmc/static/gridded"
+          - "/continuum/datasets_hyde/static_data/point/sardegna:/home/fp/fp_mount/datasets_hmc/static/point"
+          - "/continuum/datasets_hmc/dynamic_data/restart/sardegna:/home/fp/fp_mount/datasets_hmc/dynamic_restart"
+          - "/continuum/datasets_hmc/dynamic_data/source/sardegna:/home/fp/fp_mount/datasets_hmc/dynamic_source"
+          - "/continuum/datasets_hmc/dynamic_data/destination/sardegna/:/home/fp/fp_mount/datasets_hmc/dynamic_destination"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hmc.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hmc.json\",\"TARGET_DATA_STATIC_GRIDDED\": \"/home/fp/fp_mount/datasets_hmc/static/gridded/\",\"TARGET_DATA_STATIC_POINT\": \"/home/fp/fp_mount/datasets_hmc/static/point/\",\"TARGET_DATA_DYNAMIC_RESTART\": \"/home/fp/fp_mount/datasets_hmc/dynamic_restart/\",\"TARGET_DATA_DYNAMIC_SOURCE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_source/\",\"TARGET_DATA_DYNAMIC_DESTINATION\": \"/home/fp/fp_mount/datasets_hmc/dynamic_destination/\",\"RUN_TIME_STEPS_OBS\": \"24\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hmc_run\",\"RUN_DOMAIN\": \"sardegna\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_HMC_sicilia:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hmc_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/sicilia:/home/fp/fp_mount/datasets_hmc/static/gridded"
+          - "/continuum/datasets_hyde/static_data/point/sicilia:/home/fp/fp_mount/datasets_hmc/static/point"
+          - "/continuum/datasets_hmc/dynamic_data/restart/sicilia:/home/fp/fp_mount/datasets_hmc/dynamic_restart"
+          - "/continuum/datasets_hmc/dynamic_data/source/sicilia:/home/fp/fp_mount/datasets_hmc/dynamic_source"
+          - "/continuum/datasets_hmc/dynamic_data/destination/sicilia/:/home/fp/fp_mount/datasets_hmc/dynamic_destination"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hmc.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hmc.json\",\"TARGET_DATA_STATIC_GRIDDED\": \"/home/fp/fp_mount/datasets_hmc/static/gridded/\",\"TARGET_DATA_STATIC_POINT\": \"/home/fp/fp_mount/datasets_hmc/static/point/\",\"TARGET_DATA_DYNAMIC_RESTART\": \"/home/fp/fp_mount/datasets_hmc/dynamic_restart/\",\"TARGET_DATA_DYNAMIC_SOURCE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_source/\",\"TARGET_DATA_DYNAMIC_DESTINATION\": \"/home/fp/fp_mount/datasets_hmc/dynamic_destination/\",\"RUN_TIME_STEPS_OBS\": \"24\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hmc_run\",\"RUN_DOMAIN\": \"sicilia\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_HMC_tevere:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hmc_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/tevere:/home/fp/fp_mount/datasets_hmc/static/gridded"
+          - "/continuum/datasets_hyde/static_data/point/tevere:/home/fp/fp_mount/datasets_hmc/static/point"
+          - "/continuum/datasets_hmc/dynamic_data/restart/tevere:/home/fp/fp_mount/datasets_hmc/dynamic_restart"
+          - "/continuum/datasets_hmc/dynamic_data/source/tevere:/home/fp/fp_mount/datasets_hmc/dynamic_source"
+          - "/continuum/datasets_hmc/dynamic_data/destination/tevere/:/home/fp/fp_mount/datasets_hmc/dynamic_destination"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hmc.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hmc.json\",\"TARGET_DATA_STATIC_GRIDDED\": \"/home/fp/fp_mount/datasets_hmc/static/gridded/\",\"TARGET_DATA_STATIC_POINT\": \"/home/fp/fp_mount/datasets_hmc/static/point/\",\"TARGET_DATA_DYNAMIC_RESTART\": \"/home/fp/fp_mount/datasets_hmc/dynamic_restart/\",\"TARGET_DATA_DYNAMIC_SOURCE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_source/\",\"TARGET_DATA_DYNAMIC_DESTINATION\": \"/home/fp/fp_mount/datasets_hmc/dynamic_destination/\",\"RUN_TIME_STEPS_OBS\": \"24\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hmc_run\",\"RUN_DOMAIN\": \"tevere\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_HMC_toscana:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hmc_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/toscana:/home/fp/fp_mount/datasets_hmc/static/gridded"
+          - "/continuum/datasets_hyde/static_data/point/toscana:/home/fp/fp_mount/datasets_hmc/static/point"
+          - "/continuum/datasets_hmc/dynamic_data/restart/toscana:/home/fp/fp_mount/datasets_hmc/dynamic_restart"
+          - "/continuum/datasets_hmc/dynamic_data/source/toscana:/home/fp/fp_mount/datasets_hmc/dynamic_source"
+          - "/continuum/datasets_hmc/dynamic_data/destination/toscana/:/home/fp/fp_mount/datasets_hmc/dynamic_destination"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hmc.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hmc.json\",\"TARGET_DATA_STATIC_GRIDDED\": \"/home/fp/fp_mount/datasets_hmc/static/gridded/\",\"TARGET_DATA_STATIC_POINT\": \"/home/fp/fp_mount/datasets_hmc/static/point/\",\"TARGET_DATA_DYNAMIC_RESTART\": \"/home/fp/fp_mount/datasets_hmc/dynamic_restart/\",\"TARGET_DATA_DYNAMIC_SOURCE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_source/\",\"TARGET_DATA_DYNAMIC_DESTINATION\": \"/home/fp/fp_mount/datasets_hmc/dynamic_destination/\",\"RUN_TIME_STEPS_OBS\": \"24\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hmc_run\",\"RUN_DOMAIN\": \"toscana\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    Continuum_HMC_volturno:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_hmc_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        workdir: "/home/fp/fp_entrypoint/"
+        volumes:
+          - "/continuum/datasets_hyde/static_data/gridded/volturno:/home/fp/fp_mount/datasets_hmc/static/gridded"
+          - "/continuum/datasets_hyde/static_data/point/volturno:/home/fp/fp_mount/datasets_hmc/static/point"
+          - "/continuum/datasets_hmc/dynamic_data/restart/volturno:/home/fp/fp_mount/datasets_hmc/dynamic_restart"
+          - "/continuum/datasets_hmc/dynamic_data/source/volturno:/home/fp/fp_mount/datasets_hmc/dynamic_source"
+          - "/continuum/datasets_hmc/dynamic_data/destination/volturno/:/home/fp/fp_mount/datasets_hmc/dynamic_destination"
+        docker_env_vars: {concat: ["{\"RUN_TIME_NOW\": \"", get_input: postprocessing_run_date, "\",\"APP_MAIN\":\"fp_docker_entrypoint_app_main_hmc.py\",\"APP_CONFIG\":\"fp_docker_entrypoint_app_configuration_hmc.json\",\"TARGET_DATA_STATIC_GRIDDED\": \"/home/fp/fp_mount/datasets_hmc/static/gridded/\",\"TARGET_DATA_STATIC_POINT\": \"/home/fp/fp_mount/datasets_hmc/static/point/\",\"TARGET_DATA_DYNAMIC_RESTART\": \"/home/fp/fp_mount/datasets_hmc/dynamic_restart/\",\"TARGET_DATA_DYNAMIC_SOURCE\": \"/home/fp/fp_mount/datasets_hmc/dynamic_source/\",\"TARGET_DATA_DYNAMIC_DESTINATION\": \"/home/fp/fp_mount/datasets_hmc/dynamic_destination/\",\"RUN_TIME_STEPS_OBS\": \"24\",\"RUN_TIME_STEPS_FOR\": \"24\",\"RUN_NAME\": \"fp_hmc_run\",\"RUN_DOMAIN\": \"volturno\",\"RUN_ENS\": \"false\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    CreateStagingAreaResultDir:
+      type: org.lexis.datatransfer.nodes.CreateStagingAreaDirectory
+      properties:
+        directory: "continuum_results"
+      requirements:
+        - mountedCloudStagingArea:
+            type_requirement: mounted_staging_area
+            node: MountWRFDataset
+            capability: org.lexis.datatransfer.capabilities.MountedStagingAreaAccess
+            relationship: org.lexis.datatransfer.relationships.MountedCloudStagingArea
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    MoveContinuumResults:
+      type: org.lexis.datatransfer.nodes.MoveToStagingAreaDirectory
+      properties:
+        source_directory: "/continuum/datasets_hmc/dynamic_data/destination/"
+      requirements:
+        - staging_area_directory:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaResultDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    CloudToDDIJob:
+      type: org.ddi.nodes.CloudToDDIJob
+      properties:
+        metadata: {concat: ["{\"creator\": [\"Continuum workflow\"], \"contributor\": [\"Continuum workflow\"], \"publisher\": [\"Continuum workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"Continuum Workflow result - ", get_input: postprocessing_run_date, "\"}"]}
+        token: { get_input: token }
+        ddi_path: { get_input: postprocessing_ddi_path }
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaResultDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+    DeleteCloudWRFDataJob:
+      type: org.ddi.nodes.DeleteCloudDataJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - cloud_area_dataset_provider:
+            type_requirement: cloud_area_dataset_provider
+            node: DDIToCloudWRFJob
+            capability: org.ddi.capabilities.DataTransferCloud
+            relationship: org.ddi.relationships.CloudAreaDatasetProvider
+    DeleteCloudContinuumStaticDataJob:
+      type: org.ddi.nodes.DeleteCloudDataJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - cloud_area_dataset_provider:
+            type_requirement: cloud_area_dataset_provider
+            node: DDIToCloudContinuumStaticDataJob
+            capability: org.ddi.capabilities.DataTransferCloud
+            relationship: org.ddi.relationships.CloudAreaDatasetProvider
+  outputs:
+    ddi_post_process_results:
+      description: DDI path to Continuum post-processing results
+      value: { get_attribute: [ CloudToDDIJob, destination_directory_path ] }
+  workflows:
+    install:
+      steps:
+        Network_install:
+          target: PublicNet
+          activities:
+            - delegate: install
+    uninstall:
+      steps:
+        Compute_uninstall:
+          target: ContinuumVM
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: PublicNet
+          activities:
+            - delegate: uninstall
+    Run:
+      steps:
+        Compute_install:
+          target: ContinuumVM
+          activities:
+            - delegate: install
+          on_success:
+            - Docker_create
+        Docker_create:
+          target: Docker
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Docker_configure
+        Docker_configure:
+          target: Docker
+          activities:
+            - call_operation: Standard.configure
+          on_success:
+            - Docker_start
+        Docker_start:
+          target: Docker
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Docker_started
+        Docker_started:
+          target: Docker
+          activities:
+            - set_state: started
+          on_success:
+            - GetDDIAccess_start
+            - CreatePostProcessHydeDirs_start
+            - CreatePostProcessHMCDirs_start
+        CreatePostProcessHydeDirs_start:
+          target: CreatePostProcessHydeDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreatePostProcessHydeDirs_started
+        CreatePostProcessHydeDirs_started:
+          target: CreatePostProcessHydeDirs
+          activities:
+            - set_state: started
+          on_success:
+            - DDIToCloudWRFJob_create
+            - DDIToCloudContinuumStaticDataJob_create
+            - Webdrops_start
+        GetDDIAccess_start:
+          target: GetDDIAccess
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetDDIAccess_started
+        GetDDIAccess_started:
+          target: GetDDIAccess
+          activities:
+            - set_state: started
+          on_success:
+            - DDIToCloudWRFJob_create
+            - DDIToCloudContinuumStaticDataJob_create
+        DDIToCloudWRFJob_create:
+          target: DDIToCloudWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToCloudWRFJob_submit
+        DDIToCloudWRFJob_submit:
+          target: DDIToCloudWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToCloudWRFJob_submitted
+        DDIToCloudWRFJob_submitted:
+          target: DDIToCloudWRFJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToCloudWRFJob_run
+        DDIToCloudWRFJob_run:
+          target: DDIToCloudWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToCloudWRFJob_executed
+        DDIToCloudWRFJob_executed:
+          target: DDIToCloudWRFJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountWRFDataset_create
+        MountWRFDataset_create:
+          target: MountWRFDataset
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - MountWRFDataset_created
+            # Added to be started after MountWRFDataset_create and avoid potential
+            # yum issues
+            - MountContinuumDataset_create
+        MountWRFDataset_created:
+          target: MountWRFDataset
+          activities:
+            - set_state: created
+          on_success:
+            - MountWRFDataset_start
+        MountWRFDataset_start:
+          target: MountWRFDataset
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountWRFDataset_started
+        MountWRFDataset_started:
+          target: MountWRFDataset
+          activities:
+            - set_state: started
+          on_success:
+            - FindWRFiles_start
+        FindWRFiles_start:
+          target: FindWRFiles
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - FindWRFiles_started
+        FindWRFiles_started:
+          target: FindWRFiles
+          activities:
+            - set_state: started
+          on_success:
+            - MoveWRFFiles_start
+        MoveWRFFiles_start:
+          target: MoveWRFFiles
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveWRFFiles_started
+        MoveWRFFiles_started:
+          target: MoveWRFFiles
+          activities:
+            - set_state: started
+          on_success:
+            - Continuum_Hyde_marche_create
+        DDIToCloudContinuumStaticDataJob_create:
+          target: DDIToCloudContinuumStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToCloudContinuumStaticDataJob_submit
+        DDIToCloudContinuumStaticDataJob_submit:
+          target: DDIToCloudContinuumStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToCloudContinuumStaticDataJob_submitted
+        DDIToCloudContinuumStaticDataJob_submitted:
+          target: DDIToCloudContinuumStaticDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToCloudContinuumStaticDataJob_run
+        DDIToCloudContinuumStaticDataJob_run:
+          target: DDIToCloudContinuumStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToCloudContinuumStaticDataJob_executed
+        DDIToCloudContinuumStaticDataJob_executed:
+          target: DDIToCloudContinuumStaticDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountContinuumDataset_create
+        MountContinuumDataset_create:
+          target: MountContinuumDataset
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - MountContinuumDataset_created
+        MountContinuumDataset_created:
+          target: MountContinuumDataset
+          activities:
+            - set_state: created
+          on_success:
+            - MountContinuumDataset_start
+        MountContinuumDataset_start:
+          target: MountContinuumDataset
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountContinuumDataset_started
+        MountContinuumDataset_started:
+          target: MountContinuumDataset
+          activities:
+            - set_state: started
+          on_success:
+            - FindContinuumStaticDataFiles_start
+        FindContinuumStaticDataFiles_start:
+          target: FindContinuumStaticDataFiles
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - FindContinuumStaticDataFiles_started
+        FindContinuumStaticDataFiles_started:
+          target: FindContinuumStaticDataFiles
+          activities:
+            - set_state: started
+          on_success:
+            - MoveContinuumStaticDataFiles_start
+        MoveContinuumStaticDataFiles_start:
+          target: MoveContinuumStaticDataFiles
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveContinuumStaticDataFiles_started
+        MoveContinuumStaticDataFiles_started:
+          target: MoveContinuumStaticDataFiles
+          activities:
+            - set_state: started
+          on_success:
+            - Continuum_Hyde_marche_create
+        CreatePostProcessHMCDirs_start:
+          target: CreatePostProcessHMCDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreatePostProcessHMCDirs_started
+        CreatePostProcessHMCDirs_started:
+          target: CreatePostProcessHMCDirs
+          activities:
+            - set_state: started
+          on_success:
+            - Continuum_HMC_marche_create
+            - Continuum_HMC_liguria_create
+            - Continuum_HMC_adige_create
+            - Continuum_HMC_basilicata_create
+            - Continuum_HMC_calabria_create
+            - Continuum_HMC_fvg_create
+            - Continuum_HMC_gargano_create
+            - Continuum_HMC_lazio_create
+            - Continuum_HMC_liri_create
+            - Continuum_HMC_po_create
+            - Continuum_HMC_puglia_create
+            - Continuum_HMC_romagna_create
+            - Continuum_HMC_sardegna_create
+            - Continuum_HMC_sicilia_create
+            - Continuum_HMC_tevere_create
+            - Continuum_HMC_toscana_create
+            - Continuum_HMC_volturno_create
+        Webdrops_start:
+          target: Webdrops
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Webdrops_started
+        Webdrops_started:
+          target: Webdrops
+          activities:
+            - set_state: started
+          on_success:
+            - Continuum_Hyde_marche_create
+        Continuum_Hyde_marche_create:
+          target: Continuum_Hyde_marche
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_Hyde_liguria_create
+            - Continuum_Hyde_adige_create
+            - Continuum_Hyde_basilicata_create
+            - Continuum_Hyde_calabria_create
+            - Continuum_Hyde_fvg_create
+            - Continuum_Hyde_gargano_create
+            - Continuum_Hyde_lazio_create
+            - Continuum_Hyde_liri_create
+            - Continuum_Hyde_po_create
+            - Continuum_Hyde_puglia_create
+            - Continuum_Hyde_romagna_create
+            - Continuum_Hyde_sardegna_create
+            - Continuum_Hyde_sicilia_create
+            - Continuum_Hyde_tevere_create
+            - Continuum_Hyde_toscana_create
+            - Continuum_Hyde_volturno_create
+            - Continuum_Hyde_marche_start
+        Continuum_Hyde_marche_start:
+          target: Continuum_Hyde_marche
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_marche_started
+        Continuum_Hyde_marche_started:
+          target: Continuum_Hyde_marche
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_liguria_create:
+          target: Continuum_Hyde_liguria
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_Hyde_liguria_start
+        Continuum_Hyde_liguria_start:
+          target: Continuum_Hyde_liguria
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_liguria_started
+        Continuum_Hyde_liguria_started:
+          target: Continuum_Hyde_liguria
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_adige_create:
+          target: Continuum_Hyde_adige
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_Hyde_adige_start
+        Continuum_Hyde_adige_start:
+          target: Continuum_Hyde_adige
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_adige_started
+        Continuum_Hyde_adige_started:
+          target: Continuum_Hyde_adige
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_basilicata_create:
+          target: Continuum_Hyde_basilicata
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_Hyde_basilicata_start
+        Continuum_Hyde_basilicata_start:
+          target: Continuum_Hyde_basilicata
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_basilicata_started
+        Continuum_Hyde_basilicata_started:
+          target: Continuum_Hyde_basilicata
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_calabria_create:
+          target: Continuum_Hyde_calabria
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_Hyde_calabria_start
+        Continuum_Hyde_calabria_start:
+          target: Continuum_Hyde_calabria
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_calabria_started
+        Continuum_Hyde_calabria_started:
+          target: Continuum_Hyde_calabria
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_fvg_create:
+          target: Continuum_Hyde_fvg
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_Hyde_fvg_start
+        Continuum_Hyde_fvg_start:
+          target: Continuum_Hyde_fvg
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_fvg_started
+        Continuum_Hyde_fvg_started:
+          target: Continuum_Hyde_fvg
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_gargano_create:
+          target: Continuum_Hyde_gargano
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_Hyde_gargano_start
+        Continuum_Hyde_gargano_start:
+          target: Continuum_Hyde_gargano
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_gargano_started
+        Continuum_Hyde_gargano_started:
+          target: Continuum_Hyde_gargano
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_lazio_create:
+          target: Continuum_Hyde_lazio
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_Hyde_lazio_start
+        Continuum_Hyde_lazio_start:
+          target: Continuum_Hyde_lazio
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_lazio_started
+        Continuum_Hyde_lazio_started:
+          target: Continuum_Hyde_lazio
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_liri_create:
+          target: Continuum_Hyde_liri
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_Hyde_liri_start
+        Continuum_Hyde_liri_start:
+          target: Continuum_Hyde_liri
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_liri_started
+        Continuum_Hyde_liri_started:
+          target: Continuum_Hyde_liri
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_po_create:
+          target: Continuum_Hyde_po
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_Hyde_po_start
+        Continuum_Hyde_po_start:
+          target: Continuum_Hyde_po
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_po_started
+        Continuum_Hyde_po_started:
+          target: Continuum_Hyde_po
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_puglia_create:
+          target: Continuum_Hyde_puglia
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_Hyde_puglia_start
+        Continuum_Hyde_puglia_start:
+          target: Continuum_Hyde_puglia
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_puglia_started
+        Continuum_Hyde_puglia_started:
+          target: Continuum_Hyde_puglia
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_romagna_create:
+          target: Continuum_Hyde_romagna
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_Hyde_romagna_start
+        Continuum_Hyde_romagna_start:
+          target: Continuum_Hyde_romagna
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_romagna_started
+        Continuum_Hyde_romagna_started:
+          target: Continuum_Hyde_romagna
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_sardegna_create:
+          target: Continuum_Hyde_sardegna
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_Hyde_sardegna_start
+        Continuum_Hyde_sardegna_start:
+          target: Continuum_Hyde_sardegna
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_sardegna_started
+        Continuum_Hyde_sardegna_started:
+          target: Continuum_Hyde_sardegna
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_sicilia_create:
+          target: Continuum_Hyde_sicilia
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_Hyde_sicilia_start
+        Continuum_Hyde_sicilia_start:
+          target: Continuum_Hyde_sicilia
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_sicilia_started
+        Continuum_Hyde_sicilia_started:
+          target: Continuum_Hyde_sicilia
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_tevere_create:
+          target: Continuum_Hyde_tevere
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_Hyde_tevere_start
+        Continuum_Hyde_tevere_start:
+          target: Continuum_Hyde_tevere
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_tevere_started
+        Continuum_Hyde_tevere_started:
+          target: Continuum_Hyde_tevere
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_toscana_create:
+          target: Continuum_Hyde_toscana
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_Hyde_toscana_start
+        Continuum_Hyde_toscana_start:
+          target: Continuum_Hyde_toscana
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_toscana_started
+        Continuum_Hyde_toscana_started:
+          target: Continuum_Hyde_toscana
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_volturno_create:
+          target: Continuum_Hyde_volturno
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_Hyde_volturno_start
+        Continuum_Hyde_volturno_start:
+          target: Continuum_Hyde_volturno
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_volturno_started
+        Continuum_Hyde_volturno_started:
+          target: Continuum_Hyde_volturno
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Move_Hyde_Results_start:
+          target: Move_Hyde_Results
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Move_Hyde_Results_started
+        Move_Hyde_Results_started:
+          target: Move_Hyde_Results
+          activities:
+            - set_state: started
+          on_success:
+            - Continuum_HMC_marche_create
+            - Continuum_HMC_liguria_create
+            - Continuum_HMC_adige_create
+            - Continuum_HMC_basilicata_create
+            - Continuum_HMC_calabria_create
+            - Continuum_HMC_fvg_create
+            - Continuum_HMC_gargano_create
+            - Continuum_HMC_lazio_create
+            - Continuum_HMC_liri_create
+            - Continuum_HMC_po_create
+            - Continuum_HMC_puglia_create
+            - Continuum_HMC_romagna_create
+            - Continuum_HMC_sardegna_create
+            - Continuum_HMC_sicilia_create
+            - Continuum_HMC_tevere_create
+            - Continuum_HMC_toscana_create
+            - Continuum_HMC_volturno_create
+        Continuum_HMC_marche_create:
+          target: Continuum_HMC_marche
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_marche_start
+        Continuum_HMC_marche_start:
+          target: Continuum_HMC_marche
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_marche_started
+        Continuum_HMC_marche_started:
+          target: Continuum_HMC_marche
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_liguria_create:
+          target: Continuum_HMC_liguria
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_liguria_start
+        Continuum_HMC_liguria_start:
+          target: Continuum_HMC_liguria
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_liguria_started
+        Continuum_HMC_liguria_started:
+          target: Continuum_HMC_liguria
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_adige_create:
+          target: Continuum_HMC_adige
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_adige_start
+        Continuum_HMC_adige_start:
+          target: Continuum_HMC_adige
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_adige_started
+        Continuum_HMC_adige_started:
+          target: Continuum_HMC_adige
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_basilicata_create:
+          target: Continuum_HMC_basilicata
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_basilicata_start
+        Continuum_HMC_basilicata_start:
+          target: Continuum_HMC_basilicata
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_basilicata_started
+        Continuum_HMC_basilicata_started:
+          target: Continuum_HMC_basilicata
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_calabria_create:
+          target: Continuum_HMC_calabria
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_calabria_start
+        Continuum_HMC_calabria_start:
+          target: Continuum_HMC_calabria
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_calabria_started
+        Continuum_HMC_calabria_started:
+          target: Continuum_HMC_calabria
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_fvg_create:
+          target: Continuum_HMC_fvg
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_fvg_start
+        Continuum_HMC_fvg_start:
+          target: Continuum_HMC_fvg
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_fvg_started
+        Continuum_HMC_fvg_started:
+          target: Continuum_HMC_fvg
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_gargano_create:
+          target: Continuum_HMC_gargano
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_gargano_start
+        Continuum_HMC_gargano_start:
+          target: Continuum_HMC_gargano
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_gargano_started
+        Continuum_HMC_gargano_started:
+          target: Continuum_HMC_gargano
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_lazio_create:
+          target: Continuum_HMC_lazio
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_lazio_start
+        Continuum_HMC_lazio_start:
+          target: Continuum_HMC_lazio
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_lazio_started
+        Continuum_HMC_lazio_started:
+          target: Continuum_HMC_lazio
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_liri_create:
+          target: Continuum_HMC_liri
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_liri_start
+        Continuum_HMC_liri_start:
+          target: Continuum_HMC_liri
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_liri_started
+        Continuum_HMC_liri_started:
+          target: Continuum_HMC_liri
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_po_create:
+          target: Continuum_HMC_po
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_po_start
+        Continuum_HMC_po_start:
+          target: Continuum_HMC_po
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_po_started
+        Continuum_HMC_po_started:
+          target: Continuum_HMC_po
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_puglia_create:
+          target: Continuum_HMC_puglia
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_puglia_start
+        Continuum_HMC_puglia_start:
+          target: Continuum_HMC_puglia
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_puglia_started
+        Continuum_HMC_puglia_started:
+          target: Continuum_HMC_puglia
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_romagna_create:
+          target: Continuum_HMC_romagna
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_romagna_start
+        Continuum_HMC_romagna_start:
+          target: Continuum_HMC_romagna
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_romagna_started
+        Continuum_HMC_romagna_started:
+          target: Continuum_HMC_romagna
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_sardegna_create:
+          target: Continuum_HMC_sardegna
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_sardegna_start
+        Continuum_HMC_sardegna_start:
+          target: Continuum_HMC_sardegna
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_sardegna_started
+        Continuum_HMC_sardegna_started:
+          target: Continuum_HMC_sardegna
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_sicilia_create:
+          target: Continuum_HMC_sicilia
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_sicilia_start
+        Continuum_HMC_sicilia_start:
+          target: Continuum_HMC_sicilia
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_sicilia_started
+        Continuum_HMC_sicilia_started:
+          target: Continuum_HMC_sicilia
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_tevere_create:
+          target: Continuum_HMC_tevere
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_tevere_start
+        Continuum_HMC_tevere_start:
+          target: Continuum_HMC_tevere
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_tevere_started
+        Continuum_HMC_tevere_started:
+          target: Continuum_HMC_tevere
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_toscana_create:
+          target: Continuum_HMC_toscana
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_toscana_start
+        Continuum_HMC_toscana_start:
+          target: Continuum_HMC_toscana
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_toscana_started
+        Continuum_HMC_toscana_started:
+          target: Continuum_HMC_toscana
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_volturno_create:
+          target: Continuum_HMC_volturno
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_volturno_start
+        Continuum_HMC_volturno_start:
+          target: Continuum_HMC_volturno
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_volturno_started
+        Continuum_HMC_volturno_started:
+          target: Continuum_HMC_volturno
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        CreateStagingAreaResultDir_start:
+          target: CreateStagingAreaResultDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaResultDir_started
+        CreateStagingAreaResultDir_started:
+          target: CreateStagingAreaResultDir
+          activities:
+            - set_state: started
+          on_success:
+            - MoveContinuumResults_start
+        MoveContinuumResults_start:
+          target: MoveContinuumResults
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveContinuumResults_started
+        MoveContinuumResults_started:
+          target: MoveContinuumResults
+          activities:
+            - set_state: started
+          on_success:
+            - CloudToDDIJob_create
+        CloudToDDIJob_create:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CloudToDDIJob_submit
+        CloudToDDIJob_submit:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CloudToDDIJob_submitted
+        CloudToDDIJob_submitted:
+          target: CloudToDDIJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CloudToDDIJob_run
+        CloudToDDIJob_run:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CloudToDDIJob_executed
+        CloudToDDIJob_executed:
+          target: CloudToDDIJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountWRFDataset_stop
+            - MountContinuumDataset_stop
+        MountWRFDataset_stop:
+          target: MountWRFDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountWRFDataset_stopped
+        MountWRFDataset_stopped:
+          target: MountWRFDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - DeleteCloudWRFDataJob_create
+        DeleteCloudWRFDataJob_create:
+          target: DeleteCloudWRFDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudWRFDataJob_created
+        DeleteCloudWRFDataJob_created:
+          target: DeleteCloudWRFDataJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudWRFDataJob_submit
+        DeleteCloudWRFDataJob_submit:
+          target: DeleteCloudWRFDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudWRFDataJob_submitted
+        DeleteCloudWRFDataJob_submitted:
+          target: DeleteCloudWRFDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudWRFDataJob_run
+        DeleteCloudWRFDataJob_run:
+          target: DeleteCloudWRFDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudWRFDataJob_executed
+        DeleteCloudWRFDataJob_executed:
+          target: DeleteCloudWRFDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - Compute_uninstall
+        MountContinuumDataset_stop:
+          target: MountContinuumDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountContinuumDataset_stopped
+        MountContinuumDataset_stopped:
+          target: MountContinuumDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - DeleteCloudContinuumStaticDataJob_create
+        DeleteCloudContinuumStaticDataJob_create:
+          target: DeleteCloudContinuumStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudContinuumStaticDataJob_created
+        DeleteCloudContinuumStaticDataJob_created:
+          target: DeleteCloudContinuumStaticDataJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudContinuumStaticDataJob_submit
+        DeleteCloudContinuumStaticDataJob_submit:
+          target: DeleteCloudContinuumStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudContinuumStaticDataJob_submitted
+        DeleteCloudContinuumStaticDataJob_submitted:
+          target: DeleteCloudContinuumStaticDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudContinuumStaticDataJob_run
+        DeleteCloudContinuumStaticDataJob_run:
+          target: DeleteCloudContinuumStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudContinuumStaticDataJob_executed
+        DeleteCloudContinuumStaticDataJob_executed:
+          target: DeleteCloudContinuumStaticDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - Compute_uninstall
+        Compute_uninstall:
+          target: ContinuumVM
+          activities:
+            - delegate: uninstall
+    cleanupRun:
+      steps:
+        MountWRFDataset_stop:
+          target: MountWRFDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountWRFDataset_stopped
+        MountWRFDataset_stopped:
+          target: MountWRFDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - DeleteCloudWRFDataJob_create
+        DeleteCloudWRFDataJob_create:
+          target: DeleteCloudWRFDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudWRFDataJob_created
+        DeleteCloudWRFDataJob_created:
+          target: DeleteCloudWRFDataJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudWRFDataJob_submit
+        DeleteCloudWRFDataJob_submit:
+          target: DeleteCloudWRFDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudWRFDataJob_submitted
+        DeleteCloudWRFDataJob_submitted:
+          target: DeleteCloudWRFDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudWRFDataJob_run
+        DeleteCloudWRFDataJob_run:
+          target: DeleteCloudWRFDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudWRFDataJob_executed
+        DeleteCloudWRFDataJob_executed:
+          target: DeleteCloudWRFDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - Compute_uninstall
+        MountContinuumDataset_stop:
+          target: MountContinuumDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountContinuumDataset_stopped
+        MountContinuumDataset_stopped:
+          target: MountContinuumDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - DeleteCloudContinuumStaticDataJob_create
+        DeleteCloudContinuumStaticDataJob_create:
+          target: DeleteCloudContinuumStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudContinuumStaticDataJob_created
+        DeleteCloudContinuumStaticDataJob_created:
+          target: DeleteCloudContinuumStaticDataJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudContinuumStaticDataJob_submit
+        DeleteCloudContinuumStaticDataJob_submit:
+          target: DeleteCloudContinuumStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudContinuumStaticDataJob_submitted
+        DeleteCloudContinuumStaticDataJob_submitted:
+          target: DeleteCloudContinuumStaticDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudContinuumStaticDataJob_run
+        DeleteCloudContinuumStaticDataJob_run:
+          target: DeleteCloudContinuumStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudContinuumStaticDataJob_executed
+        DeleteCloudContinuumStaticDataJob_executed:
+          target: DeleteCloudContinuumStaticDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - Compute_uninstall
+        Compute_uninstall:
+          target: ContinuumVM
+          activities:
+            - delegate: uninstall
+    testComputeUninstall:
+      steps:
+        Compute_uninstall:
+          target: ContinuumVM
+          activities:
+            - delegate: uninstall

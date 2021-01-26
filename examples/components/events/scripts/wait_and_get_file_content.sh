@@ -1,7 +1,9 @@
 #!/bin/bash
-
+#
+# Usage: wait_and_get_file_content.sh <URL>
+#
 while true; do
-  response=`curl $FILE_URL --output event.txt --silent`
+  response=`curl $1 --output event.txt --silent`
   res=$?
   if [ $res -eq 0 ]
   then
@@ -9,7 +11,7 @@ while true; do
       event=`/bin/cat event.txt`
       if [ -n "$event" ]
       then
-        echo $event
+        echo -n $event
         break
       fi
     fi

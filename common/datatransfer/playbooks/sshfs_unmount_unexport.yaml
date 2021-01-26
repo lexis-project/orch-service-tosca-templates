@@ -1,0 +1,28 @@
+- name: unmount and unexport sshfs
+  hosts: all
+  strategy: free
+  become: true
+  become_method: sudo
+  tasks:
+    - name: Delete ssh private key
+      file:
+        path: "{{ PRIVATE_KEY_PATH }}"
+        state: absent
+    - name: Delete ssh public key
+      file:
+        path: "{{ PRIVATE_KEY_PATH }}.pub"
+        state: absent
+    - name: Unmount the sshfs file system
+      command: "fusermount -u {{ MOUNT_POINT_DIRECTORY }}"
+    - name: "Request delete sshfs export"
+      uri:
+        url: "{{URL}}"
+        method: DELETE
+        validate_certs: no
+        headers:
+          Authorization: "Bearer {{ TOKEN }}"
+        body:
+          user: "{{ SSHFS_USER }}"
+          path: "{{ STAGING_AREA_ROOT_DIRECTORY }}"
+        body_format: json
+        status_code: 204

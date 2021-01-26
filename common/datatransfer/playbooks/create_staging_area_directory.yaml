@@ -1,4 +1,4 @@
-- name: Copy directory to staging area
+- name: Create directory in staging area
   hosts: all
   strategy: free
   become: true
@@ -8,17 +8,29 @@
     - name: Getting user allowed to write in staging area
       set_fact:
         USER_NAME: "{{ user_name }}"
+    - name: Check if the directory must be timestamped
+      set_fact:
+        add_timestamp: "{{ create_timestamp_destination_subdirectory | bool }}"
+    - name: Get new directory to create
+      set_fact:
+        NEW_STAGING_AREA_DIRECTORY: "{{ directory }}"
+      when: not add_timestamp
+    - name: Compute new directory to create
+      set_fact:
+        NEW_STAGING_AREA_DIRECTORY: "{{ directory }}/{{ '%Y-%m-%d-%H:%M:%S' | strftime(ansible_date_time.epoch) }}"
+      when: add_timestamp
+    - name: Get current staging area destination directory
+      set_fact:
+        current_staging_area_directory: "{{ staging_area_directory_path | regex_replace('\\/$', '') | trim}}"
     - name: Get staging area destination directory
       set_fact:
-        STAGING_AREA_DIRECTORY: "{{ directory }}"
-      when: not create_timestamp_destination_subdirectory
-    - name: Compute staging area destination directory 
+        STAGING_AREA_DIRECTORY: "{{ current_staging_area_directory }}/{{ NEW_STAGING_AREA_DIRECTORY }}"
+    - name: Get mounted directory directory
       set_fact:
-        STAGING_AREA_DIRECTORY: "{{ directory }}/{{ '%Y-%m-%d-%H:%M:%S' | strftime(ansible_date_time.epoch) }}"
-      when: create_timestamp_destination_subdirectory
+        current_mounted_directory: "{{ mounted_directory_absolute_path | regex_replace('\\/$', '') | trim}}"
     - name: Get destination directory absolute path
       set_fact:
-        DIRECTORY_ABSOLUTE_PATH: "{{ mount_point }}/{{ STAGING_AREA_DIRECTORY }}"
+        DIRECTORY_ABSOLUTE_PATH: "{{ current_mounted_directory }}/{{ NEW_STAGING_AREA_DIRECTORY }}"
     - name: "Create destination directory {{ DIRECTORY_ABSOLUTE_PATH }}"
       file:
         path: "{{ DIRECTORY_ABSOLUTE_PATH }}"

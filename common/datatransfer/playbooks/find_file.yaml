@@ -1,4 +1,4 @@
-- name: Find files matching patterns
+- name: Find files or directories matching patterns
   hosts: all
   strategy: free
   become: true
@@ -9,6 +9,7 @@
       find:
         paths: "{{directory}}"
         patterns: "{{patterns | from_json}}"
+        file_type: any
         recurse: true
       register: result
     - name: Getting file paths

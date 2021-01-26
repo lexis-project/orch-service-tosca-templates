@@ -1,0 +1,1180 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: ADMSPostProcessingTemplate
+  template_version: 0.1.0-SNAPSHOT
+  template_author: lexis
+
+description: ADMS post-processing template
+
+imports:
+  - yorc-types:1.1.0
+  - tosca-normative-types:1.0.0-ALIEN20
+  - docker-types:3.0.0
+  - alien-base-types:3.0.0
+  - ddi-types:0.1.2
+  - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
+  - org.ystia.docker.ansible:3.0.0-SNAPSHOT
+  - org.ystia.docker.images:3.0.0-SNAPSHOT
+  - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
+
+topology_template:
+  inputs:
+    token:
+      type: string
+      description: "Access token"
+      required: true
+    post_processing_MET_results_title:
+      type: string
+      description: Titile of the MET processing results dataset to create in DDI
+      required: true
+    postprocessing_dataset_wrf_results_path:
+      type: string
+      description: WRF results dataset path in DDI
+      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/11d5558c-2809-11eb-88f6-0050568fc9b5"
+      required: false
+    postprocessing_image:
+      type: string
+      description: Post-processing docker image
+      default: "adms/ncl:1.0.0"
+      required: false
+    postprocessing_dataset_docker_image_path:
+      type: string
+      description: Post-processing docker image tar archive path in DDI
+      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/89ddda90-1918-11eb-b6d1-0050568fc9b5"
+      required: false
+    postprocessing_dataset_ncl_script:
+      type: string
+      description: Post-processing NCL script path in DDI
+      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/7fc89bf4-1d13-11eb-ae7e-0050568fc9b5"
+      required: false
+    postprocessing_ddi_path:
+      type: string
+      description: Path where to transfer the post-processing results in DDI
+      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c"
+  node_templates:
+    PublicNet:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+    ADMS_VM:
+      type: tosca.nodes.Compute
+      requirements:
+        - networkPublicNetConnection:
+            type_requirement: network
+            node: PublicNet
+            capability: tosca.capabilities.Connectivity
+            relationship: tosca.relationships.Network
+      capabilities:
+        host:
+          properties:
+            # num_cpus: 10
+            num_cpus: 2
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        endpoint:
+          properties:
+            secure: true
+            protocol: tcp
+            network_name: PRIVATE
+            initiator: source
+    Docker:
+      type: org.ystia.docker.ansible.nodes.Docker
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    GetDDIAccess:
+      type: org.ddi.nodes.DDIAccess
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: os
+            node: ADMS_VM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.ddi.relationships.SameSite
+    DDIToCloudDockerImageJob:
+      type: org.ddi.nodes.DDIToCloudJob
+      properties:
+        token: { get_input: token }
+        ddi_dataset_path: { get_input: postprocessing_dataset_docker_image_path }
+        cloud_staging_area_directory_path: "adms_postprocessing_image"
+        timestamp_cloud_staging_area_directory: true
+    MountDockerImageDataset:
+      type: org.lexis.datatransfer.nodes.SSHMountStagingAreaDataset
+      properties:
+        token: { get_input: token }
+        mount_point_directory: "/mnt/cloud_staging_area/docker_image"
+      requirements:
+        - ddi_access:
+            type_requirement: ddi_access
+            node: GetDDIAccess
+            capability: org.ddi.capabilities.DDIAccess
+            relationship: org.ddi.relationships.DDIAccessProvider
+        - data_transfer:
+            type_requirement: data_transfer
+            node: DDIToCloudDockerImageJob
+            capability: org.ddi.capabilities.DataTransferCloud
+            relationship: org.ddi.relationships.CloudAreaDatasetProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    FindArchive:
+      type: org.lexis.datatransfer.nodes.FindDockerImageArchiveInStagingAreaDirectory
+      properties:
+        patterns: ["*.tar*", "*.tgz"]
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: MountDockerImageDataset
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    ImageLoader:
+      type: org.ystia.docker.images.Loader
+      properties:
+        name: { get_input: postprocessing_image }
+        force_load: true
+      requirements:
+        - archive_provider:
+            type_requirement: archive_provider
+            node: FindArchive
+            capability: org.ystia.docker.images.capabilities.ArchiveProvider
+            relationship: org.ystia.docker.images.relationships.ArchiveProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    DDIToCloudNCLScriptJob:
+      type: org.ddi.nodes.DDIToCloudJob
+      properties:
+        token: { get_input: token }
+        ddi_dataset_path: { get_input: postprocessing_dataset_ncl_script }
+        cloud_staging_area_directory_path: "adms_postprocessing_ncl"
+        timestamp_cloud_staging_area_directory: true
+    MountNCLScriptDataset:
+      type: org.lexis.datatransfer.nodes.SSHMountStagingAreaDataset
+      properties:
+        token: { get_input: token }
+        mount_point_directory: "/mnt/cloud_staging_area/ncl_script"
+      requirements:
+        - ddi_access:
+            type_requirement: ddi_access
+            node: GetDDIAccess
+            capability: org.ddi.capabilities.DDIAccess
+            relationship: org.ddi.relationships.DDIAccessProvider
+        - data_transfer:
+            type_requirement: data_transfer
+            node: DDIToCloudNCLScriptJob
+            capability: org.ddi.capabilities.DataTransferCloud
+            relationship: org.ddi.relationships.CloudAreaDatasetProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    FindNCLScript:
+      type: org.lexis.datatransfer.nodes.FindFilesInStagingAreaDirectory
+      properties:
+        patterns: ["*.ncl"]
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: MountNCLScriptDataset
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    DDIToCloudWRFJob:
+      type: org.ddi.nodes.DDIToCloudJob
+      properties:
+        token: { get_input: token }
+        ddi_dataset_path: { get_input: postprocessing_dataset_wrf_results_path }
+        cloud_staging_area_directory_path: "adms_postprocessing_wrf"
+        timestamp_cloud_staging_area_directory: true
+    MountWRFDataset:
+      type: org.lexis.datatransfer.nodes.SSHMountStagingAreaDataset
+      properties:
+        token: { get_input: token }
+        mount_point_directory: "/mnt/cloud_staging_area/postprocess"
+      requirements:
+        - ddi_access:
+            type_requirement: ddi_access
+            node: GetDDIAccess
+            capability: org.ddi.capabilities.DDIAccess
+            relationship: org.ddi.relationships.DDIAccessProvider
+        - data_transfer:
+            type_requirement: data_transfer
+            node: DDIToCloudWRFJob
+            capability: org.ddi.capabilities.DataTransferCloud
+            relationship: org.ddi.relationships.CloudAreaDatasetProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    FindWRFiles:
+      type: org.lexis.datatransfer.nodes.FindFilesInStagingAreaDirectory
+      properties:
+        patterns: ["auxhist*"]
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: MountWRFDataset
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    MoveWRFFiles:
+      type: org.lexis.datatransfer.nodes.MoveFilesFromProvider
+      properties:
+        destination_directory:  "/mnt/cloud_staging_area/postprocess/adms_data/DATA-WRF/"
+      requirements:
+        - files_provider:
+            type_requirement: files_provider
+            node: FindWRFiles
+            capability: org.lexis.datatransfer.capabilities.FilesProvider
+            relationship: org.lexis.datatransfer.relationships.FilesProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    MoveNCLScript:
+      type: org.lexis.datatransfer.nodes.CopyFilesFromProvider
+      properties:
+        destination_directory:  "/mnt/cloud_staging_area/postprocess/adms_data"
+      requirements:
+        - files_provider:
+            type_requirement: files_provider
+            node: FindNCLScript
+            capability: org.lexis.datatransfer.capabilities.FilesProvider
+            relationship: org.lexis.datatransfer.relationships.FilesProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    WRFToMet:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        mem_share: "128 MB"
+        volumes: ["/mnt/cloud_staging_area/postprocess/adms_data/:/wrfdata"]
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+    CreateStagingAreaResultDir:
+      type: org.lexis.datatransfer.nodes.CreateStagingAreaDirectory
+      properties:
+        directory: "adms_result"
+      requirements:
+        - mountedCloudStagingArea:
+            type_requirement: mounted_staging_area
+            node: MountWRFDataset
+            capability: org.lexis.datatransfer.capabilities.MountedStagingAreaAccess
+            relationship: org.lexis.datatransfer.relationships.MountedCloudStagingArea
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    StageMETResults:
+      type: org.lexis.datatransfer.nodes.CopyFilesToStagingAreaDirectory
+      properties:
+        source_directory: "/mnt/cloud_staging_area/postprocess/adms_data/DATA-WRF/"
+        source_files_patterns: [ "*.met" ]
+        destination_subdirectory: "met"
+      requirements:
+        - staging_area_directory:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaResultDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    CloudToDDIJob:
+      type: org.ddi.nodes.CloudToDDIJob
+      properties:
+        metadata: {concat: ["{\"creator\": [\"ADMS workflow\"], \"contributor\": [\"ADMS workflow\"], \"publisher\": [\"ADMS workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"", get_input: post_processing_MET_results_title, "\"}"]}
+        token: { get_input: token }
+        ddi_path: { get_input: postprocessing_ddi_path }
+        source_subdirectory: "met"
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaResultDir
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+    DeleteCloudDataImageJob:
+      type: org.ddi.nodes.DeleteCloudDataJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: MountDockerImageDataset
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+    DeleteCloudDataNCLScriptJob:
+      type: org.ddi.nodes.DeleteCloudDataJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: MountNCLScriptDataset
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+    DeleteCloudDataWRFJob:
+      type: org.ddi.nodes.DeleteCloudDataJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: MountWRFDataset
+            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+  outputs:
+    ddi_post_process_results:
+      description: DDI path to ADMS MET results
+      value: { get_attribute: [ CloudToDDIJob, destination_directory_path ] }
+  workflows:
+    install:
+      steps:
+        Network_install:
+          target: PublicNet
+          activities:
+            - delegate: install
+    uninstall:
+      steps:
+        Compute_uninstall:
+          target: ADMS_VM
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: PublicNet
+          activities:
+            - delegate: uninstall
+    start:
+      steps:
+        Docker_start:
+          target: Docker
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Docker_started
+        Docker_started:
+          target: Docker
+          activities:
+            - set_state: started
+    stop:
+      steps:
+        Docker_stop:
+          target: Docker
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - Docker_stopped
+        Docker_stopped:
+          target: Docker
+          activities:
+            - set_state: stopped
+    Run:
+      steps:
+        Compute_install:
+          target: ADMS_VM
+          activities:
+            - delegate: install
+          on_success:
+            - Docker_create
+        Docker_create:
+          target: Docker
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Docker_created
+        Docker_created:
+          target: Docker
+          activities:
+            - set_state: created
+          on_success:
+            - Docker_configure
+        Docker_configure:
+          target: Docker
+          activities:
+            - call_operation: Standard.configure
+          on_success:
+            - Docker_configured
+        Docker_configured:
+          target: Docker
+          activities:
+            - set_state: configured
+          on_success:
+            - Docker_start
+        Docker_start:
+          target: Docker
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Docker_started
+        Docker_started:
+          target: Docker
+          activities:
+            - set_state: started
+          on_success:
+            - GetDDIAccess_start
+        GetDDIAccess_start:
+          target: GetDDIAccess
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetDDIAccess_started
+        GetDDIAccess_started:
+          target: GetDDIAccess
+          activities:
+            - set_state: started
+          on_success:
+            - DDIToCloudDockerImageJob_create
+        DDIToCloudDockerImageJob_create:
+          target: DDIToCloudDockerImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToCloudDockerImageJob_submit
+        DDIToCloudDockerImageJob_submit:
+          target: DDIToCloudDockerImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToCloudDockerImageJob_submitted
+        DDIToCloudDockerImageJob_submitted:
+          target: DDIToCloudDockerImageJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToCloudDockerImageJob_run
+        DDIToCloudDockerImageJob_run:
+          target: DDIToCloudDockerImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToCloudDockerImageJob_executed
+        DDIToCloudDockerImageJob_executed:
+          target: DDIToCloudDockerImageJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountDockerImageDataset_create
+        MountDockerImageDataset_create:
+          target: MountDockerImageDataset
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - MountDockerImageDataset_created
+        MountDockerImageDataset_created:
+          target: MountDockerImageDataset
+          activities:
+            - set_state: created
+          on_success:
+            - MountDockerImageDataset_start
+        MountDockerImageDataset_start:
+          target: MountDockerImageDataset
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountDockerImageDataset_started
+        MountDockerImageDataset_started:
+          target: MountDockerImageDataset
+          activities:
+            - set_state: started
+          on_success:
+            - FindArchive_start
+        FindArchive_start:
+          target: FindArchive
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - FindArchive_started
+        FindArchive_started:
+          target: FindArchive
+          activities:
+            - set_state: started
+          on_success:
+            - ImageLoader_create
+        ImageLoader_create:
+          target: ImageLoader
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ImageLoader_created
+        ImageLoader_created:
+          target: ImageLoader
+          activities:
+            - set_state: created
+          on_success:
+            - ImageLoader_start
+        ImageLoader_start:
+          target: ImageLoader
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ImageLoader_started
+        ImageLoader_started:
+          target: ImageLoader
+          activities:
+            - set_state: started
+          on_success:
+            - DDIToCloudNCLScriptJob_create
+            - DDIToCloudWRFJob_create
+        DDIToCloudNCLScriptJob_create:
+          target: DDIToCloudNCLScriptJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToCloudNCLScriptJob_submit
+        DDIToCloudNCLScriptJob_submit:
+          target: DDIToCloudNCLScriptJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToCloudNCLScriptJob_submitted
+        DDIToCloudNCLScriptJob_submitted:
+          target: DDIToCloudNCLScriptJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToCloudNCLScriptJob_run
+        DDIToCloudNCLScriptJob_run:
+          target: DDIToCloudNCLScriptJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToCloudNCLScriptJob_executed
+        DDIToCloudNCLScriptJob_executed:
+          target: DDIToCloudNCLScriptJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountNCLScriptDataset_create
+        MountNCLScriptDataset_create:
+          target: MountNCLScriptDataset
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - MountNCLScriptDataset_created
+        MountNCLScriptDataset_created:
+          target: MountNCLScriptDataset
+          activities:
+            - set_state: created
+          on_success:
+            - MountNCLScriptDataset_start
+        MountNCLScriptDataset_start:
+          target: MountNCLScriptDataset
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountNCLScriptDataset_started
+        MountNCLScriptDataset_started:
+          target: MountNCLScriptDataset
+          activities:
+            - set_state: started
+          on_success:
+            - FindNCLScript_start
+        FindNCLScript_start:
+          target: FindNCLScript
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - FindNCLScript_started
+        FindNCLScript_started:
+          target: FindNCLScript
+          activities:
+            - set_state: started
+          on_success:
+            - MoveNCLScript_start
+        MoveNCLScript_start:
+          target: MoveNCLScript
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveNCLScript_started
+        MoveNCLScript_started:
+          target: MoveNCLScript
+          activities:
+            - set_state: started
+          on_success:
+            - WRFToMet_create
+        DDIToCloudWRFJob_create:
+          target: DDIToCloudWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToCloudWRFJob_submit
+        DDIToCloudWRFJob_submit:
+          target: DDIToCloudWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToCloudWRFJob_submitted
+        DDIToCloudWRFJob_submitted:
+          target: DDIToCloudWRFJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToCloudWRFJob_run
+        DDIToCloudWRFJob_run:
+          target: DDIToCloudWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToCloudWRFJob_executed
+        DDIToCloudWRFJob_executed:
+          target: DDIToCloudWRFJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountWRFDataset_create
+        MountWRFDataset_create:
+          target: MountWRFDataset
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - MountWRFDataset_created
+        MountWRFDataset_created:
+          target: MountWRFDataset
+          activities:
+            - set_state: created
+          on_success:
+            - MountWRFDataset_start
+        MountWRFDataset_start:
+          target: MountWRFDataset
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountWRFDataset_started
+        MountWRFDataset_started:
+          target: MountWRFDataset
+          activities:
+            - set_state: started
+          on_success:
+            - MoveNCLScript_start
+            - CreateStagingAreaResultDir_start
+            - FindWRFiles_start
+        FindWRFiles_start:
+          target: FindWRFiles
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - FindWRFiles_started
+        FindWRFiles_started:
+          target: FindWRFiles
+          activities:
+            - set_state: started
+          on_success:
+            - MoveWRFFiles_start
+        MoveWRFFiles_start:
+          target: MoveWRFFiles
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveWRFFiles_started
+        MoveWRFFiles_started:
+          target: MoveWRFFiles
+          activities:
+            - set_state: started
+          on_success:
+            - WRFToMet_create
+        WRFToMet_create:
+          target: WRFToMet
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - WRFToMet_start
+        WRFToMet_start:
+          target: WRFToMet
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - WRFToMet_started
+        WRFToMet_started:
+          target: WRFToMet
+          activities:
+            - set_state: started
+          on_success:
+            - StageMETResults_start
+        CreateStagingAreaResultDir_start:
+          target: CreateStagingAreaResultDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaResultDir_started
+        CreateStagingAreaResultDir_started:
+          target: CreateStagingAreaResultDir
+          activities:
+            - set_state: started
+          on_success:
+            - StageMETResults_start
+        StageMETResults_start:
+          target: StageMETResults
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - StageMETResults_started
+        StageMETResults_started:
+          target: StageMETResults
+          activities:
+            - set_state: started
+          on_success:
+            - CloudToDDIJob_create
+        CloudToDDIJob_create:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CloudToDDIJob_submit
+        CloudToDDIJob_submit:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CloudToDDIJob_submitted
+        CloudToDDIJob_submitted:
+          target: CloudToDDIJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CloudToDDIJob_run
+        CloudToDDIJob_run:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CloudToDDIJob_executed
+        CloudToDDIJob_executed:
+          target: CloudToDDIJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountDockerImageDataset_stop
+            - MountNCLScriptDataset_stop
+            - MountWRFDataset_stop
+        MountDockerImageDataset_stop:
+          target: MountDockerImageDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountDockerImageDataset_stopped
+        MountDockerImageDataset_stopped:
+          target: MountDockerImageDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - DeleteCloudDataImageJob_create
+        MountNCLScriptDataset_stop:
+          target: MountNCLScriptDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountNCLScriptDataset_stopped
+        MountNCLScriptDataset_stopped:
+          target: MountNCLScriptDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - DeleteCloudDataNCLScriptJob_create
+        MountWRFDataset_stop:
+          target: MountWRFDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountWRFDataset_stopped
+        MountWRFDataset_stopped:
+          target: MountWRFDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - DeleteCloudDataWRFJob_create
+        DeleteCloudDataImageJob_create:
+          target: DeleteCloudDataImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudDataImageJob_created
+        DeleteCloudDataImageJob_created:
+          target: DeleteCloudDataImageJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudDataImageJob_submit
+        DeleteCloudDataImageJob_submit:
+          target: DeleteCloudDataImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudDataImageJob_submitted
+        DeleteCloudDataImageJob_submitted:
+          target: DeleteCloudDataImageJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudDataImageJob_run
+        DeleteCloudDataImageJob_run:
+          target: DeleteCloudDataImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudDataImageJob_executed
+        DeleteCloudDataImageJob_executed:
+          target: DeleteCloudDataImageJob
+          activities:
+            - set_state: executed
+          on_success:
+            - Compute_uninstall
+        DeleteCloudDataNCLScriptJob_create:
+          target: DeleteCloudDataNCLScriptJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudDataNCLScriptJob_created
+        DeleteCloudDataNCLScriptJob_created:
+          target: DeleteCloudDataNCLScriptJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudDataNCLScriptJob_submit
+        DeleteCloudDataNCLScriptJob_submit:
+          target: DeleteCloudDataNCLScriptJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudDataNCLScriptJob_submitted
+        DeleteCloudDataNCLScriptJob_submitted:
+          target: DeleteCloudDataNCLScriptJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudDataNCLScriptJob_run
+        DeleteCloudDataNCLScriptJob_run:
+          target: DeleteCloudDataNCLScriptJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudDataNCLScriptJob_executed
+        DeleteCloudDataNCLScriptJob_executed:
+          target: DeleteCloudDataNCLScriptJob
+          activities:
+            - set_state: executed
+          on_success:
+            - Compute_uninstall
+        DeleteCloudDataWRFJob_create:
+          target: DeleteCloudDataWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudDataWRFJob_created
+        DeleteCloudDataWRFJob_created:
+          target: DeleteCloudDataWRFJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudDataWRFJob_submit
+        DeleteCloudDataWRFJob_submit:
+          target: DeleteCloudDataWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudDataWRFJob_submitted
+        DeleteCloudDataWRFJob_submitted:
+          target: DeleteCloudDataWRFJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudDataWRFJob_run
+        DeleteCloudDataWRFJob_run:
+          target: DeleteCloudDataWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudDataWRFJob_executed
+        DeleteCloudDataWRFJob_executed:
+          target: DeleteCloudDataWRFJob
+          activities:
+            - set_state: executed
+          on_success:
+            - Compute_uninstall
+        Compute_uninstall:
+          target: ADMS_VM
+          activities:
+            - delegate: uninstall
+    testMountLoadImage:
+      steps:
+        MountDockerImageDataset_create:
+          target: MountDockerImageDataset
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - MountDockerImageDataset_created
+        MountDockerImageDataset_created:
+          target: MountDockerImageDataset
+          activities:
+            - set_state: created
+          on_success:
+            - MountDockerImageDataset_start
+        MountDockerImageDataset_start:
+          target: MountDockerImageDataset
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountDockerImageDataset_started
+        MountDockerImageDataset_started:
+          target: MountDockerImageDataset
+          activities:
+            - set_state: started
+          on_success:
+            - FindArchive_start
+        FindArchive_start:
+          target: FindArchive
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - FindArchive_started
+        FindArchive_started:
+          target: FindArchive
+          activities:
+            - set_state: started
+          on_success:
+            - ImageLoader_create
+        ImageLoader_create:
+          target: ImageLoader
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ImageLoader_created
+        ImageLoader_created:
+          target: ImageLoader
+          activities:
+            - set_state: created
+          on_success:
+            - ImageLoader_start
+        ImageLoader_start:
+          target: ImageLoader
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ImageLoader_started
+        ImageLoader_started:
+          target: ImageLoader
+          activities:
+            - set_state: started
+    testSSHFSUnMount:
+      steps:
+        MountDockerImageDataset_stop:
+          target: MountDockerImageDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountDockerImageDataset_stopped
+        MountDockerImageDataset_stopped:
+          target: MountDockerImageDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - DeleteCloudDataImageJob_create
+        MountNCLScriptDataset_stop:
+          target: MountNCLScriptDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountNCLScriptDataset_stopped
+        MountNCLScriptDataset_stopped:
+          target: MountNCLScriptDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - DeleteCloudDataNCLScriptJob_create
+        MountWRFDataset_stop:
+          target: MountWRFDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountWRFDataset_stopped
+        MountWRFDataset_stopped:
+          target: MountWRFDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - DeleteCloudDataWRFJob_create
+        DeleteCloudDataImageJob_create:
+          target: DeleteCloudDataImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudDataImageJob_created
+        DeleteCloudDataImageJob_created:
+          target: DeleteCloudDataImageJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudDataImageJob_submit
+        DeleteCloudDataImageJob_submit:
+          target: DeleteCloudDataImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudDataImageJob_submitted
+        DeleteCloudDataImageJob_submitted:
+          target: DeleteCloudDataImageJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudDataImageJob_run
+        DeleteCloudDataImageJob_run:
+          target: DeleteCloudDataImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudDataImageJob_executed
+        DeleteCloudDataImageJob_executed:
+          target: DeleteCloudDataImageJob
+          activities:
+            - set_state: executed
+        DeleteCloudDataNCLScriptJob_create:
+          target: DeleteCloudDataNCLScriptJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudDataNCLScriptJob_created
+        DeleteCloudDataNCLScriptJob_created:
+          target: DeleteCloudDataNCLScriptJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudDataNCLScriptJob_submit
+        DeleteCloudDataNCLScriptJob_submit:
+          target: DeleteCloudDataNCLScriptJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudDataNCLScriptJob_submitted
+        DeleteCloudDataNCLScriptJob_submitted:
+          target: DeleteCloudDataNCLScriptJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudDataNCLScriptJob_run
+        DeleteCloudDataNCLScriptJob_run:
+          target: DeleteCloudDataNCLScriptJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudDataNCLScriptJob_executed
+        DeleteCloudDataNCLScriptJob_executed:
+          target: DeleteCloudDataNCLScriptJob
+          activities:
+            - set_state: executed
+        DeleteCloudDataWRFJob_create:
+          target: DeleteCloudDataWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudDataWRFJob_created
+        DeleteCloudDataWRFJob_created:
+          target: DeleteCloudDataWRFJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudDataWRFJob_submit
+        DeleteCloudDataWRFJob_submit:
+          target: DeleteCloudDataWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudDataWRFJob_submitted
+        DeleteCloudDataWRFJob_submitted:
+          target: DeleteCloudDataWRFJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudDataWRFJob_run
+        DeleteCloudDataWRFJob_run:
+          target: DeleteCloudDataWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudDataWRFJob_executed
+        DeleteCloudDataWRFJob_executed:
+          target: DeleteCloudDataWRFJob
+          activities:
+            - set_state: executed
+

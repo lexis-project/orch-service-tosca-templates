@@ -1,0 +1,24 @@
+- name: Copy files
+  hosts: all
+  strategy: free
+  tasks:
+    - name: "Create destination directory"
+      file:
+        path: "{{ destination_directory }}"
+        state: directory
+        recurse: yes
+        mode: 0777
+      become: true
+    - name: "Move source files to destination"
+      command: "/bin/mv {{ item }} {{ destination_directory }}"
+      become: true
+      become_user: "{{ user_name }}"
+      become_method: sudo
+      with_items: "{{ source_paths }}"
+    - name: "Update permissions"
+      file:
+        path: "{{ destination_directory }}"
+        recurse: yes
+        mode: 0777
+      become: true
+      become_method: sudo

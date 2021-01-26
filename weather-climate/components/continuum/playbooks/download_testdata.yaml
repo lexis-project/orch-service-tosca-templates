@@ -39,16 +39,18 @@
 - name: Get test data
   hosts: all
   strategy: free
+  become: true
+  become_method: sudo
   tasks:
     - name: Download test data
       get_url:
         url: "{{ URL }}/{{ DATASET }}"
         dest: "{{ DESTINATION }}"
-        mode: 0755
     - name: Extract archive
       unarchive:
         src: "{{ DESTINATION }}/{{ DATASET }}"
         dest: "{{ DESTINATION }}"
+        mode: 0777
         remote_src: yes
     - name: Remove archive
       file:

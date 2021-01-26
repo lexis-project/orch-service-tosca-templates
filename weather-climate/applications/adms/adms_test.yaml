@@ -115,7 +115,7 @@ topology_template:
     MountStagingArea:
       type: org.lexis.datatransfer.nodes.MountStagingArea
       properties:
-        mount_point: "/mnt/cloud_staging_area"
+        destination_directory: "/mnt/cloud_staging_area"
         user_name: lexisclouduser
         group_name: lexiscloudgroup
       requirements:
@@ -168,7 +168,7 @@ topology_template:
             capability: org.ddi.capabilities.CloudAreaDirectoryProvider
             relationship: org.ddi.relationships.CloudAreaDirectoryProvider
     FindArchive:
-      type: org.lexis.datatransfer.nodes.FindArchiveInStagingAreaDirectory
+      type: org.lexis.datatransfer.nodes.FindDockerImageArchiveInStagingAreaDirectory
       properties:
         patterns: ["*.tar*", "*.tgz"]
       requirements:

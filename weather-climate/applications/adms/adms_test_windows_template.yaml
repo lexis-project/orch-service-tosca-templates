@@ -1,0 +1,107 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: ADMSWindowsTestTemplate
+  template_version: 0.1.0-SNAPSHOT
+  template_author: lexisadmin
+
+description: "Basic ADMS Test"
+
+imports:
+  - yorc-types:1.1.0
+  - yorc-openstack-types:3.0.0
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien-base-types:3.0.0
+  - org.lexis.weather.adms:0.1.0
+
+topology_template:
+  inputs:
+    token:
+      type: string
+      required: true
+      description: "Access token"
+    postprocessing_adms_type:
+      type: string
+      description: type of ADMS simulation executed, urban or industrial
+      required: true
+    postprocessing_dataset_title_adms_result:
+      type: string
+      description: Which will be the title of the dataset containing ADMS results
+      default: ADMS tests results
+      required: false
+    postprocessing_dataset_title_ncl_result:
+      type: string
+      description: Title of the dataset containing NCL results
+      default: "ADMS Workflow result - 2020102700"
+      required: false
+    postprocessing_dataset_id_adms_urban_app:
+      type: string
+      description: ID of the dataset containing the ADMSUrban.exe and corresponding files. The DDI dataset has to contain single file called adms_urban.zip
+      default: "f284db6c-2588-11eb-bbae-0050568fcecc"
+      required: false
+    postprocessing_dataset_id_adms_urban_static_data:
+      type: string
+      description: ID of the dataset containing the static data for ADMSUrban
+      default: "f1275722-25b5-11eb-bbae-0050568fcecc"
+      required: false
+    postprocessing_dataset_id_adms_industrial_app:
+      type: string
+      description: ID of the dataset containing the ADMSIndustrial.exe and corresponding files. The DDI dataset has to contain single file called adms_industrial.zip
+      default: "317feadc-25ac-11eb-bbae-0050568fcecc"
+      required: false
+    postprocessing_dataset_id_adms_industrial_static_data:
+      type: string
+      description: ID of the dataset containing the static data for ADMSIndustrial
+      default: "b6e09a96-25ac-11eb-bbae-0050568fcecc"
+      required: false
+  node_templates:
+    PublicNet:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+    ADMS_VM:
+      type: tosca.nodes.Compute
+      requirements:
+        - networkNetworkConnection:
+            type_requirement: network
+            node: PublicNet
+            capability: tosca.capabilities.Connectivity
+            relationship: tosca.relationships.Network
+      capabilities:
+        endpoint:
+          properties:
+            secure: true
+            protocol: tcp
+            network_name: PRIVATE
+            initiator: source
+        os:
+          properties:
+            type: "windows_adms"
+    ADMS:
+      type: org.lexis.nodes.ADMS
+      properties:
+        adms_type: { get_input: postprocessing_adms_type }
+        token: { get_input: token }
+        dataset_title_adms_result: { get_input: postprocessing_dataset_title_adms_result }
+        dataset_title_ncl_result: { get_input: postprocessing_dataset_title_ncl_result }
+        dataset_id_adms_urban_app: { get_input: postprocessing_dataset_id_adms_urban_app }
+        dataset_id_adms_urban_static_data: { get_input: postprocessing_dataset_id_adms_urban_static_data }
+        dataset_id_adms_industrial_app: { get_input: postprocessing_dataset_id_adms_industrial_app }
+        dataset_id_adms_industrial_static_data: { get_input: postprocessing_dataset_id_adms_industrial_static_data }
+      requirements:
+        - hostedOnAdmsVmHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+  outputs:
+    dataset_id_post_process_results:
+      description: ID of the dataset where ADMS post-process results are stored
+      value: { get_attribute: [ ADMS, dataset_id_result ] }
+  workflows:
+    testADMS:
+      steps:
+        ADMS_start:
+          target: ADMS
+          activities:
+            - call_operation: Standard.start
