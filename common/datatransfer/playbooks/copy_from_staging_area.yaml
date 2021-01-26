@@ -9,8 +9,16 @@
         recurse: yes
         mode: 0777
       become: true
+    - name: Compute destination directory
+      set_fact:
+        destination_path: "{{ destination_directory }}"
+      when: destination_file_name == ""
+    - name: Compute destination path of file
+      set_fact:
+        destination_path: "{{ destination_directory }}/{{ destination_file_name }}"
+      when: destination_file_name != ""
     - name: "Copying source from staging area to destination"
-      command: "/bin/cp -R {{ source_path }} {{ destination_directory }}"
+      command: "/bin/cp -R {{ source_path }} {{ destination_path }}"
       become: true
       become_user: "{{ user_name }}"
       become_method: sudo

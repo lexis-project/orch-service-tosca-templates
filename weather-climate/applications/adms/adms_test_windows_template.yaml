@@ -47,7 +47,7 @@ topology_template:
     postprocessing_dataset_id_adms_industrial_app:
       type: string
       description: ID of the dataset containing the ADMSIndustrial.exe and corresponding files. The DDI dataset has to contain single file called adms_industrial.zip
-      default: "317feadc-25ac-11eb-bbae-0050568fcecc"
+      default: "ab773490-544a-11eb-b72c-0050568fcecc"
       required: false
     postprocessing_dataset_id_adms_industrial_static_data:
       type: string
@@ -59,7 +59,7 @@ topology_template:
       type: tosca.nodes.Network
       properties:
         ip_version: 4
-    ADMS_VM:
+    ADMS_WIN_VM:
       type: tosca.nodes.Compute
       requirements:
         - networkNetworkConnection:
@@ -76,7 +76,7 @@ topology_template:
             initiator: source
         os:
           properties:
-            type: "windows_adms"
+            type: "windows"
     ADMS:
       type: org.lexis.nodes.ADMS
       properties:
@@ -91,7 +91,7 @@ topology_template:
       requirements:
         - hostedOnAdmsVmHost:
             type_requirement: host
-            node: ADMS_VM
+            node: ADMS_WIN_VM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
   outputs:

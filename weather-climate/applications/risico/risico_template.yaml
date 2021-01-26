@@ -12,8 +12,8 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
-  - heappe-types:1.0.2
-  - ddi-types:0.1.2
+  - heappe-types:1.0.3
+  - ddi-types:0.1.3
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
@@ -210,6 +210,7 @@ topology_template:
       metadata:
         task: computation
       properties:
+        token: { get_input: token }
         JobSpecification:
           Name: WRFJob
           Project: "OPEN-20-47"
@@ -259,6 +260,7 @@ topology_template:
       metadata:
         task: computation
       properties:
+        token: { get_input: token }
         JobSpecification:
           Name: WRFJob
           Project: "OPEN-20-47"
@@ -308,6 +310,7 @@ topology_template:
       metadata:
         task: computation
       properties:
+        token: { get_input: token }
         JobSpecification:
           Name: WRFJob
           Project: "OPEN-20-47"
@@ -592,10 +595,10 @@ topology_template:
   outputs:
     ddi_post_process_results:
       description: DDI path to RISICO post-processing results
-      value: { get_attribute: [ CloudToDDIJob, destination_directory_path ] }
+      value: { get_attribute: [ CloudToDDIJob, destination_path ] }
     ddi_wrf_results:
       description: DDI path to RISICO WRF results
-      value: { get_attribute: [ CloudToDDIWRFJob, destination_directory_path ] }
+      value: { get_attribute: [ CloudToDDIWRFJob, destination_path ] }
 
   workflows:
     install:
@@ -1274,7 +1277,7 @@ topology_template:
           target: RisicoVM
           activities:
             - delegate: uninstall
-    testRun:
+    RunComputation:
       steps:
         WRF_DAY_1_create:
           target: WRF_DAY_1

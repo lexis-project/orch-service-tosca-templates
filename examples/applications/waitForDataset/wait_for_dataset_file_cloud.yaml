@@ -1,0 +1,419 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: WaitForDatasetFileCloudTemplate
+  template_version: 0.1.0-SNAPSHOT
+  template_author: lexis
+
+description: ""
+
+imports:
+  - yorc-types:1.1.0
+  - heappe-types:1.0.3
+  - ddi-types:0.1.3
+  - tosca-normative-types:1.0.0-ALIEN20
+  - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
+
+topology_template:
+  inputs:
+    token:
+      type: string
+      description: "Access token"
+      required: true
+    metadata:
+      type: org.ddi.types.Metadata
+      description: "Dataset metadata"
+      required: false
+      default:
+        resourceType: "NCL script"
+    needed_files_patterns:
+      type: list
+      entry_schema:
+        type: string
+      description: "List of patterns of files that need to be available in dataset"
+      required: false
+      default:
+        - "mkMET*"
+    file_to_copy_pattern:
+      type: string
+      description: "Pattern of the file to copy to the cloud staging area"
+      required: false
+      default: "mkMET*"
+  node_templates:
+    WaitForDDIDatasetJob:
+      type: org.ddi.nodes.WaitForDDIDatasetJob
+      properties:
+        token: { get_input: token }
+        metadata: { get_input: metadata }
+        needed_files_patterns: { get_input: needed_files_patterns }
+    DDIToCloudTransferJob:
+      type: org.ddi.nodes.DDIRuntimeToCloudJob
+      properties:
+        token: { get_input: token }
+        file_pattern: { get_input: file_to_copy_pattern }
+        cloud_staging_area_directory_path: "test_lexis_ddi_to_cloud"
+        timestamp_cloud_staging_area_directory: true
+      requirements:
+        - dataset_files:
+            type_requirement: dataset_files
+            node: WaitForDDIDatasetJob
+            capability: org.ddi.capabilities.DatasetFilesProvider
+            relationship: org.ddi.relationships.DatasetFilesProvider
+    PublicNet:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+    TestDDITOCloudVM:
+      type: tosca.nodes.Compute
+      requirements:
+        - networkPublicNetConnection:
+            type_requirement: network
+            node: PublicNet
+            capability: tosca.capabilities.Connectivity
+            relationship: tosca.relationships.Network
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+        os:
+          properties:
+            type: "linux"
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        endpoint:
+          properties:
+            secure: true
+            protocol: tcp
+            network_name: PRIVATE
+            initiator: source
+    GetDDIAccess:
+      type: org.ddi.nodes.DDIAccess
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: os
+            node: TestDDITOCloudVM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.ddi.relationships.SameSite
+    MountTransferredDataset:
+      type: org.lexis.datatransfer.nodes.SSHMountStagingAreaDataset
+      properties:
+        token: { get_input: token }
+        mount_point_directory: "/mnt/cloud_staging_area/test_lexis"
+      requirements:
+        - ddi_access:
+            type_requirement: ddi_access
+            node: GetDDIAccess
+            capability: org.ddi.capabilities.DDIAccess
+            relationship: org.ddi.relationships.DDIAccessProvider
+        - data_transfer:
+            type_requirement: data_transfer
+            node: DDIToCloudTransferJob
+            capability: org.ddi.capabilities.DataTransferCloud
+            relationship: org.ddi.relationships.CloudAreaDatasetProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: TestDDITOCloudVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    DeleteCloudTransferredDataJob:
+      type: org.ddi.nodes.DeleteCloudDataJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - cloud_area_dataset_provider:
+            type_requirement: cloud_area_dataset_provider
+            node: DDIToCloudTransferJob
+            capability: org.ddi.capabilities.DataTransferCloud
+            relationship: org.ddi.relationships.CloudAreaDatasetProvider
+  outputs:
+    FilePath_result:
+      value: { get_attribute: [ MountTransferredDataset, data_absolute_path ] }
+  workflows:
+    install:
+      steps:
+        Network_install:
+          target: PublicNet
+          activities:
+            - delegate: install
+    uninstall:
+      steps:
+        Compute_uninstall:
+          target: TestDDITOCloudVM
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: PublicNet
+          activities:
+            - delegate: uninstall
+    Run:
+      steps:
+        WaitForDDIDatasetJob_create:
+          target: WaitForDDIDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - WaitForDDIDatasetJob_submit
+        WaitForDDIDatasetJob_submit:
+          target: WaitForDDIDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - WaitForDDIDatasetJob_submitted
+        WaitForDDIDatasetJob_submitted:
+          target: WaitForDDIDatasetJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - WaitForDDIDatasetJob_run
+        WaitForDDIDatasetJob_run:
+          target: WaitForDDIDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - WaitForDDIDatasetJob_executed
+        WaitForDDIDatasetJob_executed:
+          target: WaitForDDIDatasetJob
+          activities:
+            - set_state: executed
+          on_success:
+            - DDIToCloudTransferJob_create
+        DDIToCloudTransferJob_create:
+          target: DDIToCloudTransferJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToCloudTransferJob_submit
+        DDIToCloudTransferJob_submit:
+          target: DDIToCloudTransferJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToCloudTransferJob_submitted
+        DDIToCloudTransferJob_submitted:
+          target: DDIToCloudTransferJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToCloudTransferJob_run
+        DDIToCloudTransferJob_run:
+          target: DDIToCloudTransferJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToCloudTransferJob_executed
+        DDIToCloudTransferJob_executed:
+          target: DDIToCloudTransferJob
+          activities:
+            - set_state: executed
+          on_success:
+            - Compute_install
+        Compute_install:
+          target: TestDDITOCloudVM
+          activities:
+            - delegate: install
+          on_success:
+            - GetDDIAccess_start
+        GetDDIAccess_start:
+          target: GetDDIAccess
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetDDIAccess_started
+        GetDDIAccess_started:
+          target: GetDDIAccess
+          activities:
+            - set_state: started
+          on_success:
+            - MountTransferredDataset_create
+        MountTransferredDataset_create:
+          target: MountTransferredDataset
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - MountTransferredDataset_created
+        MountTransferredDataset_created:
+          target: MountTransferredDataset
+          activities:
+            - set_state: created
+          on_success:
+            - MountTransferredDataset_start
+        MountTransferredDataset_start:
+          target: MountTransferredDataset
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountTransferredDataset_started
+        MountTransferredDataset_started:
+          target: MountTransferredDataset
+          activities:
+            - set_state: started
+    testWait:
+      steps:
+        WaitForDDIDatasetJob_create:
+          target: WaitForDDIDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - WaitForDDIDatasetJob_submit
+        WaitForDDIDatasetJob_submit:
+          target: WaitForDDIDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - WaitForDDIDatasetJob_submitted
+        WaitForDDIDatasetJob_submitted:
+          target: WaitForDDIDatasetJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - WaitForDDIDatasetJob_run
+        WaitForDDIDatasetJob_run:
+          target: WaitForDDIDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - WaitForDDIDatasetJob_executed
+        WaitForDDIDatasetJob_executed:
+          target: WaitForDDIDatasetJob
+          activities:
+            - set_state: executed
+    testTransfer:
+      steps:
+        DDIToCloudTransferJob_create:
+          target: DDIToCloudTransferJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToCloudTransferJob_submit
+        DDIToCloudTransferJob_submit:
+          target: DDIToCloudTransferJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToCloudTransferJob_submitted
+        DDIToCloudTransferJob_submitted:
+          target: DDIToCloudTransferJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToCloudTransferJob_run
+        DDIToCloudTransferJob_run:
+          target: DDIToCloudTransferJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToCloudTransferJob_executed
+        DDIToCloudTransferJob_executed:
+          target: DDIToCloudTransferJob
+          activities:
+            - set_state: executed
+    testMount:
+      steps:
+        Compute_install:
+          target: TestDDITOCloudVM
+          activities:
+            - delegate: install
+          on_success:
+            - GetDDIAccess_start
+        GetDDIAccess_start:
+          target: GetDDIAccess
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetDDIAccess_started
+        GetDDIAccess_started:
+          target: GetDDIAccess
+          activities:
+            - set_state: started
+          on_success:
+            - MountTransferredDataset_create
+        MountTransferredDataset_create:
+          target: MountTransferredDataset
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - MountTransferredDataset_created
+        MountTransferredDataset_created:
+          target: MountTransferredDataset
+          activities:
+            - set_state: created
+          on_success:
+            - MountTransferredDataset_start
+        MountTransferredDataset_start:
+          target: MountTransferredDataset
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountTransferredDataset_started
+        MountTransferredDataset_started:
+          target: MountTransferredDataset
+          activities:
+            - set_state: started
+    cleanup:
+      steps:
+        MountTransferredDataset_stop:
+          target: MountTransferredDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountTransferredDataset_stopped
+        MountTransferredDataset_stopped:
+          target: MountTransferredDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - DeleteCloudTransferredDataJob_create
+        DeleteCloudTransferredDataJob_create:
+          target: DeleteCloudTransferredDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudTransferredDataJob_created
+        DeleteCloudTransferredDataJob_created:
+          target: DeleteCloudTransferredDataJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudTransferredDataJob_submit
+        DeleteCloudTransferredDataJob_submit:
+          target: DeleteCloudTransferredDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudTransferredDataJob_submitted
+        DeleteCloudTransferredDataJob_submitted:
+          target: DeleteCloudTransferredDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudTransferredDataJob_run
+        DeleteCloudTransferredDataJob_run:
+          target: DeleteCloudTransferredDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudTransferredDataJob_executed
+        DeleteCloudTransferredDataJob_executed:
+          target: DeleteCloudTransferredDataJob
+          activities:
+            - set_state: executed

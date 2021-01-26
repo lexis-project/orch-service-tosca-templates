@@ -12,8 +12,8 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
-  - ddi-types:0.1.2
-  - heappe-types:1.0.2
+  - ddi-types:0.1.3
+  - heappe-types:1.0.3
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
@@ -69,11 +69,11 @@ topology_template:
     postprocessing_hyde_image:
       type: string
       description: Hyde post-processing container repository path 
-      default: "laurentg/fp_framework_hyde:1.0.4"
+      default: "laurentg/fp_framework_hyde:1.0.5"
     postprocessing_hmc_image:
       type: string
       description: HMC post-processing container repository path
-      default: "laurentg/fp_framework_hmc:1.0.4"
+      default: "laurentg/fp_framework_hmc:1.0.5"
     postprocessing_ddi_path:
       type: string
       description: "Path where to transfer the post-processing results in DDI"
@@ -210,6 +210,7 @@ topology_template:
       metadata:
         task: computation
       properties:
+        token: { get_input: token }
         JobSpecification:
           Name: WRFJob
           Project: "OPEN-20-47"
@@ -678,12 +679,12 @@ topology_template:
             capability: org.ddi.capabilities.DataTransferCloud
             relationship: org.ddi.relationships.CloudAreaDatasetProvider
   outputs:
-    ddi_post_process_results:
+    postprocessing_dataset_result_path:
       description: DDI path to Continuum post-processing results
-      value: { get_attribute: [ CloudToDDIJob, destination_directory_path ] }
-    ddi_wrf_results:
+      value: { get_attribute: [ CloudToDDIJob, destination_path ] }
+    computation_dataset_result_path:
       description: DDI path to Continuum WRF results
-      value: { get_attribute: [ CloudToDDIWRFJob, destination_directory_path ] }
+      value: { get_attribute: [ CloudToDDIWRFJob, destination_path ] }
   workflows:
     install:
       steps:
@@ -1558,6 +1559,676 @@ topology_template:
             - set_state: executed
           on_success:
             - Compute_uninstall
+            - MountHydeDataset_stop
+        MountHydeDataset_stop:
+          target: MountHydeDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountHydeDataset_stopped
+        MountHydeDataset_stopped:
+          target: MountHydeDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - DeleteCloudHydeStaticDataJob_create
+        DeleteCloudHydeStaticDataJob_create:
+          target: DeleteCloudHydeStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudHydeStaticDataJob_created
+        DeleteCloudHydeStaticDataJob_created:
+          target: DeleteCloudHydeStaticDataJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudHydeStaticDataJob_submit
+        DeleteCloudHydeStaticDataJob_submit:
+          target: DeleteCloudHydeStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudHydeStaticDataJob_submitted
+        DeleteCloudHydeStaticDataJob_submitted:
+          target: DeleteCloudHydeStaticDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudHydeStaticDataJob_run
+        DeleteCloudHydeStaticDataJob_run:
+          target: DeleteCloudHydeStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudHydeStaticDataJob_executed
+        DeleteCloudHydeStaticDataJob_executed:
+          target: DeleteCloudHydeStaticDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - Compute_uninstall
+            - MountHMCDataset_stop
+        MountHMCDataset_stop:
+          target: MountHMCDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountHMCDataset_stopped
+        MountHMCDataset_stopped:
+          target: MountHMCDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - DeleteCloudHMCStaticDataJob_create
+        DeleteCloudHMCStaticDataJob_create:
+          target: DeleteCloudHMCStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudHMCStaticDataJob_created
+        DeleteCloudHMCStaticDataJob_created:
+          target: DeleteCloudHMCStaticDataJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudHMCStaticDataJob_submit
+        DeleteCloudHMCStaticDataJob_submit:
+          target: DeleteCloudHMCStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudHMCStaticDataJob_submitted
+        DeleteCloudHMCStaticDataJob_submitted:
+          target: DeleteCloudHMCStaticDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudHMCStaticDataJob_run
+        DeleteCloudHMCStaticDataJob_run:
+          target: DeleteCloudHMCStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudHMCStaticDataJob_executed
+        DeleteCloudHMCStaticDataJob_executed:
+          target: DeleteCloudHMCStaticDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - Compute_uninstall
+        Compute_uninstall:
+          target: ContinuumVM
+          activities:
+            - delegate: uninstall
+    testComputeUninstall:
+      steps:
+        Compute_uninstall:
+          target: ContinuumVM
+          activities:
+            - delegate: uninstall
+    testdeletewrf:
+      steps:
+        WRF_delete:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_deleted
+        WRF_deleted:
+          target: WRF
+          activities:
+            - set_state: deleted
+    RunComputation:
+      steps:
+        WRF_create:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - WRF_enable_file_transfer
+        WRF_enable_file_transfer:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - CopyToJobTask_start
+        CopyToJobTask_start:
+          target: CopyToJobTask
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyToJobTask_started
+        CopyToJobTask_started:
+          target: CopyToJobTask
+          activities:
+            - set_state: started
+          on_success:
+            - WRF_submit
+        WRF_submit:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - WRF_submitted
+        WRF_submitted:
+          target: WRF
+          activities:
+            - set_state: submitted
+          on_success:
+            - WRF_run
+        WRF_run:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - WRF_executed
+        WRF_executed:
+          target: WRF
+          activities:
+            - set_state: executed
+          on_success:
+            - CreatePostProcessHydeDirs_start
+            - CreatePostProcessHMCDirs_start
+            - CreateStagingAreaWRFResultDir_start
+        CreateStagingAreaWRFResultDir_start:
+          target: CreateStagingAreaWRFResultDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaWRFResultDir_started
+        CreateStagingAreaWRFResultDir_started:
+          target: CreateStagingAreaWRFResultDir
+          activities:
+            - set_state: started
+          on_success:
+            - CopyFromJobTask_start
+        CreatePostProcessHydeDirs_start:
+          target: CreatePostProcessHydeDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreatePostProcessHydeDirs_started
+        CreatePostProcessHydeDirs_started:
+          target: CreatePostProcessHydeDirs
+          activities:
+            - set_state: started
+          on_success:
+            - DDIToCloudHydeStaticDataJob_create
+            - Webdrops_start
+        CopyFromJobTask_start:
+          target: CopyFromJobTask
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyFromJobTask_started
+        CopyFromJobTask_started:
+          target: CopyFromJobTask
+          activities:
+            - set_state: started
+          on_success:
+            - StageWRFResults_start
+            - WRF_disable_file_transfer
+            - Continuum_Hyde_marche_create
+            - Continuum_Hyde_liguria_create
+        StageWRFResults_start:
+          target: StageWRFResults
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - StageWRFResults_started
+        StageWRFResults_started:
+          target: StageWRFResults
+          activities:
+            - set_state: started
+          on_success:
+            - CloudToDDIWRFJob_create
+        CloudToDDIWRFJob_create:
+          target: CloudToDDIWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CloudToDDIWRFJob_submit
+        CloudToDDIWRFJob_submit:
+          target: CloudToDDIWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CloudToDDIWRFJob_submitted
+        CloudToDDIWRFJob_submitted:
+          target: CloudToDDIWRFJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CloudToDDIWRFJob_run
+        CloudToDDIWRFJob_run:
+          target: CloudToDDIWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CloudToDDIWRFJob_executed
+        CloudToDDIWRFJob_executed:
+          target: CloudToDDIWRFJob
+          activities:
+            - set_state: executed
+          on_success:
+            - WRF_disable_file_transfer
+        WRF_disable_file_transfer:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - WRF_delete
+        WRF_delete:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_deleted
+        WRF_deleted:
+          target: WRF
+          activities:
+            - set_state: deleted
+        DDIToCloudHydeStaticDataJob_create:
+          target: DDIToCloudHydeStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToCloudHydeStaticDataJob_submit
+        DDIToCloudHydeStaticDataJob_submit:
+          target: DDIToCloudHydeStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToCloudHydeStaticDataJob_submitted
+        DDIToCloudHydeStaticDataJob_submitted:
+          target: DDIToCloudHydeStaticDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToCloudHydeStaticDataJob_run
+        DDIToCloudHydeStaticDataJob_run:
+          target: DDIToCloudHydeStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToCloudHydeStaticDataJob_executed
+        DDIToCloudHydeStaticDataJob_executed:
+          target: DDIToCloudHydeStaticDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountHydeDataset_create
+        MountHydeDataset_create:
+          target: MountHydeDataset
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - MountHydeDataset_created
+        MountHydeDataset_created:
+          target: MountHydeDataset
+          activities:
+            - set_state: created
+          on_success:
+            - MountHydeDataset_start
+        MountHydeDataset_start:
+          target: MountHydeDataset
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountHydeDataset_started
+        MountHydeDataset_started:
+          target: MountHydeDataset
+          activities:
+            - set_state: started
+          on_success:
+            - FindHydeStaticDataFiles_start
+        FindHydeStaticDataFiles_start:
+          target: FindHydeStaticDataFiles
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - FindHydeStaticDataFiles_started
+        FindHydeStaticDataFiles_started:
+          target: FindHydeStaticDataFiles
+          activities:
+            - set_state: started
+          on_success:
+            - MoveHydeStaticDataFiles_start
+        MoveHydeStaticDataFiles_start:
+          target: MoveHydeStaticDataFiles
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveHydeStaticDataFiles_started
+        MoveHydeStaticDataFiles_started:
+          target: MoveHydeStaticDataFiles
+          activities:
+            - set_state: started
+          on_success:
+            - Continuum_Hyde_marche_create
+            - Continuum_Hyde_liguria_create
+        CreatePostProcessHMCDirs_start:
+          target: CreatePostProcessHMCDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreatePostProcessHMCDirs_started
+        CreatePostProcessHMCDirs_started:
+          target: CreatePostProcessHMCDirs
+          activities:
+            - set_state: started
+          on_success:
+            - DDIToCloudHMCStaticDataJob_create
+        DDIToCloudHMCStaticDataJob_create:
+          target: DDIToCloudHMCStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToCloudHMCStaticDataJob_submit
+        DDIToCloudHMCStaticDataJob_submit:
+          target: DDIToCloudHMCStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToCloudHMCStaticDataJob_submitted
+        DDIToCloudHMCStaticDataJob_submitted:
+          target: DDIToCloudHMCStaticDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToCloudHMCStaticDataJob_run
+        DDIToCloudHMCStaticDataJob_run:
+          target: DDIToCloudHMCStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToCloudHMCStaticDataJob_executed
+        DDIToCloudHMCStaticDataJob_executed:
+          target: DDIToCloudHMCStaticDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountHMCDataset_create
+        MountHMCDataset_create:
+          target: MountHMCDataset
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - MountHMCDataset_created
+        MountHMCDataset_created:
+          target: MountHMCDataset
+          activities:
+            - set_state: created
+          on_success:
+            - MountHMCDataset_start
+        MountHMCDataset_start:
+          target: MountHMCDataset
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountHMCDataset_started
+        MountHMCDataset_started:
+          target: MountHMCDataset
+          activities:
+            - set_state: started
+          on_success:
+            - FindHMCStaticDataFiles_start
+        FindHMCStaticDataFiles_start:
+          target: FindHMCStaticDataFiles
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - FindHMCStaticDataFiles_started
+        FindHMCStaticDataFiles_started:
+          target: FindHMCStaticDataFiles
+          activities:
+            - set_state: started
+          on_success:
+            - MoveHMCStaticDataFiles_start
+        MoveHMCStaticDataFiles_start:
+          target: MoveHMCStaticDataFiles
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveHMCStaticDataFiles_started
+        MoveHMCStaticDataFiles_started:
+          target: MoveHMCStaticDataFiles
+          activities:
+            - set_state: started
+          on_success:
+            - Continuum_HMC_marche_create
+            - Continuum_HMC_liguria_create
+        Webdrops_start:
+          target: Webdrops
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Webdrops_started
+        Webdrops_started:
+          target: Webdrops
+          activities:
+            - set_state: started
+          on_success:
+            - Continuum_Hyde_marche_create
+            - Continuum_Hyde_liguria_create
+        Continuum_Hyde_marche_create:
+          target: Continuum_Hyde_marche
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_Hyde_marche_start
+        Continuum_Hyde_marche_start:
+          target: Continuum_Hyde_marche
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_marche_started
+        Continuum_Hyde_marche_started:
+          target: Continuum_Hyde_marche
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_liguria_create:
+          target: Continuum_Hyde_liguria
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_Hyde_liguria_start
+        Continuum_Hyde_liguria_start:
+          target: Continuum_Hyde_liguria
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_liguria_started
+        Continuum_Hyde_liguria_started:
+          target: Continuum_Hyde_liguria
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Move_Hyde_Results_start:
+          target: Move_Hyde_Results
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Move_Hyde_Results_started
+        Move_Hyde_Results_started:
+          target: Move_Hyde_Results
+          activities:
+            - set_state: started
+          on_success:
+            - Continuum_HMC_marche_create
+            - Continuum_HMC_liguria_create
+        Continuum_HMC_marche_create:
+          target: Continuum_HMC_marche
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_marche_start
+        Continuum_HMC_marche_start:
+          target: Continuum_HMC_marche
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_marche_started
+        Continuum_HMC_marche_started:
+          target: Continuum_HMC_marche
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_liguria_create:
+          target: Continuum_HMC_liguria
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_liguria_start
+        Continuum_HMC_liguria_start:
+          target: Continuum_HMC_liguria
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_liguria_started
+        Continuum_HMC_liguria_started:
+          target: Continuum_HMC_liguria
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        CreateStagingAreaResultDir_start:
+          target: CreateStagingAreaResultDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaResultDir_started
+        CreateStagingAreaResultDir_started:
+          target: CreateStagingAreaResultDir
+          activities:
+            - set_state: started
+          on_success:
+            - MoveContinuumResults_start
+        MoveContinuumResults_start:
+          target: MoveContinuumResults
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveContinuumResults_started
+        MoveContinuumResults_started:
+          target: MoveContinuumResults
+          activities:
+            - set_state: started
+          on_success:
+            - CloudToDDIJob_create
+        CloudToDDIJob_create:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CloudToDDIJob_submit
+        CloudToDDIJob_submit:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CloudToDDIJob_submitted
+        CloudToDDIJob_submitted:
+          target: CloudToDDIJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CloudToDDIJob_run
+        CloudToDDIJob_run:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CloudToDDIJob_executed
+        CloudToDDIJob_executed:
+          target: CloudToDDIJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountGEOGDataset_stop
+            - MountHydeDataset_stop
+            - MountHMCDataset_stop
+        MountGEOGDataset_stop:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountGEOGDataset_stopped
+        MountGEOGDataset_stopped:
+          target: MountGEOGDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - DeleteCloudGEOGDataJob_create
+        DeleteCloudGEOGDataJob_create:
+          target: DeleteCloudGEOGDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudGEOGDataJob_created
+        DeleteCloudGEOGDataJob_created:
+          target: DeleteCloudGEOGDataJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudGEOGDataJob_submit
+        DeleteCloudGEOGDataJob_submit:
+          target: DeleteCloudGEOGDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudGEOGDataJob_submitted
+        DeleteCloudGEOGDataJob_submitted:
+          target: DeleteCloudGEOGDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudGEOGDataJob_run
+        DeleteCloudGEOGDataJob_run:
+          target: DeleteCloudGEOGDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudGEOGDataJob_executed
+        DeleteCloudGEOGDataJob_executed:
+          target: DeleteCloudGEOGDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - Compute_uninstall
         MountHydeDataset_stop:
           target: MountHydeDataset
           activities:
@@ -1664,25 +2335,6 @@ topology_template:
           target: ContinuumVM
           activities:
             - delegate: uninstall
-    testComputeUninstall:
-      steps:
-        Compute_uninstall:
-          target: ContinuumVM
-          activities:
-            - delegate: uninstall
-    testdeletewrf:
-      steps:
-        WRF_delete:
-          target: WRF
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.delete
-          on_success:
-            - WRF_deleted
-        WRF_deleted:
-          target: WRF
-          activities:
-            - set_state: deleted
     testPostProcess:
       steps:
         CreateStagingAreaWRFResultDir_start:

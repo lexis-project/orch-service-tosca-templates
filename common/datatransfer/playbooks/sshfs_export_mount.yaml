@@ -41,7 +41,7 @@
         STAGING_AREA_ROOT_DIRECTORY: "{{ STAGING_AREA_DIRECTORY_PATH.split('/') | first}}"
     - name: Get subdir from this root dir
       set_fact:
-        STAGING_AREA_SUB_DIRECTORY: "{{ STAGING_AREA_DIRECTORY_PATH.split('/') | reject('search','0') | list  | join('/')}}"
+        STAGING_AREA_SUB_DIRECTORY: "{{ STAGING_AREA_DIRECTORY_PATH.split('/') | reject('search',STAGING_AREA_ROOT_DIRECTORY) | list  | join('/')}}"
     - name: "Request sshfs export"
       uri:
         url: "{{URL}}"
@@ -67,6 +67,25 @@
     - name: Compute the absolute path of staging area directory on mount point (operation output)
       set_fact:
         DIRECTORY_PATH: "{{ MOUNT_POINT_DIRECTORY }}/{{ STAGING_AREA_SUB_DIRECTORY }}"
+    - name: Split tha absolute path to target
+      set_fact:
+        splitval: "{{ TARGET_PATH.split('computeCloud/') }}"
+    - name: Path to target is relative
+      set_fact:
+        TARGET_RELATIVE_PATH: "{{ TARGET_PATH }}"
+      when: splitval | length == 1
+    - name: Get relative path to target 
+      set_fact:
+        TARGET_RELATIVE_PATH: "{{ splitval[1] }}"
+      when: splitval | length > 1
+    - name: Compute the absolute path of data on mount point (operation output) when the data is a dataset
+      set_fact:
+        DATA_PATH: "{{ DIRECTORY_PATH }}"
+      when: STAGING_AREA_DIRECTORY_PATH | length >= TARGET_RELATIVE_PATH | length
+    - name: Compute the absolute path of data on mount point (operation output) when the data is a file
+      set_fact:
+        DATA_PATH: "{{ DIRECTORY_PATH }}/{{ TARGET_PATH | basename }}"
+      when: STAGING_AREA_DIRECTORY_PATH | length < TARGET_RELATIVE_PATH | length
     - name: Create the mount point directory
       file:
         path: "{{ MOUNT_POINT_DIRECTORY }}"
