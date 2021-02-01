@@ -122,7 +122,7 @@ topology_template:
     FindWRFiles:
       type: org.lexis.datatransfer.nodes.FindFilesInStagingAreaDirectory
       properties:
-        patterns: ["auxhist*"]
+        shell_patterns: ["auxhist*"]
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
@@ -180,7 +180,7 @@ topology_template:
     FindContinuumStaticDataFiles:
       type: org.lexis.datatransfer.nodes.FindFilesInStagingAreaDirectory
       properties:
-        patterns:
+        shell_patterns:
           - gridded
           - point
       requirements:

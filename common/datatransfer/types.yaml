@@ -99,12 +99,12 @@ node_types:
         description: Name of the task in the Job
         type: string
         required: true
-      source_files_patterns:
+      source_files:
         type: list
         entry_schema:
           type: string
         description: |
-          List of file patterns to copy from job output directory
+          List of files to copy from job output directory (can use wildcards)
         required: true
       destination_directory:
         description: Directory where to copy files
@@ -129,7 +129,7 @@ node_types:
             user: {get_attribute: [REQ_TARGET, job, file_transfer, user]}
             private_key: {get_attribute: [REQ_TARGET, job, file_transfer, key]}
             server: {get_attribute: [REQ_TARGET, job, file_transfer, server]}
-            source_files_patterns: {get_property: [SELF, source_files_patterns]}
+            source_files: {get_property: [SELF, source_files]}
             job_directory: {get_attribute: [REQ_TARGET, job, file_transfer, path]}
             tasks_name_id: {get_attribute: [REQ_TARGET, job, tasks_name_id]}
             task_name: {get_property: [SELF, task_name]}
@@ -174,12 +174,12 @@ node_types:
     description: >
       Find a docker image archive based on given patterns in a staging area directory
     properties:
-      patterns:
+      shell_patterns:
         type: list
         entry_schema:
           type: string
         description: |
-          List of file patterns to match
+          List of file shell patterns to match
         required: true
     attributes:
       path: {get_operation_output: [SELF, Standard, start, PATH]}
@@ -196,16 +196,16 @@ node_types:
       Standard:
         start:
           inputs:
-            patterns: {get_property: [SELF, patterns]}
+            patterns: {get_property: [SELF, shell_patterns]}
             directory: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, directory_absolute_path]}
             user_name: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, user_name]}
           implementation: playbooks/find_file.yaml
   org.lexis.datatransfer.nodes.FindFileInStagingAreaDirectory:
     derived_from: tosca.nodes.SoftwareComponent
     description: >
-      Find one file based on given patterns in a staging area directory
+      Find one file based on given shell patterns in a staging area directory
     properties:
-      patterns:
+      shell_patterns:
         type: list
         entry_schema:
           type: string
@@ -227,21 +227,21 @@ node_types:
       Standard:
         start:
           inputs:
-            patterns: {get_property: [SELF, patterns]}
+            patterns: {get_property: [SELF, shell_patterns]}
             directory: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, directory_absolute_path]}
             user_name: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, user_name]}
           implementation: playbooks/find_file.yaml
   org.lexis.datatransfer.nodes.FindFilesInStagingAreaDirectory:
     derived_from: tosca.nodes.SoftwareComponent
     description: >
-      Find all files or directories based on given patterns in a staging area directory
+      Find all files or directories based on given shell patterns in a staging area directory
     properties:
-      patterns:
+      shell_patterns:
         type: list
         entry_schema:
           type: string
         description: |
-          List of file patterns to match
+          List of file shell patterns to match
         required: true
     attributes:
       paths: {get_operation_output: [SELF, Standard, start, FILES]}
@@ -258,7 +258,7 @@ node_types:
       Standard:
         start:
           inputs:
-            patterns: {get_property: [SELF, patterns]}
+            patterns: {get_property: [SELF, shell_patterns]}
             directory: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, directory_absolute_path]}
             user_name: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, user_name]}
           implementation: playbooks/find_file.yaml
@@ -391,12 +391,12 @@ node_types:
         description: Source directory
         type: string
         required: true
-      source_files_patterns:
+      source_files:
         type: list
         entry_schema:
           type: string
         description: |
-          List of file patterns to copy from source directory
+          List of files to copy from source directory (can use wildcards)
         required: true
       destination_subdirectory:
         description: Subdirectory in staging area where to store the source directory content
@@ -421,7 +421,7 @@ node_types:
             source_directory: {get_property: [SELF, source_directory]}
             destination_subdirectory: {get_property: [SELF, destination_subdirectory]}
             destination_directory: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, directory_absolute_path]}
-            source_files_patterns: {get_property: [SELF, source_files_patterns]}
+            source_files: {get_property: [SELF, source_files]}
             user_name: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, user_name]}
           implementation: playbooks/copy_to_staging_area_directory.yaml
   org.lexis.datatransfer.nodes.CopyToStagingAreaDirectory:
@@ -455,7 +455,7 @@ node_types:
         start:
           inputs:
             source_directory: {get_property: [SELF, source_directory]}
-            source_files_patterns: []
+            source_files: []
             destination_subdirectory: {get_property: [SELF, destination_subdirectory]}
             destination_directory: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, directory_absolute_path]}
             user_name: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, user_name]}
@@ -469,12 +469,12 @@ node_types:
         description: Source directory
         type: string
         required: true
-      source_files_patterns:
+      source_files:
         type: list
         entry_schema:
           type: string
         description: |
-          List of file patterns to copy from source directory
+          List of file to copy from source directory (can use wildcards)
         required: false
         default: []
       destination_subdirectory:
@@ -498,7 +498,7 @@ node_types:
         start:
           inputs:
             source_directory: {get_property: [SELF, source_directory]}
-            source_files_patterns:  {get_property: [SELF, source_files_patterns]}
+            source_files:  {get_property: [SELF, source_files]}
             destination_subdirectory: {get_property: [SELF, destination_subdirectory]}
             destination_directory: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, directory_absolute_path]}
             user_name: {get_attribute: [REQ_TARGET, cloud_area_directory_provider, user_name]}
@@ -571,6 +571,7 @@ node_types:
             source_path: {get_attribute: [REQ_TARGET, file_provider, path]}
             user_name: {get_attribute: [REQ_TARGET, file_provider, user]}
             destination_directory: {get_property: [SELF, destination_directory]}
+            destination_file_name: {get_property: [SELF, destination_file_name]}
           implementation: playbooks/copy_from_staging_area.yaml
   org.lexis.datatransfer.nodes.CopyFilesFromProvider:
     derived_from: tosca.nodes.SoftwareComponent

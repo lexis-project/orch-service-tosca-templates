@@ -169,7 +169,7 @@ topology_template:
     FindArchive:
       type: org.lexis.datatransfer.nodes.FindDockerImageArchiveInStagingAreaDirectory
       properties:
-        patterns: ["*.tar*", "*.tgz"]
+        shell_patterns: ["*.tar*", "*.tgz"]
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
@@ -200,7 +200,7 @@ topology_template:
     FindNCLScript:
       type: org.lexis.datatransfer.nodes.FindFileInStagingAreaDirectory
       properties:
-        patterns: ["*.ncl"]
+        shell_patterns: ["*.ncl"]
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider

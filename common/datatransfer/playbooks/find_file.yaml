@@ -8,7 +8,7 @@
     - name: Find files
       find:
         paths: "{{directory}}"
-        patterns: "{{patterns | from_json}}"
+        patterns: "{{patterns | from_json |join(',') }}"
         file_type: any
         recurse: true
       register: result

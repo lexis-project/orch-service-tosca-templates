@@ -48,7 +48,7 @@
         source_directory: "{{job_directory}}/{{task_id}}"
     - name: "Copying job outputs to  {{destination_directory}}"
       shell: "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {{ privatekeyfile.path }}  {{ user }}@{{ server }}:{{ source_directory }}/{{ item }} {{ destination_directory }}"
-      with_items: "{{ source_files_patterns }}"
+      with_items: "{{ source_files }}"
       become_user: "{{ file_owner }}"
       become: true
       become_method: sudo

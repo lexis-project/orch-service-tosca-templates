@@ -37,7 +37,7 @@ topology_template:
       properties:
         token: { get_input: token }
         cloud_staging_area_directory_path: "test_lexis_ddi_to_cloud"
-        timestamp_cloud_staging_area_directory: true
+        timestamp_cloud_staging_area_directory: false
       requirements:
         - dataset_files:
             type_requirement: dataset_files
@@ -311,24 +311,6 @@ topology_template:
             - set_state: executed
     testMount:
       steps:
-        Compute_install:
-          target: TestDDITOCloudVM
-          activities:
-            - delegate: install
-          on_success:
-            - GetDDIAccess_start
-        GetDDIAccess_start:
-          target: GetDDIAccess
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - GetDDIAccess_started
-        GetDDIAccess_started:
-          target: GetDDIAccess
-          activities:
-            - set_state: started
-          on_success:
-            - MountTransferredDataset_create
         MountTransferredDataset_create:
           target: MountTransferredDataset
           activities:
@@ -351,6 +333,18 @@ topology_template:
           target: MountTransferredDataset
           activities:
             - set_state: started
+    testUnmount:
+      steps:
+        MountTransferredDataset_stop:
+          target: MountTransferredDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountTransferredDataset_stopped
+        MountTransferredDataset_stopped:
+          target: MountTransferredDataset
+          activities:
+            - set_state: stopped
     cleanup:
       steps:
         MountTransferredDataset_stop:
@@ -365,6 +359,45 @@ topology_template:
             - set_state: stopped
           on_success:
             - DeleteCloudTransferredDataJob_create
+        DeleteCloudTransferredDataJob_create:
+          target: DeleteCloudTransferredDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudTransferredDataJob_created
+        DeleteCloudTransferredDataJob_created:
+          target: DeleteCloudTransferredDataJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudTransferredDataJob_submit
+        DeleteCloudTransferredDataJob_submit:
+          target: DeleteCloudTransferredDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudTransferredDataJob_submitted
+        DeleteCloudTransferredDataJob_submitted:
+          target: DeleteCloudTransferredDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudTransferredDataJob_run
+        DeleteCloudTransferredDataJob_run:
+          target: DeleteCloudTransferredDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudTransferredDataJob_executed
+        DeleteCloudTransferredDataJob_executed:
+          target: DeleteCloudTransferredDataJob
+          activities:
+            - set_state: executed
+    testCleanupCloud:
+      steps:
         DeleteCloudTransferredDataJob_create:
           target: DeleteCloudTransferredDataJob
           operation_host: ORCHESTRATOR

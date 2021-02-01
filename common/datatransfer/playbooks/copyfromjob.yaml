@@ -29,7 +29,7 @@
         mode: '0400'    
     - name: "Copying job outputs to  {{destination_directory}}"
       shell: "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r -i {{ privatekeyfile.path }}  {{ user }}@{{ server }}:{{ source_directory }}/{{ item }} {{ destination_directory }}"
-      with_items: "{{ source_files_patterns }}"
+      with_items: "{{ source_files }}"
     - name: Remove private key
       file:
         path: "{{ privatekeyfile.path }}"

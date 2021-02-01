@@ -410,7 +410,7 @@ topology_template:
       type: org.lexis.datatransfer.nodes.CopyFromJobTask
       properties:
         task_name: WRFTask
-        source_files_patterns: [ "auxhist*" ]
+        source_files: [ "auxhist*" ]
         destination_directory: "/risico_data/wrf/3"
       requirements:
         - hostedOnVirtualMachineHost:
@@ -427,7 +427,7 @@ topology_template:
       type: org.lexis.datatransfer.nodes.CopyFromJobTask
       properties:
         task_name: WRFTask
-        source_files_patterns: [ "auxhist*" ]
+        source_files: [ "auxhist*" ]
         destination_directory: "/risico_data/wrf/2"
       requirements:
         - hostedOnVirtualMachineHost:
@@ -444,7 +444,7 @@ topology_template:
       type: org.lexis.datatransfer.nodes.CopyFromJobTask
       properties:
         task_name: WRFTask
-        source_files_patterns: [ "auxhist*" ]
+        source_files: [ "auxhist*" ]
         destination_directory: "/risico_data/wrf/1"
       requirements:
         - hostedOnVirtualMachineHost:

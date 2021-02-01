@@ -293,7 +293,7 @@ topology_template:
     FindGeoDataFiles:
       type: org.lexis.datatransfer.nodes.FindFilesInStagingAreaDirectory
       properties:
-        patterns: ["*.tar*"]
+        shell_patterns: ["*.tar*"]
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
@@ -391,7 +391,7 @@ topology_template:
       type: org.lexis.datatransfer.nodes.CopyFromJobTask
       properties:
         task_name: WRFTask
-        source_files_patterns: [ "auxhist*" ]
+        source_files: [ "auxhist*" ]
         destination_directory:  { concat: [get_input: postprocessing_input_directory, "/DATA-WRF/"] }
       requirements:
         - hostedOnVirtualMachineHost:
@@ -458,7 +458,7 @@ topology_template:
     FindArchive:
       type: org.lexis.datatransfer.nodes.FindDockerImageArchiveInStagingAreaDirectory
       properties:
-        patterns: ["*.tar*", "*.tgz"]
+        shell_patterns: ["*.tar*", "*.tgz"]
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
@@ -489,7 +489,7 @@ topology_template:
     FindNCLScript:
       type: org.lexis.datatransfer.nodes.FindFileInStagingAreaDirectory
       properties:
-        patterns: ["*.ncl"]
+        shell_patterns: ["*.ncl"]
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
@@ -594,7 +594,7 @@ topology_template:
       type: org.lexis.datatransfer.nodes.CopyFilesToStagingAreaDirectory
       properties:
         source_directory: { concat: [get_input: postprocessing_input_directory, "/DATA-WRF"] }
-        source_files_patterns: [ "*.met" ]
+        source_files: [ "*.met" ]
         destination_subdirectory: "met"
       requirements:
         - staging_area_directory:

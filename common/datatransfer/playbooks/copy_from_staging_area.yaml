@@ -22,4 +22,8 @@
       become: true
       become_user: "{{ user_name }}"
       become_method: sudo
-    
+    - name: "Make destination readable"
+      file:
+        path: "{{ destination_path }}"
+        mode: 0744
+      become: true

@@ -159,7 +159,7 @@ topology_template:
     FindArchive:
       type: org.lexis.datatransfer.nodes.FindDockerImageArchiveInStagingAreaDirectory
       properties:
-        patterns: ["*.tar*", "*.tgz"]
+        shell_patterns: ["*.tar*", "*.tgz"]
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
@@ -218,7 +218,7 @@ topology_template:
     FindNCLScript:
       type: org.lexis.datatransfer.nodes.FindFilesInStagingAreaDirectory
       properties:
-        patterns: ["*.ncl"]
+        shell_patterns: ["*.ncl"]
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
@@ -261,7 +261,7 @@ topology_template:
     FindWRFiles:
       type: org.lexis.datatransfer.nodes.FindFilesInStagingAreaDirectory
       properties:
-        patterns: ["auxhist*"]
+        shell_patterns: ["auxhist*"]
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
@@ -348,7 +348,7 @@ topology_template:
       type: org.lexis.datatransfer.nodes.CopyFilesToStagingAreaDirectory
       properties:
         source_directory: "/mnt/cloud_staging_area/postprocess/adms_data/DATA-WRF/"
-        source_files_patterns: [ "*.met" ]
+        source_files: [ "*.met" ]
         destination_subdirectory: "met"
       requirements:
         - staging_area_directory:

@@ -308,7 +308,7 @@ topology_template:
       type: org.lexis.datatransfer.nodes.CopyFromJobTask
       properties:
         task_name: WRFTask
-        source_files_patterns: [ "auxhist*" ]
+        source_files: [ "auxhist*" ]
         destination_directory:  "/continuum/datasets_hyde/dynamic_data/"
         as_user: root
       requirements:
@@ -341,7 +341,7 @@ topology_template:
       type: org.lexis.datatransfer.nodes.CopyFilesToStagingAreaDirectory
       properties:
         source_directory: "/continuum/datasets_hyde/dynamic_data/"
-        source_files_patterns: [ "auxhist*" ]
+        source_files: [ "auxhist*" ]
       requirements:
         - staging_area_directory:
             type_requirement: cloud_area_directory_provider
@@ -396,7 +396,7 @@ topology_template:
     FindHydeStaticDataFiles:
       type: org.lexis.datatransfer.nodes.FindFilesInStagingAreaDirectory
       properties:
-        patterns:
+        shell_patterns:
           - liguria
           - marche
       requirements:
@@ -456,7 +456,7 @@ topology_template:
     FindHMCStaticDataFiles:
       type: org.lexis.datatransfer.nodes.FindFilesInStagingAreaDirectory
       properties:
-        patterns:
+        shell_patterns:
           - gridded
           - point
       requirements:
