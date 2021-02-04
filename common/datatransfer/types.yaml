@@ -711,7 +711,7 @@ capability_types:
   org.lexis.datatransfer.capabilities.FilesProvider:
     derived_from: tosca.capabilities.Root
     description: >
-      A capability provided by a component providing access to a file as a given user.
+      A capability provided by a component providing access to files as a given user.
     attributes:
       paths:
         type: list

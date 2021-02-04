@@ -25,5 +25,5 @@
     - name: "Make destination readable"
       file:
         path: "{{ destination_path }}"
-        mode: 0744
+        mode: 0755
       become: true

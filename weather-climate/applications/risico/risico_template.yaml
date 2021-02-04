@@ -593,13 +593,12 @@ topology_template:
             capability: org.ddi.capabilities.DataTransferCloud
             relationship: org.ddi.relationships.CloudAreaDatasetProvider
   outputs:
-    ddi_post_process_results:
-      description: DDI path to RISICO post-processing results
-      value: { get_attribute: [ CloudToDDIJob, destination_path ] }
-    ddi_wrf_results:
+    computation_dataset_wrf_result_path:
       description: DDI path to RISICO WRF results
       value: { get_attribute: [ CloudToDDIWRFJob, destination_path ] }
-
+    postprocessing_dataset_result_path:
+      description: DDI path to RISICO post-processing results
+      value: { get_attribute: [ CloudToDDIJob, destination_path ] }
   workflows:
     install:
       steps:
