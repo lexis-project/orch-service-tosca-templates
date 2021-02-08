@@ -122,7 +122,7 @@ topology_template:
     FindWRFiles:
       type: org.lexis.datatransfer.nodes.FindFilesInStagingAreaDirectory
       properties:
-        patterns: ["auxhist*"]
+        shell_patterns: ["auxhist*"]
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
@@ -180,7 +180,7 @@ topology_template:
     FindContinuumStaticDataFiles:
       type: org.lexis.datatransfer.nodes.FindFilesInStagingAreaDirectory
       properties:
-        patterns:
+        shell_patterns:
           - gridded
           - point
       requirements:
@@ -1266,7 +1266,6 @@ topology_template:
           on_success:
             - GetDDIAccess_start
             - CreatePostProcessHydeDirs_start
-            - CreatePostProcessHMCDirs_start
         CreatePostProcessHydeDirs_start:
           target: CreatePostProcessHydeDirs
           activities:
@@ -1459,34 +1458,6 @@ topology_template:
             - set_state: started
           on_success:
             - Continuum_Hyde_marche_create
-        CreatePostProcessHMCDirs_start:
-          target: CreatePostProcessHMCDirs
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CreatePostProcessHMCDirs_started
-        CreatePostProcessHMCDirs_started:
-          target: CreatePostProcessHMCDirs
-          activities:
-            - set_state: started
-          on_success:
-            - Continuum_HMC_marche_create
-            - Continuum_HMC_liguria_create
-            - Continuum_HMC_adige_create
-            - Continuum_HMC_basilicata_create
-            - Continuum_HMC_calabria_create
-            - Continuum_HMC_fvg_create
-            - Continuum_HMC_gargano_create
-            - Continuum_HMC_lazio_create
-            - Continuum_HMC_liri_create
-            - Continuum_HMC_po_create
-            - Continuum_HMC_puglia_create
-            - Continuum_HMC_romagna_create
-            - Continuum_HMC_sardegna_create
-            - Continuum_HMC_sicilia_create
-            - Continuum_HMC_tevere_create
-            - Continuum_HMC_toscana_create
-            - Continuum_HMC_volturno_create
         Webdrops_start:
           target: Webdrops
           activities:
@@ -1498,7 +1469,20 @@ topology_template:
           activities:
             - set_state: started
           on_success:
+            - CreatePostProcessHMCDirs_start
             - Continuum_Hyde_marche_create
+        CreatePostProcessHMCDirs_start:
+          target: CreatePostProcessHMCDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreatePostProcessHMCDirs_started
+        CreatePostProcessHMCDirs_started:
+          target: CreatePostProcessHMCDirs
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
         Continuum_Hyde_marche_create:
           target: Continuum_Hyde_marche
           activities:

@@ -25,25 +25,30 @@ node_types:
         type: string
         description: Download additional warmup data for this given number of days before the start date
         required: true
+      output_directory:
+        type: string
+        description: Absolute path to directory where to store donwloaded data
+        required: true
       with_data_assimilation:
         type: boolean
         default: false
         required: false
       left_longitude:
         type: string
-        description: Left longitude
+        description: Left longitude, not needed for historical data (more than 10 days ago)
+        required: false
       right_longitude:
         type: string
-        description: Right longitude
+        description: Right longitude, not needed for historical data (more than 10 days ago)
+        required: false
       top_latitude:
         type: string
-        description: Top latitude
+        description: Top latitude, not needed for historical data (more than 10 days ago)
+        required: false
       bottom_latitude:
         type: string
-        description: Bottom latitude
-      output_directory:
-        type: string
-        description: Absolute path to directory where to store donwloaded data
+        description: Bottom latitude, not needed for historical data (more than 10 days ago)
+        required: false
     interfaces:
       Standard:
         create:
@@ -59,6 +64,8 @@ node_types:
             TOP_LATITUDE: {get_property: [SELF, top_latitude]}
             BOTTOM_LATITUDE: {get_property: [SELF, bottom_latitude]}
             OUTPUT_DIRECTORY: {get_property: [SELF, output_directory]}
+            EMAIL_ADDRESS: { get_secret: ["/secret/wp7/gfshistoricaldata/creds", "data=email"]}
+            PASSWORD: { get_secret: ["/secret/wp7/gfshistoricaldata/creds", "data=password"]}
           implementation: playbooks/download_gfs.yaml
     tags:
       icon: /images/GFS.png
