@@ -24,6 +24,24 @@ topology_template:
       type: string
       description: type of ADMS simulation executed, urban or industrial
       required: true
+    postprocessing_adms_sftp_server_ip:
+        type: string
+        description: IP address of a SPTP server where to store results
+        required: true
+    postprocessing_adms_sftp_port:
+        type: integer
+        description: Port of the SFTP server
+        required: true
+    postprocessing_adms_sftp_industrial_dir:
+        type: string
+        description: SFTP destination directory for the industrial case
+        required: false
+        default: "/adms5"
+    postprocessing_adms_sftp_urban_dir:
+        type: string
+        description: IP address of a SPTP server where to store results (no upload to sftp server if not defined)
+        required: false
+        default: "/admsurban"
     postprocessing_dataset_title_adms_result:
       type: string
       description: Which will be the title of the dataset containing ADMS results
@@ -88,6 +106,10 @@ topology_template:
         dataset_id_adms_urban_static_data: { get_input: postprocessing_dataset_id_adms_urban_static_data }
         dataset_id_adms_industrial_app: { get_input: postprocessing_dataset_id_adms_industrial_app }
         dataset_id_adms_industrial_static_data: { get_input: postprocessing_dataset_id_adms_industrial_static_data }
+        adms_sftp_server_ip: { get_input: postprocessing_adms_sftp_server_ip }
+        adms_sftp_port: { get_input: postprocessing_adms_sftp_port }
+        adms_sftp_industrial_dir: { get_input: postprocessing_adms_sftp_industrial_dir }
+        adms_sftp_urban_dir: { get_input: postprocessing_adms_sftp_urban_dir }
       requirements:
         - hostedOnAdmsVmHost:
             type_requirement: host
