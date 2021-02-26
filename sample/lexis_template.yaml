@@ -1,11 +1,11 @@
 tosca_definitions_version: alien_dsl_2_0_0
 
 metadata:
-  template_name: LEXISTestTemplate
+  template_name: LEXISTemplate
   template_version: 0.1.0-SNAPSHOT
   template_author: lexis
 
-description: "LEXIS Test Template"
+description: "LEXIS Generic Template"
 
 imports:
   - tosca-normative-types:1.0.0-ALIEN20
@@ -124,8 +124,8 @@ topology_template:
       entry_schema:
         type: string
       default:
-        INPUT_DIR: "/input_computation_results"
-        RESULT_DIR: "/output_postprocessing"
+        INPUT_DIR: "/input_dataset"
+        RESULT_DIR: "/output"
         RESULT_FILE_NAME: "postprocessing_result.txt"
       required: false
     postprocessing_container_volumes:
@@ -234,11 +234,11 @@ topology_template:
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
 
-    # Create directories expected by the preprocessing container
+    # Create the output directory expected by the preprocessing container
     CreatePreProcessDirs:
       type: org.lexis.datatransfer.nodes.CreateDirectories
       properties:
-        directories:  { get_input: preprocessing_container_volumes }
+        directories: {concat: ["[\"", get_input: preprocessing_output_directory, "\"]"]}
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -314,6 +314,7 @@ topology_template:
         token: { get_input: token }
         metadata: { get_input: computation_result_dataset_metadata }
         ddi_path: { get_input: postprocessing_ddi_path }
+        task_name: { get_input: computation_heappe_task_name }
       requirements:
         - job:
             type_requirement: job
@@ -379,7 +380,7 @@ topology_template:
     CreateStagingAreaResultDir:
       type: org.lexis.datatransfer.nodes.CreateStagingAreaDirectory
       properties:
-        directory: "lexis_test_preprocessing"
+        directory: "lexis_test_postprocessing"
       requirements:
         - mountedCloudStagingArea:
             type_requirement: mounted_staging_area
@@ -870,3 +871,101 @@ topology_template:
           target: Network
           activities:
             - delegate: uninstall
+          on_success:
+            - CleanupCloudStagingAreaJob_create
+        CleanupCloudStagingAreaJob_create:
+          target: CleanupCloudStagingAreaJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CleanupCloudStagingAreaJob_created
+        CleanupCloudStagingAreaJob_created:
+          target: CleanupCloudStagingAreaJob
+          activities:
+            - set_state: created
+          on_success:
+            - CleanupCloudStagingAreaJob_submit
+        CleanupCloudStagingAreaJob_submit:
+          target: CleanupCloudStagingAreaJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CleanupCloudStagingAreaJob_submitted
+        CleanupCloudStagingAreaJob_submitted:
+          target: CleanupCloudStagingAreaJob
+          activities:
+            - set_state: submitted
+    cleanupMountPoint:
+      steps:
+        MountInputDataset_stop:
+          target: MountInputDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountInputDataset_stopped
+        MountInputDataset_stopped:
+          target: MountInputDataset
+          activities:
+            - set_state: stopped
+    cleanupStagingArea:
+      steps:
+        CleanupCloudStagingAreaJob_create:
+          target: CleanupCloudStagingAreaJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CleanupCloudStagingAreaJob_created
+        CleanupCloudStagingAreaJob_created:
+          target: CleanupCloudStagingAreaJob
+          activities:
+            - set_state: created
+          on_success:
+            - CleanupCloudStagingAreaJob_submit
+        CleanupCloudStagingAreaJob_submit:
+          target: CleanupCloudStagingAreaJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CleanupCloudStagingAreaJob_submitted
+        CleanupCloudStagingAreaJob_submitted:
+          target: CleanupCloudStagingAreaJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CleanupCloudStagingAreaJob_run
+        CleanupCloudStagingAreaJob_run:
+          target: CleanupCloudStagingAreaJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CleanupCloudStagingAreaJob_executed
+        CleanupCloudStagingAreaJob_executed:
+          target: CleanupCloudStagingAreaJob
+          activities:
+            - set_state: executed
+    cleanupHPC:
+      steps:
+        HPCJob_disable_file_transfer:
+          target: HPCJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - HPCJob_delete
+        HPCJob_delete:
+          target: HPCJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - HPCJob_deleted
+        HPCJob_deleted:
+          target: HPCJob
+          activities:
+            - set_state: deleted
+
