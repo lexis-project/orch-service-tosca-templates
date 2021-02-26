@@ -1,6 +1,6 @@
 # LEXIS Template
 
-Template for a generic LEXIS workflow implementation, performing:
+Template of a generic LEXIS workflow, performing:
 * the transfer of an input dataset from DDI to a Cloud Staging Area
 * the pre-processing of these data, running a docker container on a cloud compute instance created on demand
 * the transfer of pre-processing results to a HEAppE job that will perform a computation on a HPC cluster
