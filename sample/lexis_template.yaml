@@ -232,7 +232,7 @@ topology_template:
             capability: tosca.capabilities.OperatingSystem
             relationship: org.ddi.relationships.SameSite
 
-    # Component managing the SSH-mount the input dataset in cloud staging area
+    # Component managing the SSH-mount of the input dataset in cloud staging area
     # on the compute instance
     MountInputDataset:
       type: org.lexis.datatransfer.nodes.SSHMountStagingAreaDataset
