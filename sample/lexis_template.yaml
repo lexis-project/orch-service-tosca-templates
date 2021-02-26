@@ -941,7 +941,7 @@ topology_template:
           target: MountInputDataset
           activities:
             - set_state: stopped
-    # Test workflow to only execute a the cloud staging area cleanup
+    # Test workflow to only execute the cloud staging area cleanup
     cleanupStagingArea:
       steps:
         CleanupCloudStagingAreaJob_create:
