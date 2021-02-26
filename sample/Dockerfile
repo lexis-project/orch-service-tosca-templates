@@ -1,4 +1,4 @@
-# Dockerfile of a docker images used as LEXIS Template default pre-processing
+# Dockerfile of a docker image used as LEXIS Template default pre-processing
 # and post-processing container image.
 # It just list files in $INPUT_DIR (default: /input_dataset)
 # and stores the ouput in a result file (default: /output/results.txt)
