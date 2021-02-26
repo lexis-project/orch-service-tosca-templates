@@ -34,7 +34,7 @@ compute instance, and transferring an input dataset from DDI to make it availabl
 
 Then the docker service is installed and started, and the pre-processing container is run:
 
-![Docker and container](images/workflow2_pre-processing.png)
+![Docker and container](images/workflow2_preprocessing.png)
 
 Once the container has run and produced results, a HEAppE job is first created
 and File transfers are then enabled on it, so that the next step can copy
@@ -52,7 +52,7 @@ Once the HEAppE job has been executed, two branches of the workflow are executed
 The post-processing container is then run, its results are copied to the Cloud
 Staging Area, then staged to DDI:
 
-![post-processing](images/workflow5_post-processing.png)
+![post-processing](images/workflow5_postprocessing.png)
 
 The computation is now done, the final phase is a cleanup phase where infrastructure
 resources that were allocated for the computation are now released.
