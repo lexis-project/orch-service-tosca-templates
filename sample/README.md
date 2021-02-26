@@ -62,9 +62,3 @@ Two branches run in parallel on the workflow:
   and deleting Cloud compute resources.
 
 ![cleanup](images/workflow6_cleanup.png)
-
-
-This TOSCA application template is using TOSCA components provided by the Yorc 
-HEAppE plugin (components of type org.heappe.*).
-It is also using Docker and container components provided by the Ystia forge at
-https://github.com/ystia/forge/tree/develop/org/ystia/docker
