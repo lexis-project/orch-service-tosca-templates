@@ -888,7 +888,8 @@ topology_template:
           activities:
             - delegate: uninstall
     # Worflow executed at undeployment time
-    # Deleting infrastructure resources
+    # Deleting infrastructure resources if not yet dene
+    # (if the Run workflow failed before the cleanup phase)
     uninstall:
       steps:
         ComputeInstance_uninstall:
