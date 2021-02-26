@@ -2,15 +2,21 @@
 
 Template for a generic LEXIS workflow implementation, performing:
 * the transfer of an input dataset from DDI to a Cloud Staging Area
-* the preprocessing of these data, running a docker container on a cloud compute instance created on demand
-* the transfer of preprocessing results to a HEAppE job that will perform a computation on a HPC cluster
+* the pre-processing of these data, running a docker container on a cloud compute instance created on demand
+* the transfer of pre-processing results to a HEAppE job that will perform a computation on a HPC cluster
 * the transfer of HPC computation results to DDI
 * the transfer of HPC computation results to the cloud compute instance local storage
-* the postprocessing of these computation results, running a postprocessing docker container
-* the transfer of postprocessing results from the cloud instance local storage to the Cloud Staging Area
-* the transfer of postprocessing results from the Cloud Staging Area to DDI
+* the post-processing of these computation results, running a post-processing docker container
+* the transfer of post-processing results from the cloud instance local storage to the Cloud Staging Area
+* the transfer of post-processing results from the Cloud Staging Area to DDI
+
+See TOSCA code in [lexis_template.yaml](lexis_template.yaml).
 
 A graphical view of the template topology shows:
+* a Compute Instance hosting software that will perform the pre-processing and
+  post-processing computation
+* a HPC Job that will perform the computation on the HPC infrastructure 
+* DDI jobs that will perform the necessary data transfers between the infrastructures
 
 ![App template](images/apptemplate.png)
 
@@ -28,11 +34,11 @@ compute instance, and transferring an input dataset from DDI to make it availabl
 
 Then the docker service is installed and started, and the pre-processing container is run:
 
-![Docker and container](images/workflow2_preprocessing.png)
+![Docker and container](images/workflow2_pre-processing.png)
 
 Once the container has run and produced results, a HEAppE job is first created
 and File transfers are then enabled on it, so that the next step can copy
-preprocessing results to the HEAppE job task.
+pre-processing results to the HEAppE job task.
 The orchestrator submits then the HEAppE job and waits for its end.
 
 ![HEAppE job](images/workflow3_computation.png)
@@ -46,7 +52,7 @@ Once the HEAppE job has been executed, two branches of the workflow are executed
 The post-processing container is then run, its results are copied to the Cloud
 Staging Area, then staged to DDI:
 
-![postprocessing](images/workflow5_postprocessing.png)
+![post-processing](images/workflow5_post-processing.png)
 
 The computation is now done, the final phase is a cleanup phase where infrastructure
 resources that were allocated for the computation are now released.
