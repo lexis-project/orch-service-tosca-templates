@@ -17,12 +17,12 @@ A graphical view of the application template shows:
 
 ![App template](images/apptemplate.png)
 
-This HEAppE job is of type [org.heappe.nodes.JobWithRuntimeTaskParameters](https://github.com/lexis-project/yorc-heappe-plugin/blob/v1.0.2/tosca/heappe-types.yaml#L257-L266).
+This HEAppE job is of type [org.lexis.common.heappe.nodes.JobWithRuntimeTaskParameters](https://github.com/lexis-project/yorc-heappe-plugin/blob/v1.0.2/tosca/heappe-types.yaml#L257-L266).
 It has the requirement to be associated with a component that will compute and provide the tasks parameters and value
 to use by this Job.
-(while this other type of HEAppE job `org.heappe.nodes.Job` has these values defined as properties that can't be changed at runtime).
+(while this other type of HEAppE job `org.lexis.common.heappe.nodes.Job` has these values defined as properties that can't be changed at runtime).
 
-The component `WaitForEventJob` implements the capability [org.heappe.capabilities.TasksParametersProvider](https://github.com/lexis-project/yorc-heappe-plugin/blob/v1.0.2/tosca/heappe-types.yaml#L429-L438) as expected by the associated HEAppE job,
+The component `WaitForEventJob` implements the capability [org.lexis.common.heappe.capabilities.TasksParametersProvider](https://github.com/lexis-project/yorc-heappe-plugin/blob/v1.0.2/tosca/heappe-types.yaml#L429-L438) as expected by the associated HEAppE job,
 and provides an attribute `tasks_parameters` that it computes to provide the event value in a parameter of a task of this HEAppE job.
  
 For this example, the progran launched by the job `WaitForEventJob` to wait for an event is

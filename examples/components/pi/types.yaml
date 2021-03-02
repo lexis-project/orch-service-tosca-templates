@@ -1,7 +1,7 @@
 tosca_definitions_version: alien_dsl_2_0_0
 
 metadata:
-  template_name: org.lexis.examples.pi
+  template_name: org.lexis.common.examples.pi
   template_version: 0.0.1-SNAPSHOT
   template_author: lexis
   
@@ -9,7 +9,7 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20  
 
 node_types:
-  org.lexis.examples.pi.ComputePI:
+  org.lexis.common.examples.pi.ComputePI:
     derived_from: tosca.nodes.SoftwareComponent
     description: >
       Compute PI to a given decimal

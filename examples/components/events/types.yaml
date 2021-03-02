@@ -1,7 +1,7 @@
 tosca_definitions_version: alien_dsl_2_0_0
 
 metadata:
-  template_name: org.lexis.examples.events
+  template_name: org.lexis.common.examples.events
   template_version: 0.1.0
   template_author: lexis
   
@@ -9,10 +9,10 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20 
   - org.lexis.common.noscheduler.job:0.1.0
   - yorc-types:1.1.0
-  - heappe-types:1.0.3
+  - org.lexis.common.heappe-types:1.0.3
 
 node_types:
-  org.lexis.examples.events.WaitForEventJob:
+  org.lexis.common.examples.events.WaitForEventJob:
     derived_from: tosca.nodes.SoftwareComponent
     description: >
       Waits for a file at a given URL to be non empty
@@ -45,7 +45,7 @@ node_types:
       tasks_parameters: { get_operation_output: [SELF, tosca.interfaces.node.lifecycle.Runnable, run, TASKS_PARAMETERS] }
     capabilities:
       tasks_parameters_provider:
-        type: org.heappe.capabilities.TasksParametersProvider
+        type: org.lexis.common.heappe.capabilities.TasksParametersProvider
     interfaces:
       tosca.interfaces.node.lifecycle.Runnable:
         submit:
@@ -65,11 +65,11 @@ node_types:
       - script_to_execute:
           type: tosca.artifacts.File
           file: scripts/wait_and_get_file_content.sh
-  org.lexis.examples.events.WaitForEventJobWithTimeout:
-    derived_from: org.lexis.noscheduler.Job
+  org.lexis.common.examples.events.WaitForEventJobWithTimeout:
+    derived_from: org.lexis.common.noscheduler.Job
     description: >
       Waits for a file at a given URL to be non empty
-      and returns its content in the attribute stdout declared in parent type org.lexis.noscheduler.Job
+      and returns its content in the attribute stdout declared in parent type org.lexis.common.noscheduler.Job
     properties:
       file_url:
         description: URL of the file 
@@ -77,7 +77,7 @@ node_types:
         required: true
     interfaces:
       tosca.interfaces.node.lifecycle.Runnable:
-        # This component child of org.lexis.noscheduler.Job must implement a 
+        # This component child of org.lexis.common.noscheduler.Job must implement a 
         # submit operation that needs to provide these values:
         # - TOSCA_JOB_ID, providing the PID of the command launched
         # - SUBMIT_DATE_EPOCH, providing the epoch time of the submission
@@ -92,7 +92,7 @@ node_types:
           type: tosca.artifacts.File
           file: scripts/wait_and_get_file_content.sh
 capability_types:
-  org.lexis.examples.events.capabilities.EventProvider:
+  org.lexis.common.examples.events.capabilities.EventProvider:
     derived_from: tosca.capabilities.Root
     description: >
       A capability fulfilling requirements of a node requiring to be

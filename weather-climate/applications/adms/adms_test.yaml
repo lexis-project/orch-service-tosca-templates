@@ -1,7 +1,7 @@
 tosca_definitions_version: alien_dsl_2_0_0
 
 metadata:
-  template_name: ADMSTestTemplate
+  template_name: org.lexis.wp7.ADMSTestTemplate
   template_version: 0.1.0-SNAPSHOT
   template_author: lexis
 
@@ -12,12 +12,12 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
-  - ddi-types:0.1.3
+  - org.lexis.common.ddi-types:0.1.3
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.ystia.docker.images:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
-  #- org.lexis.weather.wps:0.1.1-SNAPSHOT
+  #- org.lexis.wp7.wps:0.1.1-SNAPSHOT
 
 topology_template:
   inputs:
@@ -92,7 +92,7 @@ topology_template:
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     EnableCloudAcessJob:
-      type: org.ddi.nodes.EnableCloudStagingAreaAccessJob
+      type: org.lexis.common.ddi.nodes.EnableCloudStagingAreaAccessJob
       properties:
         token: { get_input: token }
       requirements:
@@ -100,9 +100,9 @@ topology_template:
             type_requirement: os
             node: ADMS_VM
             capability: tosca.capabilities.OperatingSystem
-            relationship: org.ddi.relationships.SameSite
+            relationship: org.lexis.common.ddi.relationships.SameSite
     DisableCloudAcessJob:
-      type: org.ddi.nodes.DisableCloudStagingAreaAccessJob
+      type: org.lexis.common.ddi.nodes.DisableCloudStagingAreaAccessJob
       properties:
         token: { get_input: token }
       requirements:
@@ -110,9 +110,9 @@ topology_template:
             type_requirement: os
             node: ADMS_VM
             capability: tosca.capabilities.OperatingSystem
-            relationship: org.ddi.relationships.SameSite
+            relationship: org.lexis.common.ddi.relationships.SameSite
     MountStagingArea:
-      type: org.lexis.datatransfer.nodes.MountStagingArea
+      type: org.lexis.common.datatransfer.nodes.MountStagingArea
       properties:
         destination_directory: "/mnt/cloud_staging_area"
         user_name: lexisclouduser
@@ -121,15 +121,15 @@ topology_template:
         - mountCloudStagingAreaEnableCloudAcessJobCloud_staging_area_access:
             type_requirement: cloud_staging_area_access
             node: EnableCloudAcessJob
-            capability: org.ddi.capabilities.CloudStagingAreaAccess
-            relationship: org.lexis.datatransfer.relationships.MountCloudStagingArea
+            capability: org.lexis.common.ddi.capabilities.CloudStagingAreaAccess
+            relationship: org.lexis.common.datatransfer.relationships.MountCloudStagingArea
         - hostedOnComputeHost:
             type_requirement: host
             node: ADMS_VM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     CreateStagingAreaADMSTempDir:
-      type: org.lexis.datatransfer.nodes.CreateStagingAreaDirectory
+      type: org.lexis.common.datatransfer.nodes.CreateStagingAreaDirectory
       properties:
         directory: "adms_tmp"
         create_timestamp_destination_subdirectory: true
@@ -137,15 +137,15 @@ topology_template:
         - mountedCloudStagingArea:
             type_requirement: mounted_staging_area
             node: MountStagingArea
-            capability: org.lexis.datatransfer.capabilities.MountedStagingAreaAccess
-            relationship: org.lexis.datatransfer.relationships.MountedCloudStagingArea
+            capability: org.lexis.common.datatransfer.capabilities.MountedStagingAreaAccess
+            relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
         - hostedOnComputeHost:
             type_requirement: host
             node: ADMS_VM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     DDIToCloudDockerImageJob:
-      type: org.ddi.nodes.DDIToCloudJob
+      type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
         token: { get_input: token }
         ddi_dataset_path: { get_input: postprocessing_dataset_docker_image_path }
@@ -153,10 +153,10 @@ topology_template:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
             node: CreateStagingAreaADMSTempDir
-            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
-            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
     DDIToCloudNCLScriptJob:
-      type: org.ddi.nodes.DDIToCloudJob
+      type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
         token: { get_input: token }
         ddi_dataset_path: { get_input: postprocessing_dataset_ncl_script }
@@ -164,18 +164,18 @@ topology_template:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
             node: CreateStagingAreaADMSTempDir
-            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
-            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
     FindArchive:
-      type: org.lexis.datatransfer.nodes.FindDockerImageArchiveInStagingAreaDirectory
+      type: org.lexis.common.datatransfer.nodes.FindDockerImageArchiveInStagingAreaDirectory
       properties:
         shell_patterns: ["*.tar*", "*.tgz"]
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
             node: CreateStagingAreaADMSTempDir
-            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
-            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
         - hostedOnComputeHost:
             type_requirement: host
             node: ADMS_VM
@@ -198,30 +198,30 @@ topology_template:
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     FindNCLScript:
-      type: org.lexis.datatransfer.nodes.FindFileInStagingAreaDirectory
+      type: org.lexis.common.datatransfer.nodes.FindFileInStagingAreaDirectory
       properties:
         shell_patterns: ["*.ncl"]
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
             node: CreateStagingAreaADMSTempDir
-            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
-            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
         - hostedOnComputeHost:
             type_requirement: host
             node: ADMS_VM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     CopyNCLScriptFromStagingArea:
-      type: org.lexis.datatransfer.nodes.CopyFromStagingArea
+      type: org.lexis.common.datatransfer.nodes.CopyFromStagingArea
       properties:
         destination_directory:  {get_input: postprocessing_input_directory}
       requirements:
         - file_provider:
             type_requirement: file_provider
             node: FindNCLScript
-            capability: org.lexis.datatransfer.capabilities.FileProvider
-            relationship: org.lexis.datatransfer.relationships.FileProvider
+            capability: org.lexis.common.datatransfer.capabilities.FileProvider
+            relationship: org.lexis.common.datatransfer.relationships.FileProvider
         - hostedOnComputeHost:
             type_requirement: host
             node: ADMS_VM
@@ -254,15 +254,15 @@ topology_template:
             max_instances: 1
             default_instances: 1
     DeleteCloudDataJob:
-      type: org.ddi.nodes.DeleteCloudDataJob
+      type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
       properties:
         token: { get_input: token }
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
             node: CreateStagingAreaADMSTempDir
-            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
-            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
   workflows:
     install:
       steps:

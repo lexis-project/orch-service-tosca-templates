@@ -1,7 +1,7 @@
 tosca_definitions_version: alien_dsl_2_0_0
 
 metadata:
-  template_name: RisicoTemplate
+  template_name: org.lexis.wp7.RisicoTemplate
   template_version: 0.1.0-SNAPSHOT
   template_author: lexis
 
@@ -12,13 +12,13 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
-  - heappe-types:1.0.3
-  - ddi-types:0.1.3
+  - org.lexis.common.heappe-types:1.0.3
+  - org.lexis.common.ddi-types:0.1.3
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
-  - org.lexis.weather.wps:0.1.1-SNAPSHOT
-  - org.lexis.weather.webdrops:0.1.0
+  - org.lexis.wp7.wps:0.1.1-SNAPSHOT
+  - org.lexis.wp7.webdrops:0.1.0
 
 topology_template:
   inputs:
@@ -95,22 +95,22 @@ topology_template:
             network_name: PRIVATE
             initiator: source
     GetDDIAccess:
-      type: org.ddi.nodes.DDIAccess
+      type: org.lexis.common.ddi.nodes.DDIAccess
       requirements:
         - hostedOnComputeHost:
             type_requirement: os
             node: RisicoVM
             capability: tosca.capabilities.OperatingSystem
-            relationship: org.ddi.relationships.SameSite
+            relationship: org.lexis.common.ddi.relationships.SameSite
     DDIToCloudGEOGDatasetJob:
-      type: org.ddi.nodes.DDIToCloudJob
+      type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
         token: { get_input: token }
         ddi_dataset_path: { get_input: preprocessing_dataset_geographical_data }
         cloud_staging_area_directory_path: "risico_preprocessing_geog"
         timestamp_cloud_staging_area_directory: true
     MountGEOGDataset:
-      type: org.lexis.datatransfer.nodes.SSHMountStagingAreaDataset
+      type: org.lexis.common.datatransfer.nodes.SSHMountStagingAreaDataset
       properties:
         token: { get_input: token }
         mount_point_directory: "/mnt/cloud_staging_area/risico"
@@ -118,20 +118,20 @@ topology_template:
         - ddi_access:
             type_requirement: ddi_access
             node: GetDDIAccess
-            capability: org.ddi.capabilities.DDIAccess
-            relationship: org.ddi.relationships.DDIAccessProvider
+            capability: org.lexis.common.ddi.capabilities.DDIAccess
+            relationship: org.lexis.common.ddi.relationships.DDIAccessProvider
         - data_transfer:
             type_requirement: data_transfer
             node: DDIToCloudGEOGDatasetJob
-            capability: org.ddi.capabilities.DataTransferCloud
-            relationship: org.ddi.relationships.CloudAreaDatasetProvider
+            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
         - hostedOnComputeHost:
             type_requirement: host
             node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     CreatePreProcessDirs:
-      type: org.lexis.datatransfer.nodes.CreateDirectories
+      type: org.lexis.common.datatransfer.nodes.CreateDirectories
       properties:
         directories: ["/wps_data/gfs", "/wps_data/output"]
       requirements:
@@ -149,7 +149,7 @@ topology_template:
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     CreatePostProcessDirs:
-      type: org.lexis.datatransfer.nodes.CreateDirectories
+      type: org.lexis.common.datatransfer.nodes.CreateDirectories
       properties:
         directories:
           - "/risico_data/wrf"
@@ -188,7 +188,7 @@ topology_template:
             max_instances: 1
             default_instances: 1
     GFSData:
-      type: org.lexis.nodes.GFSData
+      type: org.lexis.wp7.nodes.GFSData
       properties:
         start_date: {get_input: preprocessing_start_date}
         end_date: {get_input: preprocessing_end_date}
@@ -206,7 +206,7 @@ topology_template:
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     WRF_DAY_3:
-      type: org.heappe.nodes.Job
+      type: org.lexis.common.heappe.nodes.Job
       metadata:
         task: computation
       properties:
@@ -256,7 +256,7 @@ topology_template:
               ProgressFile: "stdprog"
               LogFile: "stdlog"
     WRF_DAY_2:
-      type: org.heappe.nodes.Job
+      type: org.lexis.common.heappe.nodes.Job
       metadata:
         task: computation
       properties:
@@ -306,7 +306,7 @@ topology_template:
               ProgressFile: "stdprog"
               LogFile: "stdlog"
     WRF_DAY_1:
-      type: org.heappe.nodes.Job
+      type: org.lexis.common.heappe.nodes.Job
       metadata:
         task: computation
       properties:
@@ -356,7 +356,7 @@ topology_template:
               ProgressFile: "stdprog"
               LogFile: "stdlog"
     CopyDay3DataToJobTask:
-      type: org.lexis.datatransfer.nodes.CopySubDirToJobTask
+      type: org.lexis.common.datatransfer.nodes.CopySubDirToJobTask
       properties:
         task_name: WRFTask
         parent_directory: /wps_data/output
@@ -370,10 +370,10 @@ topology_template:
         - job:
             type_requirement: job
             node: WRF_DAY_3
-            capability: org.heappe.capabilities.HeappeJob
-            relationship: org.heappe.relationships.SendInputsToJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.heappe.relationships.SendInputsToJob
     CopyDay2DataToJobTask:
-      type: org.lexis.datatransfer.nodes.CopySubDirToJobTask
+      type: org.lexis.common.datatransfer.nodes.CopySubDirToJobTask
       properties:
         task_name: WRFTask
         parent_directory: /wps_data/output
@@ -387,10 +387,10 @@ topology_template:
         - job:
             type_requirement: job
             node: WRF_DAY_2
-            capability: org.heappe.capabilities.HeappeJob
-            relationship: org.heappe.relationships.SendInputsToJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.heappe.relationships.SendInputsToJob
     CopyDay1DataToJobTask:
-      type: org.lexis.datatransfer.nodes.CopySubDirToJobTask
+      type: org.lexis.common.datatransfer.nodes.CopySubDirToJobTask
       properties:
         task_name: WRFTask
         parent_directory: /wps_data/output
@@ -404,10 +404,10 @@ topology_template:
         - job:
             type_requirement: job
             node: WRF_DAY_1
-            capability: org.heappe.capabilities.HeappeJob
-            relationship: org.heappe.relationships.SendInputsToJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.heappe.relationships.SendInputsToJob
     CopyWRFDay3FromJobTask:
-      type: org.lexis.datatransfer.nodes.CopyFromJobTask
+      type: org.lexis.common.datatransfer.nodes.CopyFromJobTask
       properties:
         task_name: WRFTask
         source_files: [ "auxhist*" ]
@@ -421,10 +421,10 @@ topology_template:
         - job:
             type_requirement: job
             node: WRF_DAY_3
-            capability: org.heappe.capabilities.HeappeJob
-            relationship: org.heappe.relationships.GetResultsFromJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.heappe.relationships.GetResultsFromJob
     CopyWRFDay2FromJobTask:
-      type: org.lexis.datatransfer.nodes.CopyFromJobTask
+      type: org.lexis.common.datatransfer.nodes.CopyFromJobTask
       properties:
         task_name: WRFTask
         source_files: [ "auxhist*" ]
@@ -438,10 +438,10 @@ topology_template:
         - job:
             type_requirement: job
             node: WRF_DAY_2
-            capability: org.heappe.capabilities.HeappeJob
-            relationship: org.heappe.relationships.GetResultsFromJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.heappe.relationships.GetResultsFromJob
     CopyWRFDay1FromJobTask:
-      type: org.lexis.datatransfer.nodes.CopyFromJobTask
+      type: org.lexis.common.datatransfer.nodes.CopyFromJobTask
       properties:
         task_name: WRFTask
         source_files: [ "auxhist*" ]
@@ -455,10 +455,10 @@ topology_template:
         - job:
             type_requirement: job
             node: WRF_DAY_1
-            capability: org.heappe.capabilities.HeappeJob
-            relationship: org.heappe.relationships.GetResultsFromJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.heappe.relationships.GetResultsFromJob
     Webdrops:
-      type: org.lexis.nodes.Webdrops
+      type: org.lexis.wp7.nodes.Webdrops
       properties:
         start_date: { concat: [get_input: postprocessing_risico_run_date, "00"] }
         download_type: "RISICO"
@@ -499,37 +499,37 @@ topology_template:
             max_instances: 1
             default_instances: 1
     CreateStagingAreaWRFResultDir:
-      type: org.lexis.datatransfer.nodes.CreateStagingAreaDirectory
+      type: org.lexis.common.datatransfer.nodes.CreateStagingAreaDirectory
       properties:
         directory: "wrf"
       requirements:
         - mountedCloudStagingArea:
             type_requirement: mounted_staging_area
             node: MountGEOGDataset
-            capability: org.lexis.datatransfer.capabilities.MountedStagingAreaAccess
-            relationship: org.lexis.datatransfer.relationships.MountedCloudStagingArea
+            capability: org.lexis.common.datatransfer.capabilities.MountedStagingAreaAccess
+            relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
         - hostedOnComputeHost:
             type_requirement: host
             node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     StageWRFResults:
-      type: org.lexis.datatransfer.nodes.CopyToStagingAreaDirectory
+      type: org.lexis.common.datatransfer.nodes.CopyToStagingAreaDirectory
       properties:
         source_directory: "/risico_data/wrf"
       requirements:
         - staging_area_directory:
             type_requirement: cloud_area_directory_provider
             node: CreateStagingAreaWRFResultDir
-            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
-            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
         - hostedOnComputeHost:
             type_requirement: host
             node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     CloudToDDIWRFJob:
-      type: org.ddi.nodes.CloudToDDIJob
+      type: org.lexis.common.ddi.nodes.CloudToDDIJob
       properties:
         metadata: {concat: ["{\"creator\": [\"RISICO workflow\"], \"contributor\": [\"RISICO workflow\"], \"publisher\": [\"RISICO workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"RISICO Workflow WRF result - ", get_input: postprocessing_risico_run_date, "\"}"]}
         token: { get_input: token }
@@ -538,40 +538,40 @@ topology_template:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
             node: CreateStagingAreaWRFResultDir
-            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
-            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
     CreateStagingAreaResultDir:
-      type: org.lexis.datatransfer.nodes.CreateStagingAreaDirectory
+      type: org.lexis.common.datatransfer.nodes.CreateStagingAreaDirectory
       properties:
         directory: "risico_results"
       requirements:
         - mountedCloudStagingArea:
             type_requirement: mounted_staging_area
             node: MountGEOGDataset
-            capability: org.lexis.datatransfer.capabilities.MountedStagingAreaAccess
-            relationship: org.lexis.datatransfer.relationships.MountedCloudStagingArea
+            capability: org.lexis.common.datatransfer.capabilities.MountedStagingAreaAccess
+            relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
         - hostedOnComputeHost:
             type_requirement: host
             node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     StageRISICOResults:
-      type: org.lexis.datatransfer.nodes.CopyToStagingAreaDirectory
+      type: org.lexis.common.datatransfer.nodes.CopyToStagingAreaDirectory
       properties:
         source_directory: "/risico_data/output"
       requirements:
         - staging_area_directory:
             type_requirement: cloud_area_directory_provider
             node: CreateStagingAreaResultDir
-            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
-            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
         - hostedOnComputeHost:
             type_requirement: host
             node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     CloudToDDIJob:
-      type: org.ddi.nodes.CloudToDDIJob
+      type: org.lexis.common.ddi.nodes.CloudToDDIJob
       properties:
         metadata: {concat: ["{\"creator\": [\"RISICO workflow\"], \"contributor\": [\"RISICO workflow\"], \"publisher\": [\"RISICO workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"RISICO Workflow result - ", get_input: postprocessing_risico_run_date, "\"}"]}
         token: { get_input: token }
@@ -580,18 +580,18 @@ topology_template:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
             node: CreateStagingAreaResultDir
-            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
-            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
     DeleteCloudGEOGDataJob:
-      type: org.ddi.nodes.DeleteCloudDataJob
+      type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
       properties:
         token: { get_input: token }
       requirements:
         - cloud_area_dataset_provider:
             type_requirement: cloud_area_dataset_provider
             node: DDIToCloudGEOGDatasetJob
-            capability: org.ddi.capabilities.DataTransferCloud
-            relationship: org.ddi.relationships.CloudAreaDatasetProvider
+            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
   outputs:
     computation_dataset_wrf_result_path:
       description: DDI path to RISICO WRF results

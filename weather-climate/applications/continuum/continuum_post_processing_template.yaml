@@ -1,7 +1,7 @@
 tosca_definitions_version: alien_dsl_2_0_0
 
 metadata:
-  template_name: ContinuumPostProcessTemplate
+  template_name: org.lexis.wp7.ContinuumPostProcessTemplate
   template_version: 0.1.0-SNAPSHOT
   template_author: lexis
 
@@ -12,12 +12,12 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
-  - ddi-types:0.1.3
+  - org.lexis.common.ddi-types:0.1.3
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
-  - org.lexis.weather.continuum:0.1.0
-  - org.lexis.weather.webdrops:0.1.0
+  - org.lexis.wp7.continuum:0.1.0
+  - org.lexis.wp7.webdrops:0.1.0
 
 topology_template:
   inputs:
@@ -84,22 +84,22 @@ topology_template:
             network_name: PRIVATE
             initiator: source
     GetDDIAccess:
-      type: org.ddi.nodes.DDIAccess
+      type: org.lexis.common.ddi.nodes.DDIAccess
       requirements:
         - hostedOnComputeHost:
             type_requirement: os
             node: ContinuumVM
             capability: tosca.capabilities.OperatingSystem
-            relationship: org.ddi.relationships.SameSite
+            relationship: org.lexis.common.ddi.relationships.SameSite
     DDIToCloudWRFJob:
-      type: org.ddi.nodes.DDIToCloudJob
+      type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
         token: { get_input: token }
         ddi_dataset_path: { get_input: postprocessing_dataset_wrf_results_path }
         cloud_staging_area_directory_path: "continuum_postprocessing_wrf"
         timestamp_cloud_staging_area_directory: true
     MountWRFDataset:
-      type: org.lexis.datatransfer.nodes.SSHMountStagingAreaDataset
+      type: org.lexis.common.datatransfer.nodes.SSHMountStagingAreaDataset
       properties:
         token: { get_input: token }
         mount_point_directory: "/mnt/cloud_staging_area/postprocess"
@@ -107,57 +107,57 @@ topology_template:
         - ddi_access:
             type_requirement: ddi_access
             node: GetDDIAccess
-            capability: org.ddi.capabilities.DDIAccess
-            relationship: org.ddi.relationships.DDIAccessProvider
+            capability: org.lexis.common.ddi.capabilities.DDIAccess
+            relationship: org.lexis.common.ddi.relationships.DDIAccessProvider
         - data_transfer:
             type_requirement: data_transfer
             node: DDIToCloudWRFJob
-            capability: org.ddi.capabilities.DataTransferCloud
-            relationship: org.ddi.relationships.CloudAreaDatasetProvider
+            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
         - hostedOnComputeHost:
             type_requirement: host
             node: ContinuumVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     FindWRFiles:
-      type: org.lexis.datatransfer.nodes.FindFilesInStagingAreaDirectory
+      type: org.lexis.common.datatransfer.nodes.FindFilesInStagingAreaDirectory
       properties:
         shell_patterns: ["auxhist*"]
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
             node: MountWRFDataset
-            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
-            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
         - hostedOnComputeHost:
             type_requirement: host
             node: ContinuumVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     MoveWRFFiles:
-      type: org.lexis.datatransfer.nodes.MoveFilesFromProvider
+      type: org.lexis.common.datatransfer.nodes.MoveFilesFromProvider
       properties:
         destination_directory: "/continuum/datasets_hyde/dynamic_data"
       requirements:
         - files_provider:
             type_requirement: files_provider
             node: FindWRFiles
-            capability: org.lexis.datatransfer.capabilities.FilesProvider
-            relationship: org.lexis.datatransfer.relationships.FilesProvider
+            capability: org.lexis.common.datatransfer.capabilities.FilesProvider
+            relationship: org.lexis.common.datatransfer.relationships.FilesProvider
         - hostedOnComputeHost:
             type_requirement: host
             node: ContinuumVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     DDIToCloudContinuumStaticDataJob:
-      type: org.ddi.nodes.DDIToCloudJob
+      type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
         token: { get_input: token }
         ddi_dataset_path: { get_input: postprocessing_dataset_continuum_static_data_path }
         cloud_staging_area_directory_path: "continuum_postprocessing_hyde"
         timestamp_cloud_staging_area_directory: true
     MountContinuumDataset:
-      type: org.lexis.datatransfer.nodes.SSHMountStagingAreaDataset
+      type: org.lexis.common.datatransfer.nodes.SSHMountStagingAreaDataset
       properties:
         token: { get_input: token }
         mount_point_directory: "/mnt/cloud_staging_area/postprocess_hyde"
@@ -165,20 +165,20 @@ topology_template:
         - ddi_access:
             type_requirement: ddi_access
             node: GetDDIAccess
-            capability: org.ddi.capabilities.DDIAccess
-            relationship: org.ddi.relationships.DDIAccessProvider
+            capability: org.lexis.common.ddi.capabilities.DDIAccess
+            relationship: org.lexis.common.ddi.relationships.DDIAccessProvider
         - data_transfer:
             type_requirement: data_transfer
             node: DDIToCloudContinuumStaticDataJob
-            capability: org.ddi.capabilities.DataTransferCloud
-            relationship: org.ddi.relationships.CloudAreaDatasetProvider
+            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
         - hostedOnComputeHost:
             type_requirement: host
             node: ContinuumVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     FindContinuumStaticDataFiles:
-      type: org.lexis.datatransfer.nodes.FindFilesInStagingAreaDirectory
+      type: org.lexis.common.datatransfer.nodes.FindFilesInStagingAreaDirectory
       properties:
         shell_patterns:
           - gridded
@@ -187,23 +187,23 @@ topology_template:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
             node: MountContinuumDataset
-            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
-            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
         - hostedOnComputeHost:
             type_requirement: host
             node: ContinuumVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     MoveContinuumStaticDataFiles:
-      type: org.lexis.datatransfer.nodes.MoveFilesFromProvider
+      type: org.lexis.common.datatransfer.nodes.MoveFilesFromProvider
       properties:
         destination_directory: "/continuum/datasets_hyde/static_data"
       requirements:
         - files_provider:
             type_requirement: files_provider
             node: FindContinuumStaticDataFiles
-            capability: org.lexis.datatransfer.capabilities.FilesProvider
-            relationship: org.lexis.datatransfer.relationships.FilesProvider
+            capability: org.lexis.common.datatransfer.capabilities.FilesProvider
+            relationship: org.lexis.common.datatransfer.relationships.FilesProvider
         - hostedOnComputeHost:
             type_requirement: host
             node: ContinuumVM
@@ -218,7 +218,7 @@ topology_template:
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     CreatePostProcessHydeDirs:
-      type: org.lexis.datatransfer.nodes.CreateDirectories
+      type: org.lexis.common.datatransfer.nodes.CreateDirectories
       properties:
         directories:
           - continuum/datasets_hyde/static_data
@@ -247,7 +247,7 @@ topology_template:
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     CreatePostProcessHMCDirs:
-      type: org.lexis.datatransfer.nodes.CreateDirectories
+      type: org.lexis.common.datatransfer.nodes.CreateDirectories
       properties:
         directories:
           - /continuum/datasets_hmc/dynamic_data/restart/marche
@@ -308,7 +308,7 @@ topology_template:
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     Webdrops:
-      type: org.lexis.nodes.Webdrops
+      type: org.lexis.wp7.nodes.Webdrops
       properties:
         start_date: {get_input: preprocessing_start_date}
         download_type: "CONTINUUM"
@@ -730,7 +730,7 @@ topology_template:
             capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
     Move_Hyde_Results:
-      type: org.lexis.datatransfer.nodes.MoveFile
+      type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
         source_file: "/continuum/datasets_hyde/docker_data/*"
         destination: "/continuum/datasets_hmc/dynamic_data/source/"
@@ -1149,37 +1149,37 @@ topology_template:
             capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
     CreateStagingAreaResultDir:
-      type: org.lexis.datatransfer.nodes.CreateStagingAreaDirectory
+      type: org.lexis.common.datatransfer.nodes.CreateStagingAreaDirectory
       properties:
         directory: "continuum_results"
       requirements:
         - mountedCloudStagingArea:
             type_requirement: mounted_staging_area
             node: MountWRFDataset
-            capability: org.lexis.datatransfer.capabilities.MountedStagingAreaAccess
-            relationship: org.lexis.datatransfer.relationships.MountedCloudStagingArea
+            capability: org.lexis.common.datatransfer.capabilities.MountedStagingAreaAccess
+            relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
         - hostedOnComputeHost:
             type_requirement: host
             node: ContinuumVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     MoveContinuumResults:
-      type: org.lexis.datatransfer.nodes.MoveToStagingAreaDirectory
+      type: org.lexis.common.datatransfer.nodes.MoveToStagingAreaDirectory
       properties:
         source_directory: "/continuum/datasets_hmc/dynamic_data/destination/"
       requirements:
         - staging_area_directory:
             type_requirement: cloud_area_directory_provider
             node: CreateStagingAreaResultDir
-            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
-            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
         - hostedOnComputeHost:
             type_requirement: host
             node: ContinuumVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     CloudToDDIJob:
-      type: org.ddi.nodes.CloudToDDIJob
+      type: org.lexis.common.ddi.nodes.CloudToDDIJob
       properties:
         metadata: {concat: ["{\"creator\": [\"Continuum workflow\"], \"contributor\": [\"Continuum workflow\"], \"publisher\": [\"Continuum workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"Continuum Workflow result - ", get_input: postprocessing_run_date, "\"}"]}
         token: { get_input: token }
@@ -1188,28 +1188,28 @@ topology_template:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
             node: CreateStagingAreaResultDir
-            capability: org.ddi.capabilities.CloudAreaDirectoryProvider
-            relationship: org.ddi.relationships.CloudAreaDirectoryProvider
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
     DeleteCloudWRFDataJob:
-      type: org.ddi.nodes.DeleteCloudDataJob
+      type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
       properties:
         token: { get_input: token }
       requirements:
         - cloud_area_dataset_provider:
             type_requirement: cloud_area_dataset_provider
             node: DDIToCloudWRFJob
-            capability: org.ddi.capabilities.DataTransferCloud
-            relationship: org.ddi.relationships.CloudAreaDatasetProvider
+            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
     DeleteCloudContinuumStaticDataJob:
-      type: org.ddi.nodes.DeleteCloudDataJob
+      type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
       properties:
         token: { get_input: token }
       requirements:
         - cloud_area_dataset_provider:
             type_requirement: cloud_area_dataset_provider
             node: DDIToCloudContinuumStaticDataJob
-            capability: org.ddi.capabilities.DataTransferCloud
-            relationship: org.ddi.relationships.CloudAreaDatasetProvider
+            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
   outputs:
     ddi_post_process_results:
       description: DDI path to Continuum post-processing results

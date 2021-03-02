@@ -1,7 +1,7 @@
 tosca_definitions_version: alien_dsl_2_0_0
 
 metadata:
-  template_name: org.lexis.weather.wps
+  template_name: org.lexis.wp7.wps
   template_version: 0.1.1-SNAPSHOT
   template_author: lexis
 
@@ -10,7 +10,7 @@ imports:
   - yorc-types:1.1.0
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
 node_types:
-  org.lexis.nodes.GFSData:
+  org.lexis.wp7.nodes.GFSData:
     derived_from: tosca.nodes.SoftwareComponent
     properties:
       start_date:
@@ -69,7 +69,7 @@ node_types:
           implementation: playbooks/download_gfs.yaml
     tags:
       icon: /images/GFS.png
-  org.lexis.nodes.GetGEOGDataFromFiles:
+  org.lexis.wp7.nodes.GetGEOGDataFromFiles:
     derived_from: tosca.nodes.SoftwareComponent
     description: Get geographical data from zipped archive files
     properties:
@@ -78,8 +78,8 @@ node_types:
         description: Absolute path to directory where to store geographical data
     requirements:
       - files_provider:
-          capability: org.lexis.datatransfer.capabilities.FilesProvider
-          relationship: org.lexis.datatransfer.relationships.FilesProvider
+          capability: org.lexis.common.datatransfer.capabilities.FilesProvider
+          relationship: org.lexis.common.datatransfer.relationships.FilesProvider
           occurrences: [1, 1]
     interfaces:
       Standard:
@@ -93,7 +93,7 @@ node_types:
           implementation: playbooks/get_geog_data_from_files.yaml
     tags:
       icon: /images/GEOG.png
-  org.lexis.nodes.DownloadGEOGData:
+  org.lexis.wp7.nodes.DownloadGEOGData:
     derived_from: tosca.nodes.SoftwareComponent
     properties:
      output_directory:
@@ -109,7 +109,7 @@ node_types:
           implementation: playbooks/download_geog.yaml
     tags:
       icon: /images/GEOG.png
-  org.lexis.nodes.PWSData:
+  org.lexis.wp7.nodes.PWSData:
     derived_from: tosca.nodes.SoftwareComponent
     description: Get data from Personal Weather Stations
     interfaces:
