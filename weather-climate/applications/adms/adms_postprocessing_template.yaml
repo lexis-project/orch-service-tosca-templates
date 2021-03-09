@@ -172,7 +172,7 @@ topology_template:
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     ImageLoader:
-      type: org.ystia.docker.images.Loader
+      type: org.ystia.docker.images.RuntimePathArchiveLoader
       properties:
         name: { get_input: postprocessing_image }
         force_load: true
