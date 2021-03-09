@@ -942,10 +942,23 @@ topology_template:
           activities:
             - set_state: started
           on_success:
+            - CreateStagingAreaWRFResultDir_start
             - CopyWRFDay1FromJobTask_start
             - CopyWRFDay2FromJobTask_start
             - CopyWRFDay3FromJobTask_start
             - Webdrops_start
+        CreateStagingAreaWRFResultDir_start:
+          target: CreateStagingAreaWRFResultDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaWRFResultDir_started
+        CreateStagingAreaWRFResultDir_started:
+          target: CreateStagingAreaWRFResultDir
+          activities:
+            - set_state: started
+          on_success:
+            - StageWRFResults_start
         Webdrops_start:
           target: Webdrops
           activities:
@@ -1044,6 +1057,7 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - DeleteCloudGEOGDataJob_create
             - WRF_DAY_1_disable_file_transfer
             - WRF_DAY_2_disable_file_transfer
             - WRF_DAY_3_disable_file_transfer
@@ -1115,6 +1129,18 @@ topology_template:
             - RISICO_started
         RISICO_started:
           target: RISICO
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        CreateStagingAreaResultDir_start:
+          target: CreateStagingAreaResultDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaResultDir_started
+        CreateStagingAreaResultDir_started:
+          target: CreateStagingAreaResultDir
           activities:
             - set_state: started
           on_success:
@@ -1380,8 +1406,6 @@ topology_template:
           target: WRF_DAY_1
           activities:
             - set_state: executed
-          on_success:
-            - CreatePostProcessDirs_start
         WRF_DAY_2_submit:
           target: WRF_DAY_2
           operation_host: ORCHESTRATOR
@@ -1406,8 +1430,6 @@ topology_template:
           target: WRF_DAY_2
           activities:
             - set_state: executed
-          on_success:
-            - CreatePostProcessDirs_start
         WRF_DAY_3_submit:
           target: WRF_DAY_3
           operation_host: ORCHESTRATOR
@@ -1432,8 +1454,8 @@ topology_template:
           target: WRF_DAY_3
           activities:
             - set_state: executed
-          on_success:
-            - CreatePostProcessDirs_start
+    RunPostProcessing:
+      steps:
         CreatePostProcessDirs_start:
           target: CreatePostProcessDirs
           activities:
@@ -1445,10 +1467,23 @@ topology_template:
           activities:
             - set_state: started
           on_success:
+            - CreateStagingAreaWRFResultDir_start
             - CopyWRFDay1FromJobTask_start
             - CopyWRFDay2FromJobTask_start
             - CopyWRFDay3FromJobTask_start
             - Webdrops_start
+        CreateStagingAreaWRFResultDir_start:
+          target: CreateStagingAreaWRFResultDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaWRFResultDir_started
+        CreateStagingAreaWRFResultDir_started:
+          target: CreateStagingAreaWRFResultDir
+          activities:
+            - set_state: started
+          on_success:
+            - StageWRFResults_start
         Webdrops_start:
           target: Webdrops
           activities:
@@ -1547,6 +1582,7 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - DeleteCloudGEOGDataJob_create
             - WRF_DAY_1_disable_file_transfer
             - WRF_DAY_2_disable_file_transfer
             - WRF_DAY_3_disable_file_transfer
@@ -1618,6 +1654,18 @@ topology_template:
             - RISICO_started
         RISICO_started:
           target: RISICO
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        CreateStagingAreaResultDir_start:
+          target: CreateStagingAreaResultDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaResultDir_started
+        CreateStagingAreaResultDir_started:
+          target: CreateStagingAreaResultDir
           activities:
             - set_state: started
           on_success:
@@ -1722,3 +1770,59 @@ topology_template:
           target: RisicoVM
           activities:
             - delegate: uninstall
+    cleanupHPC:
+      steps:
+        WRF_DAY_1_disable_file_transfer:
+          target: WRF_DAY_1
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - WRF_DAY_1_delete
+        WRF_DAY_1_delete:
+          target: WRF_DAY_1
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_DAY_1_deleted
+        WRF_DAY_1_deleted:
+          target: WRF_DAY_1
+          activities:
+            - set_state: deleted
+        WRF_DAY_2_disable_file_transfer:
+          target: WRF_DAY_2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - WRF_DAY_2_delete
+        WRF_DAY_2_delete:
+          target: WRF_DAY_2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_DAY_2_deleted
+        WRF_DAY_2_deleted:
+          target: WRF_DAY_2
+          activities:
+            - set_state: deleted
+        WRF_DAY_3_disable_file_transfer:
+          target: WRF_DAY_3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - WRF_DAY_3_delete
+        WRF_DAY_3_delete:
+          target: WRF_DAY_3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_DAY_3_deleted
+        WRF_DAY_3_deleted:
+          target: WRF_DAY_3
+          activities:
+            - set_state: deleted
