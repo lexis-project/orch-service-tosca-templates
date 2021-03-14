@@ -1,7 +1,7 @@
 tosca_definitions_version: alien_dsl_2_0_0
 
 metadata:
-  template_name: WaitForDatasetFileHPCTemplate
+  template_name: org.lexis.common.example.WaitForDatasetFileHPCTemplate
   template_version: 0.1.0-SNAPSHOT
   template_author: lexis
 
@@ -9,8 +9,8 @@ description: ""
 
 imports:
   - yorc-types:1.1.0
-  - heappe-types:1.0.3
-  - ddi-types:0.1.3
+  - org.lexis.common.heappe-types:1.0.3
+  - org.lexis.common.ddi-types:0.1.3
   - tosca-normative-types:1.0.0-ALIEN20
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
 
@@ -21,7 +21,7 @@ topology_template:
       description: "Access token"
       required: true
     metadata:
-      type: org.ddi.types.Metadata
+      type: org.lexis.common.ddi.types.Metadata
       description: "Dataset metadata"
       required: false
       default:
@@ -41,13 +41,13 @@ topology_template:
       default: "mkMET*"
   node_templates:
     WaitForDDIDatasetJob:
-      type: org.ddi.nodes.WaitForDDIDatasetJob
+      type: org.lexis.common.ddi.nodes.WaitForDDIDatasetJob
       properties:
         token: { get_input: token }
         metadata: { get_input: metadata }
         needed_files_patterns: { get_input: needed_files_patterns }
     HEAppEJob:
-      type: org.heappe.nodes.Job
+      type: org.lexis.common.heappe.nodes.Job
       metadata:
         task: computation
       properties:
@@ -72,7 +72,7 @@ topology_template:
               ProgressFile: "stdprog"
               LogFile: "stdlog"
     DDIToHPCTransferJob:
-      type: org.ddi.nodes.DDIRuntimeToHPCTaskJob
+      type: org.lexis.common.ddi.nodes.DDIRuntimeToHPCTaskJob
       properties:
         token: { get_input: token }
         task_name: FirstTask
@@ -80,14 +80,14 @@ topology_template:
       requirements:
         - job:
             type_requirement: job
-            capability: org.heappe.capabilities.HeappeJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
             node: HEAppEJob
-            relationship: org.heappe.relationships.SendInputsToJob
+            relationship: org.lexis.common.heappe.relationships.SendInputsToJob
         - dataset_files:
             type_requirement: dataset_files
             node: WaitForDDIDatasetJob
-            capability: org.ddi.capabilities.DatasetFilesProvider
-            relationship: org.ddi.relationships.DatasetFilesProvider
+            capability: org.lexis.common.ddi.capabilities.DatasetFilesProvider
+            relationship: org.lexis.common.ddi.relationships.DatasetFilesProvider
   outputs:
     FilePath_result:
       value: { get_attribute: [ DDIToHPCTransferJob, destination_path ] }

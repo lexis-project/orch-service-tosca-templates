@@ -1,7 +1,7 @@
 tosca_definitions_version: alien_dsl_2_0_0
 
 metadata:
-  template_name: WaitForDatasetCloudTemplate
+  template_name: org.lexis.common.examples.WaitForDatasetCloudTemplate
   template_version: 0.1.0-SNAPSHOT
   template_author: lexis
 
@@ -9,8 +9,8 @@ description: ""
 
 imports:
   - yorc-types:1.1.0
-  - heappe-types:1.0.3
-  - ddi-types:0.1.3
+  - org.lexis.common.heappe-types:1.0.3
+  - org.lexis.common.ddi-types:0.1.3
   - tosca-normative-types:1.0.0-ALIEN20
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
 
@@ -21,19 +21,19 @@ topology_template:
       description: "Access token"
       required: true
     metadata:
-      type: org.ddi.types.Metadata
+      type: org.lexis.common.ddi.types.Metadata
       description: "Dataset metadata"
       required: false
       default:
         resourceType: "NCL script"
   node_templates:
     WaitForDDIDatasetJob:
-      type: org.ddi.nodes.WaitForDDIDatasetJob
+      type: org.lexis.common.ddi.nodes.WaitForDDIDatasetJob
       properties:
         token: { get_input: token }
         metadata: { get_input: metadata }
     DDIToCloudTransferJob:
-      type: org.ddi.nodes.DDIRuntimeToCloudJob
+      type: org.lexis.common.ddi.nodes.DDIRuntimeToCloudJob
       properties:
         token: { get_input: token }
         cloud_staging_area_directory_path: "test_lexis_ddi_to_cloud"
@@ -42,8 +42,8 @@ topology_template:
         - dataset_files:
             type_requirement: dataset_files
             node: WaitForDDIDatasetJob
-            capability: org.ddi.capabilities.DatasetFilesProvider
-            relationship: org.ddi.relationships.DatasetFilesProvider
+            capability: org.lexis.common.ddi.capabilities.DatasetFilesProvider
+            relationship: org.lexis.common.ddi.relationships.DatasetFilesProvider
     PublicNet:
       type: tosca.nodes.Network
       properties:
@@ -75,15 +75,15 @@ topology_template:
             network_name: PRIVATE
             initiator: source
     GetDDIAccess:
-      type: org.ddi.nodes.DDIAccess
+      type: org.lexis.common.ddi.nodes.DDIAccess
       requirements:
         - hostedOnComputeHost:
             type_requirement: os
             node: TestDDITOCloudVM
             capability: tosca.capabilities.OperatingSystem
-            relationship: org.ddi.relationships.SameSite
+            relationship: org.lexis.common.ddi.relationships.SameSite
     MountTransferredDataset:
-      type: org.lexis.datatransfer.nodes.SSHMountStagingAreaDataset
+      type: org.lexis.common.datatransfer.nodes.SSHMountStagingAreaDataset
       properties:
         token: { get_input: token }
         mount_point_directory: "/mnt/cloud_staging_area/test_lexis"
@@ -91,28 +91,28 @@ topology_template:
         - ddi_access:
             type_requirement: ddi_access
             node: GetDDIAccess
-            capability: org.ddi.capabilities.DDIAccess
-            relationship: org.ddi.relationships.DDIAccessProvider
+            capability: org.lexis.common.ddi.capabilities.DDIAccess
+            relationship: org.lexis.common.ddi.relationships.DDIAccessProvider
         - data_transfer:
             type_requirement: data_transfer
             node: DDIToCloudTransferJob
-            capability: org.ddi.capabilities.DataTransferCloud
-            relationship: org.ddi.relationships.CloudAreaDatasetProvider
+            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
         - hostedOnComputeHost:
             type_requirement: host
             node: TestDDITOCloudVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     DeleteCloudTransferredDataJob:
-      type: org.ddi.nodes.DeleteCloudDataJob
+      type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
       properties:
         token: { get_input: token }
       requirements:
         - cloud_area_dataset_provider:
             type_requirement: cloud_area_dataset_provider
             node: DDIToCloudTransferJob
-            capability: org.ddi.capabilities.DataTransferCloud
-            relationship: org.ddi.relationships.CloudAreaDatasetProvider
+            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
   outputs:
     DatasetPath_result:
       value: { get_attribute: [ MountTransferredDataset, data_absolute_path ] }

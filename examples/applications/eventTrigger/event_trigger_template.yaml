@@ -1,7 +1,7 @@
 tosca_definitions_version: alien_dsl_2_0_0
 
 metadata:
-  template_name: EventTriggerTemplate
+  template_name: org.lexis.common.examples.EventTriggerTemplate
   template_version: 0.1.0-SNAPSHOT
   template_author: lexis
 
@@ -9,9 +9,9 @@ description: ""
 
 imports:
   - tosca-normative-types:1.0.0-ALIEN20
-  - heappe-types:1.0.3
+  - org.lexis.common.heappe-types:1.0.3
   - org.lexis.common.noscheduler.job:0.1.0
-  - org.lexis.examples.events:0.1.0
+  - org.lexis.common.examples.events:0.1.0
 topology_template:
   inputs:
     token:
@@ -23,7 +23,7 @@ topology_template:
       description: "URL of the file"
       required: true
     computation_heappe_job:
-      type: org.heappe.types.JobSpecification
+      type: org.lexis.common.heappe.types.JobSpecification
       description: Description of the HEAppE job/tasks
       required: false
       default:
@@ -77,7 +77,7 @@ topology_template:
             network_name: PRIVATE
             initiator: source
     WaitForEventJob:
-      type: org.lexis.examples.events.WaitForEventJob
+      type: org.lexis.common.examples.events.WaitForEventJob
       metadata:
         task: preprocessing
       properties:
@@ -89,7 +89,7 @@ topology_template:
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     HEAppEJob:
-      type: org.heappe.nodes.JobWithRuntimeTaskParameters
+      type: org.lexis.common.heappe.nodes.JobWithRuntimeTaskParameters
       metadata:
         task: computation
       properties:
@@ -97,9 +97,9 @@ topology_template:
         JobSpecification: { get_input: computation_heappe_job }
       requirements:
         - tasks_parameters_provider:
-            capability: org.heappe.capabilities.TasksParametersProvider
+            capability: org.lexis.common.heappe.capabilities.TasksParametersProvider
             node: WaitForEventJob
-            relationship: org.heappe.relationships.TasksParametersProvider
+            relationship: org.lexis.common.heappe.relationships.TasksParametersProvider
   outputs:
     EventReceived:
       value: { get_attribute: [ WaitForEventJob, stdout ] }

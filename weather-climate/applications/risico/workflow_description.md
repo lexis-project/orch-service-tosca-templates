@@ -24,7 +24,7 @@ Snippets for each section:
 ```yaml
 # Section medata provides the name and version of the template
 metadata:
-  template_name: RisicoTemplate
+  template_name: org.lexis.wp7.RisicoTemplate
   template_version: 0.1.0-SNAPSHOT
   template_author: lexis
 
@@ -34,7 +34,7 @@ description: RISICO template
 # so that they can be instantiated in our template
 imports:
   - yorc-types:1.1.0
-  - heappe-types:1.0.3
+  - org.lexis.common.heappe-types:1.0.3
 
 # Section topology_template describe the application template:
 # input parameters, components and relationships, outputs, workflows
@@ -50,7 +50,7 @@ topology_template:
   node_templates:
     # Here a HEAppE job referencing in its properties the token input parameter
     WRF_DAY_1:
-      type: org.heappe.nodes.Job
+      type: org.lexis.common.heappe.nodes.Job
       metadata:
         task: computation
       properties:
@@ -88,18 +88,18 @@ This section allows to import archives from the Alien4Cloud catalog, to add data
 For example, this import:
 ```yaml
 imports:
-  - heappe-types:1.0.3
+  - org.lexis.common.heappe-types:1.0.3
 ```
 
 will import from Alien4Cloud the definition of HEAppE data types and node types
 that can be found in this TOSCA file: https://github.com/lexis-project/yorc-heappe-plugin/blob/master/src/a4c/heappe-types-a4c.yaml
 
 This file provides definitions of data types and node types needed for HEAppE.
-For example a data type `org.heappe.types.JobSpecification` :
+For example a data type `org.lexis.common.heappe.types.JobSpecification` :
 
 ```yaml
 data_types:
-  org.heappe.types.JobSpecification:
+  org.lexis.common.heappe.types.JobSpecification:
     derived_from: tosca.datatypes.Root
     properties:
       Name:
@@ -118,7 +118,7 @@ data_types:
         description: Tasks (at leat one task needs to be defined)
         type: list
         entry_schema:
-          type: org.heappe.types.TaskSpecification
+          type: org.lexis.common.heappe.types.TaskSpecification
         required: true
       ...
 ```
@@ -127,7 +127,7 @@ and a node type using this data type as a property:
 
 ```yaml
 node_types:
-  org.heappe.nodes.pub.Job:
+  org.lexis.common.heappe.nodes.pub.Job:
     derived_from: tosca.nodes.Root
     abstract: true
     description: >
@@ -140,7 +140,7 @@ node_types:
         required: false
       JobSpecification:
         description: Specification of the job to create
-        type: org.heappe.types.JobSpecification
+        type: org.lexis.common.heappe.types.JobSpecification
         required: true
     # Attributes, which will take value at runtime.
     attributes:
@@ -149,7 +149,7 @@ node_types:
         description: >
           ID of the HEAppE job created
       file_transfer:
-        type: org.heappe.types.FileTransfer
+        type: org.lexis.common.heappe.types.FileTransfer
         description: >
           File transfer settings
       changed_files:
@@ -162,7 +162,7 @@ node_types:
     # requiring to be associated to a job, will use as a requirement
     capabilities:
       heappejob:
-        type: org.heappe.capabilities.HeappeJob
+        type: org.lexis.common.heappe.capabilities.HeappeJob
     # Operations implemented by this component:
     interfaces:
       Standard:
@@ -189,7 +189,7 @@ node_types:
 So here the node type declares :
 * properties (token and JobSpecification) whose value are static and must be provided before the deployment
 * attributes, whose values are set by the orchestrator at runtime, for example job_id will be set once the operation create has been called
-* a capability, ie. a feature provided by this component, here we describe this component is a HEAppE Job, and each component requiring to be associated to a HEAppE job will have to declare in its section `requirements` that it needs to be associated with a component having this capability `org.heappe.capabilities.HeappeJob` described later in the file
+* a capability, ie. a feature provided by this component, here we describe this component is a HEAppE Job, and each component requiring to be associated to a HEAppE job will have to declare in its section `requirements` that it needs to be associated with a component having this capability `org.lexis.common.heappe.capabilities.HeappeJob` described later in the file
 * interfaces, ie. operations supported by this component:
   * the section `Standard` describe standard operations defined in the TOSCA specification, here the component supports `create` and `delete`, other standard operations that can be implemented are `start` and `stop`.
   * the section `custom` describe any specific operations the developper needs to defined, here we define operations `enable_file_transfer` and `disable_file_transfer` to enable/disable the ability to transfer files to the job, and `list_changed_files` to list the files that changed during a job execution. When this `list_changed_files` is called, the attribute `changed_files` described above will be set by the orchestrator.
@@ -207,7 +207,7 @@ thanks to these lines in the import section:
 # Section imports declare which types to import from Alien4Cloud catalog
 # so that they can be instantiated in our template
 imports:
-  - heappe-types:1.0.3
+  - org.lexis.common.heappe-types:1.0.3
 ```
 
 <a name="topology_template"></a>
@@ -239,7 +239,7 @@ propertied of node templates, using the TOSCA function `get_input` like below:
 
 ```yaml
     WRF_DAY_1:
-      type: org.heappe.nodes.Job
+      type: org.lexis.common.heappe.nodes.Job
       properties:
         token: { get_input: token }
 ```
@@ -259,7 +259,7 @@ Here the description of a HEappE job:
   node_templates:
     # Here a HEAppE job referencing in its properties the token input parameter
     WRF_DAY_1:
-      type: org.heappe.nodes.Job
+      type: org.lexis.common.heappe.nodes.Job
       metadata:
         task: computation
       properties:
@@ -284,7 +284,7 @@ Here we see the component requires to be:
 
 ```yaml
     CopyDay1DataToJobTask:
-      type: org.lexis.datatransfer.nodes.CopySubDirToJobTask
+      type: org.lexis.common.datatransfer.nodes.CopySubDirToJobTask
       properties:
         task_name: WRFTask
         parent_directory: /wps_data/output
@@ -298,46 +298,46 @@ Here we see the component requires to be:
         - job:
             type_requirement: job
             node: WRF_DAY_1
-            capability: org.heappe.capabilities.HeappeJob
-            relationship: org.heappe.relationships.SendInputsToJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.heappe.relationships.SendInputsToJob
 ```
 
-These requirements are expressed in the type `org.lexis.datatransfer.nodes.CopySubDirToJobTask`
+These requirements are expressed in the type `org.lexis.common.datatransfer.nodes.CopySubDirToJobTask`
 described at https://github.com/lexis-project/application-templates/blob/master/common/datatransfer/types.yaml :
 
 ```yaml
-  org.lexis.datatransfer.nodes.CopyFromJobTask:
+  org.lexis.common.datatransfer.nodes.CopyFromJobTask:
     derived_from: tosca.nodes.SoftwareComponent
     ...
     requirements:
       - job:
-          capability: org.heappe.capabilities.HeappeJob
-          node: org.heappe.nodes.Job
-          relationship: org.heappe.relationships.GetResultsFromJob
+          capability: org.lexis.common.heappe.capabilities.HeappeJob
+          node: org.lexis.common.heappe.nodes.Job
+          relationship: org.lexis.common.heappe.relationships.GetResultsFromJob
           occurrences: [1, 1]
 ```
 
 We see above that the type describes explicitly the requirement to be associated to a component
-with the capability `org.heappe.capabilities.HeappeJob`,
-and our component `WRF_DAY_1` of type `org.heappe.nodes.Job` declares this capability,
+with the capability `org.lexis.common.heappe.capabilities.HeappeJob`,
+and our component `WRF_DAY_1` of type `org.lexis.common.heappe.nodes.Job` declares this capability,
 as described at https://github.com/lexis-project/yorc-heappe-plugin/blob/master/tosca/heappe-types.yaml :
 
 ```yaml
 node_types:
-  org.heappe.nodes.pub.Job:
+  org.lexis.common.heappe.nodes.pub.Job:
   ...
     capabilities:
       heappejob:
-        type: org.heappe.capabilities.HeappeJob  
+        type: org.lexis.common.heappe.capabilities.HeappeJob  
   ...
 ```
 
 An additional requirement needed by the component `CopyDay1DataToJobTask` is that it needs
 to be associated to a host.
-This requirement comes from the fact that our component is of type `org.lexis.datatransfer.nodes.CopySubDirToJobTask` whose declaration shows this type inherits from a type `tosca.nodes.SoftwareComponent` as can be seen at https://github.com/lexis-project/application-templates/blob/master/common/datatransfer/types.yaml :
+This requirement comes from the fact that our component is of type `org.lexis.common.datatransfer.nodes.CopySubDirToJobTask` whose declaration shows this type inherits from a type `tosca.nodes.SoftwareComponent` as can be seen at https://github.com/lexis-project/application-templates/blob/master/common/datatransfer/types.yaml :
 
 ```yaml
-  org.lexis.datatransfer.nodes.CopyFromJobTask:
+  org.lexis.common.datatransfer.nodes.CopyFromJobTask:
     derived_from: tosca.nodes.SoftwareComponent
     ...
 ```
