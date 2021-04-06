@@ -12,6 +12,7 @@ imports:
 node_types:
   org.lexis.wp7.nodes.GFSData:
     derived_from: tosca.nodes.SoftwareComponent
+    description: Download GFS data
     properties:
       start_date:
         type: string
@@ -116,3 +117,27 @@ node_types:
       Standard:
         create:
           implementation: playbooks/install_drops2.yaml
+  org.lexis.wp7.nodes.ECMWFData:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: Download ECMWF data
+    properties:
+      date:
+        type: string
+        description: Download ECMWF data for this date, format YYYYMMDDHH
+        required: true
+      output_directory:
+        type: string
+        description: Absolute path to directory where to store donwloaded data
+        required: true
+    interfaces:
+      Standard:
+        inputs:
+          OUTPUT_DIRECTORY: {get_property: [SELF, output_directory]}
+        create:
+          implementation: playbooks/install_ecmwf_dependencies.yaml
+        start:
+          inputs:
+            DATE: {get_property: [SELF, date]}
+            EMAIL_ADDRESS: { get_secret: ["/secret/wp7/ecmwf/creds", "data=email"]}
+            KEY: { get_secret: ["/secret/wp7/ecmwf/creds", "data=key"]}
+          implementation: scripts/download_ecmwf.py

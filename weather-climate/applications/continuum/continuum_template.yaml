@@ -912,6 +912,8 @@ topology_template:
             relationship: tosca.relationships.HostedOn
     Continuum_HMC_marche:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
       properties:
         auto_remove: false
         cleanup: false
@@ -936,6 +938,8 @@ topology_template:
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
     Continuum_HMC_liguria:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
       properties:
         auto_remove: false
         cleanup: false
@@ -960,6 +964,8 @@ topology_template:
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
     Continuum_HMC_adige:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
       properties:
         auto_remove: false
         cleanup: false
@@ -984,6 +990,8 @@ topology_template:
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
     Continuum_HMC_basilicata:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
       properties:
         auto_remove: false
         cleanup: false
@@ -1008,6 +1016,8 @@ topology_template:
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
     Continuum_HMC_calabria:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
       properties:
         auto_remove: false
         cleanup: false
@@ -1032,6 +1042,8 @@ topology_template:
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
     Continuum_HMC_fvg:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
       properties:
         auto_remove: false
         cleanup: false
@@ -1056,6 +1068,8 @@ topology_template:
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
     Continuum_HMC_gargano:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
       properties:
         auto_remove: false
         cleanup: false
@@ -1080,6 +1094,8 @@ topology_template:
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
     Continuum_HMC_lazio:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
       properties:
         auto_remove: false
         cleanup: false
@@ -1104,6 +1120,8 @@ topology_template:
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
     Continuum_HMC_liri:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
       properties:
         auto_remove: false
         cleanup: false
@@ -1128,6 +1146,8 @@ topology_template:
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
     Continuum_HMC_po:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
       properties:
         auto_remove: false
         cleanup: false
@@ -1152,6 +1172,8 @@ topology_template:
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
     Continuum_HMC_puglia:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
       properties:
         auto_remove: false
         cleanup: false
@@ -1176,6 +1198,8 @@ topology_template:
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
     Continuum_HMC_romagna:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
       properties:
         auto_remove: false
         cleanup: false
@@ -1200,6 +1224,8 @@ topology_template:
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
     Continuum_HMC_sardegna:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
       properties:
         auto_remove: false
         cleanup: false
@@ -1224,6 +1250,8 @@ topology_template:
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
     Continuum_HMC_sicilia:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
       properties:
         auto_remove: false
         cleanup: false
@@ -1248,6 +1276,8 @@ topology_template:
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
     Continuum_HMC_tevere:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
       properties:
         auto_remove: false
         cleanup: false
@@ -1272,6 +1302,8 @@ topology_template:
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
     Continuum_HMC_toscana:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
       properties:
         auto_remove: false
         cleanup: false
@@ -1296,6 +1328,8 @@ topology_template:
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
     Continuum_HMC_volturno:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
       properties:
         auto_remove: false
         cleanup: false
@@ -2157,6 +2191,12 @@ topology_template:
             - set_state: started
           on_success:
             - Continuum_HMC_marche_create
+        Continuum_HMC_marche_create:
+          target: Continuum_HMC_marche
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_marche_start
             - Continuum_HMC_liguria_create
             - Continuum_HMC_adige_create
             - Continuum_HMC_basilicata_create
@@ -2173,12 +2213,6 @@ topology_template:
             - Continuum_HMC_tevere_create
             - Continuum_HMC_toscana_create
             - Continuum_HMC_volturno_create
-        Continuum_HMC_marche_create:
-          target: Continuum_HMC_marche
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_marche_start
         Continuum_HMC_marche_start:
           target: Continuum_HMC_marche
           activities:
@@ -3366,6 +3400,12 @@ topology_template:
             - set_state: started
           on_success:
             - Continuum_HMC_marche_create
+        Continuum_HMC_marche_create:
+          target: Continuum_HMC_marche
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_marche_start
             - Continuum_HMC_liguria_create
             - Continuum_HMC_adige_create
             - Continuum_HMC_basilicata_create
@@ -3382,12 +3422,6 @@ topology_template:
             - Continuum_HMC_tevere_create
             - Continuum_HMC_toscana_create
             - Continuum_HMC_volturno_create
-        Continuum_HMC_marche_create:
-          target: Continuum_HMC_marche
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_marche_start
         Continuum_HMC_marche_start:
           target: Continuum_HMC_marche
           activities:
