@@ -1,0 +1,63 @@
+- name: Install ECMWD dependencies
+  hosts: all
+  strategy: free
+  become: true
+  become_method: sudo
+  tasks:
+    - name: Get python version
+      python_requirements_info:
+      register: pri
+      failed_when: pri == None or pri.python_version == None or pri.python_version == ''
+    - name: Get python major version
+      set_fact:
+        python_major_version: "{{pri.python_version | replace('\n', '') | regex_replace('^(\\d+).*', '\\1') }}"
+    - name: RedHat - install python3
+      yum:
+        name: python3
+        state: present
+        update_cache: yes
+      when: python_major_version == "2" and ansible_os_family == 'RedHat'
+    - name: Debian - install python3
+      apt:
+        name: python3
+        state: present
+        update_cache: yes
+      when: python_major_version == "2" and ansible_os_family == 'Debian'
+    - name: Create a symbolic link to python installed version
+      file:
+        src: /usr/bin/python3
+        dest: /usr/bin/python
+        state: link
+      when: python_major_version == "2"
+    - name: Create a symbolic link to python pre-installed version
+      file:
+        src: "{{ pri.python }}"
+        dest: /usr/bin/python
+        state: link
+      when: python_major_version == "3"
+    - name: RedHat - install prerequisites
+      yum:
+        name: python3-pip
+        state: present
+        update_cache: yes
+      when: ansible_os_family == 'RedHat'
+    - name: Debian - install prerequisites
+      apt:
+        name: python3-pip
+        state: present
+        update_cache: yes
+      when: ansible_os_family == 'Debian'
+    - name: Install latest Pip version
+      pip:
+        name: "pip"
+        state: latest
+    - name: Install polytope client
+      pip:
+        name: git+https://git.ecmwf.int/scm/lex/polytope-client.git@master
+        state: latest
+    - name: Create output directory
+      file:
+        path: "{{ OUTPUT_DIRECTORY }}"
+        state: directory
+        recurse: yes
+        mode: 0777
