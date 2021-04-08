@@ -9,11 +9,13 @@ description: Continuum template
 
 imports:
   - yorc-types:1.1.0
+  - yorc-openstack-types:3.0.0
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
   - org.lexis.common.ddi-types:0.1.3
   - org.lexis.common.heappe-types:1.0.3
+  - org.lexis.common.dynamic-orchestration-types:0.1.0
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
@@ -41,7 +43,7 @@ topology_template:
     preprocessing_image:
       type: string
       description: Pre-processing container repository path
-      default: "laurentg/wps.gfs:0.4.2"
+      default: "cimafoundation/wps-da.gfs:v2.0.0"
     preprocessing_dataset_geographical_data:
       type: string
       description: Dataset containing geographical data
@@ -73,10 +75,35 @@ topology_template:
       description: "Path where to transfer the post-processing results in DDI"
       default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c"
   node_templates:
-    PublicNet:
-      type: tosca.nodes.Network
+    # Job gathering info on the input dataset:
+    # - on which locations it is available
+    # - size
+    # - number of files
+    # to take placement decisions on computing resources using this dataset
+    InputDatasetInfoJob:
+      type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
       properties:
-        ip_version: 4
+        token: {get_input: token}
+        dataset_path: {get_input: preprocessing_dataset_geographical_data}
+    # Find the best cloud location depending on the input dataset and needed cloud resources
+    FindCloudLocationJob:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - InputDataset:
+            type_requirement: input_dataset
+            node: InputDatasetInfoJob
+            capability: org.lexis.common.ddi.capabilities.DatasetInfo
+            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
+        - CloudResourceVM:
+            type_requirement: cloud_instance
+            node: ContinuumVM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.dynamic.orchestration.relationships.CloudResource
+    # Floating IP address network
+    PublicNet:
+      type: yorc.nodes.openstack.FloatingIP
     ContinuumVM:
       type: tosca.nodes.Compute
       requirements:
@@ -115,6 +142,12 @@ topology_template:
         ddi_dataset_path: { get_input: preprocessing_dataset_geographical_data }
         cloud_staging_area_directory_path: "continuum_preprocessing_geog"
         timestamp_cloud_staging_area_directory: true
+      requirements:
+        - sameSite:
+            type_requirement: os
+            node: ContinuumVM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
     MountGEOGDataset:
       type: org.lexis.common.datatransfer.nodes.SSHMountStagingAreaDataset
       properties:
@@ -166,7 +199,7 @@ topology_template:
         keep_volumes: true
         restart_policy: no
         cpu_share: 1.0
-        shm_size: "1024 MB"
+        shm_size: "64 GB"
         volumes: {get_input: preprocessing_volumes}
         docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_end_date, "\", \"WPS_MODE\": \"WRF\"}"]}
       requirements:
@@ -199,6 +232,33 @@ topology_template:
             node: ContinuumVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
+    # Get pre-processing results details (size, number of files)
+    GetPreprocessDatasetInfo:
+      type: org.lexis.common.ddi.nodes.GetComputeInstanceDatasetInfo
+      properties:
+        dataset_path: "/wps_data/output"
+      requirements:
+        - host:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    # Find the best HPC location depending on the input dataset and needed HPC resources
+    FindHPCLocationsJob:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - InputDataset:
+            type_requirement: input_dataset
+            node: GetPreprocessDatasetInfo
+            capability: org.lexis.common.ddi.capabilities.DatasetInfo
+            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
+        - HPCResourceWRFJob:
+            type_requirement: heappe_job
+            node: WRF
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.dynamic.orchestration.relationships.HeappeJob
     WRF:
       type: org.lexis.common.heappe.nodes.Job
       metadata:
@@ -424,6 +484,12 @@ topology_template:
         ddi_dataset_path: { get_input: postprocessing_dataset_continuum_static_data_path }
         cloud_staging_area_directory_path: "continuum_postprocessing_hyde"
         timestamp_cloud_staging_area_directory: true
+      requirements:
+        - sameSite:
+            type_requirement: os
+            node: ContinuumVM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
     MountContinuumDataset:
       type: org.lexis.common.datatransfer.nodes.SSHMountStagingAreaDataset
       properties:
@@ -1422,12 +1488,16 @@ topology_template:
       description: DDI path to Continuum WRF results
       value: { get_attribute: [ CloudToDDIWRFJob, destination_path ] }
   workflows:
+    # Nothing to do at deployment time
+    # In LEXIS, overriding the default workflow that would be generated by
+    # Alien4Could, as it would allocate all infrastructure resources at
+    # deployment time
     install:
       steps:
-        Network_install:
-          target: PublicNet
+        Compute_initial:
+          target: ContinuumVM
           activities:
-            - delegate: install
+            - set_state: initial
     uninstall:
       steps:
         Compute_uninstall:
@@ -1442,6 +1512,54 @@ topology_template:
             - delegate: uninstall
     Run:
       steps:
+        # Submit DDI job to get info on dataset (DDI location where it is availablr, size...)
+        InputDatasetInfoJob_submit:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - InputDatasetInfoJob_run
+        InputDatasetInfoJob_run:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - InputDatasetInfoJob_executed
+        InputDatasetInfoJob_executed:
+          target: InputDatasetInfoJob
+          activities:
+            - set_state: executed
+          on_success:
+            - FindCloudLocationJob_submit
+        # Submit the computation to find the best location from these inputs
+        FindCloudLocationJob_submit:
+          target: FindCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindCloudLocationJob_run
+        FindCloudLocationJob_run:
+          target: FindCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindCloudLocationJob_executed
+        FindCloudLocationJob_executed:
+          target: FindCloudLocationJob
+          activities:
+            - set_state: executed
+          on_success:
+            - DDIToCloudGEOGDatasetJob_create
+            - Network_install
+        # Get a floating IP address for the Cloud Compute instance
+        Network_install:
+          target: PublicNet
+          activities:
+            - delegate: install
+          on_success:
+            - Compute_install
         Compute_install:
           target: ContinuumVM
           activities:
@@ -1460,7 +1578,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - DDIToCloudGEOGDatasetJob_create
+            - MountGEOGDataset_create
         DDIToCloudGEOGDatasetJob_create:
           target: DDIToCloudGEOGDatasetJob
           operation_host: ORCHESTRATOR
@@ -1583,7 +1701,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - WRF_create
+            - GetPreprocessDatasetInfo_create
             - WPS_GFS_delete
         WPS_GFS_delete:
           target: WPS_GFS
@@ -1595,6 +1713,42 @@ topology_template:
           target: WPS_GFS
           activities:
             - set_state: deleted
+        GetPreprocessDatasetInfo_create:
+          target: GetPreprocessDatasetInfo
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - GetPreprocessDatasetInfo_start
+        GetPreprocessDatasetInfo_start:
+          target: GetPreprocessDatasetInfo
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetPreprocessDatasetInfo_started
+        GetPreprocessDatasetInfo_started:
+          target: GetPreprocessDatasetInfo
+          activities:
+            - set_state: started
+          on_success:
+            - FindHPCLocationsJob_submit
+        FindHPCLocationsJob_submit:
+          target: FindHPCLocationsJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindHPCLocationsJob_run
+        FindHPCLocationsJob_run:
+          target: FindHPCLocationsJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindHPCLocationsJob_executed
+        FindHPCLocationsJob_executed:
+          target: FindHPCLocationsJob
+          activities:
+            - set_state: executed
+          on_success:
+            - WRF_create
         WRF_create:
           target: WRF
           operation_host: ORCHESTRATOR
@@ -1862,23 +2016,15 @@ topology_template:
           activities:
             - call_operation: Standard.create
           on_success:
+            - Continuum_Hyde_po_start
+            - Continuum_Hyde_adige_start
+            - Continuum_Hyde_basilicata_start
+            - Continuum_Hyde_calabria_start
+            - Continuum_Hyde_fvg_start
+            - Continuum_Hyde_gargano_start
+            - Continuum_Hyde_lazio_start
+            - Continuum_Hyde_liguria_start
             - Continuum_Hyde_marche_start
-            - Continuum_Hyde_liguria_create
-            - Continuum_Hyde_adige_create
-            - Continuum_Hyde_basilicata_create
-            - Continuum_Hyde_calabria_create
-            - Continuum_Hyde_fvg_create
-            - Continuum_Hyde_gargano_create
-            - Continuum_Hyde_lazio_create
-            - Continuum_Hyde_liri_create
-            - Continuum_Hyde_po_create
-            - Continuum_Hyde_puglia_create
-            - Continuum_Hyde_romagna_create
-            - Continuum_Hyde_sardegna_create
-            - Continuum_Hyde_sicilia_create
-            - Continuum_Hyde_tevere_create
-            - Continuum_Hyde_toscana_create
-            - Continuum_Hyde_volturno_create
         Continuum_Hyde_marche_start:
           target: Continuum_Hyde_marche
           activities:
@@ -1890,157 +2036,15 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - Move_Hyde_Results_start
-        Continuum_Hyde_liguria_create:
-          target: Continuum_Hyde_liguria
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_liguria_start
-        Continuum_Hyde_liguria_start:
-          target: Continuum_Hyde_liguria
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_Hyde_liguria_started
-        Continuum_Hyde_liguria_started:
-          target: Continuum_Hyde_liguria
-          activities:
-            - set_state: started
-          on_success:
-            - Move_Hyde_Results_start
-        Continuum_Hyde_adige_create:
-          target: Continuum_Hyde_adige
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_adige_start
-        Continuum_Hyde_adige_start:
-          target: Continuum_Hyde_adige
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_Hyde_adige_started
-        Continuum_Hyde_adige_started:
-          target: Continuum_Hyde_adige
-          activities:
-            - set_state: started
-          on_success:
-            - Move_Hyde_Results_start
-        Continuum_Hyde_basilicata_create:
-          target: Continuum_Hyde_basilicata
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_basilicata_start
-        Continuum_Hyde_basilicata_start:
-          target: Continuum_Hyde_basilicata
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_Hyde_basilicata_started
-        Continuum_Hyde_basilicata_started:
-          target: Continuum_Hyde_basilicata
-          activities:
-            - set_state: started
-          on_success:
-            - Move_Hyde_Results_start
-        Continuum_Hyde_calabria_create:
-          target: Continuum_Hyde_calabria
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_calabria_start
-        Continuum_Hyde_calabria_start:
-          target: Continuum_Hyde_calabria
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_Hyde_calabria_started
-        Continuum_Hyde_calabria_started:
-          target: Continuum_Hyde_calabria
-          activities:
-            - set_state: started
-          on_success:
-            - Move_Hyde_Results_start
-        Continuum_Hyde_fvg_create:
-          target: Continuum_Hyde_fvg
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_fvg_start
-        Continuum_Hyde_fvg_start:
-          target: Continuum_Hyde_fvg
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_Hyde_fvg_started
-        Continuum_Hyde_fvg_started:
-          target: Continuum_Hyde_fvg
-          activities:
-            - set_state: started
-          on_success:
-            - Move_Hyde_Results_start
-        Continuum_Hyde_gargano_create:
-          target: Continuum_Hyde_gargano
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_gargano_start
-        Continuum_Hyde_gargano_start:
-          target: Continuum_Hyde_gargano
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_Hyde_gargano_started
-        Continuum_Hyde_gargano_started:
-          target: Continuum_Hyde_gargano
-          activities:
-            - set_state: started
-          on_success:
-            - Move_Hyde_Results_start
-        Continuum_Hyde_lazio_create:
-          target: Continuum_Hyde_lazio
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_lazio_start
-        Continuum_Hyde_lazio_start:
-          target: Continuum_Hyde_lazio
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_Hyde_lazio_started
-        Continuum_Hyde_lazio_started:
-          target: Continuum_Hyde_lazio
-          activities:
-            - set_state: started
-          on_success:
-            - Move_Hyde_Results_start
-        Continuum_Hyde_liri_create:
-          target: Continuum_Hyde_liri
-          activities:
-            - call_operation: Standard.create
-          on_success:
             - Continuum_Hyde_liri_start
-        Continuum_Hyde_liri_start:
-          target: Continuum_Hyde_liri
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_Hyde_liri_started
-        Continuum_Hyde_liri_started:
-          target: Continuum_Hyde_liri
-          activities:
-            - set_state: started
-          on_success:
+            - Continuum_Hyde_puglia_start
+            - Continuum_Hyde_romagna_start
+            - Continuum_Hyde_sardegna_start
+            - Continuum_Hyde_sicilia_start
+            - Continuum_Hyde_tevere_start
+            - Continuum_Hyde_toscana_start
+            - Continuum_Hyde_volturno_start
             - Move_Hyde_Results_start
-        Continuum_Hyde_po_create:
-          target: Continuum_Hyde_po
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_po_start
         Continuum_Hyde_po_start:
           target: Continuum_Hyde_po
           activities:
@@ -2053,12 +2057,158 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-        Continuum_Hyde_puglia_create:
-          target: Continuum_Hyde_puglia
+        Continuum_Hyde_adige_start:
+          target: Continuum_Hyde_adige
           activities:
-            - call_operation: Standard.create
+            - call_operation: Standard.start
           on_success:
+            - Continuum_Hyde_adige_started
+        Continuum_Hyde_adige_started:
+          target: Continuum_Hyde_adige
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+            - Continuum_Hyde_liri_start
             - Continuum_Hyde_puglia_start
+            - Continuum_Hyde_romagna_start
+            - Continuum_Hyde_sardegna_start
+            - Continuum_Hyde_sicilia_start
+            - Continuum_Hyde_tevere_start
+            - Continuum_Hyde_toscana_start
+            - Continuum_Hyde_volturno_start
+        Continuum_Hyde_basilicata_start:
+          target: Continuum_Hyde_basilicata
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_basilicata_started
+        Continuum_Hyde_basilicata_started:
+          target: Continuum_Hyde_basilicata
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+            - Continuum_Hyde_liri_start
+            - Continuum_Hyde_puglia_start
+            - Continuum_Hyde_romagna_start
+            - Continuum_Hyde_sardegna_start
+            - Continuum_Hyde_sicilia_start
+            - Continuum_Hyde_tevere_start
+            - Continuum_Hyde_toscana_start
+            - Continuum_Hyde_volturno_start
+        Continuum_Hyde_calabria_start:
+          target: Continuum_Hyde_calabria
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_calabria_started
+        Continuum_Hyde_calabria_started:
+          target: Continuum_Hyde_calabria
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+            - Continuum_Hyde_liri_start
+            - Continuum_Hyde_puglia_start
+            - Continuum_Hyde_romagna_start
+            - Continuum_Hyde_sardegna_start
+            - Continuum_Hyde_sicilia_start
+            - Continuum_Hyde_tevere_start
+            - Continuum_Hyde_toscana_start
+            - Continuum_Hyde_volturno_start
+        Continuum_Hyde_fvg_start:
+          target: Continuum_Hyde_fvg
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_fvg_started
+        Continuum_Hyde_fvg_started:
+          target: Continuum_Hyde_fvg
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+            - Continuum_Hyde_liri_start
+            - Continuum_Hyde_puglia_start
+            - Continuum_Hyde_romagna_start
+            - Continuum_Hyde_sardegna_start
+            - Continuum_Hyde_sicilia_start
+            - Continuum_Hyde_tevere_start
+            - Continuum_Hyde_toscana_start
+            - Continuum_Hyde_volturno_start
+        Continuum_Hyde_gargano_start:
+          target: Continuum_Hyde_gargano
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_gargano_started
+        Continuum_Hyde_gargano_started:
+          target: Continuum_Hyde_gargano
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+            - Continuum_Hyde_liri_start
+            - Continuum_Hyde_puglia_start
+            - Continuum_Hyde_romagna_start
+            - Continuum_Hyde_sardegna_start
+            - Continuum_Hyde_sicilia_start
+            - Continuum_Hyde_tevere_start
+            - Continuum_Hyde_toscana_start
+            - Continuum_Hyde_volturno_start
+        Continuum_Hyde_lazio_start:
+          target: Continuum_Hyde_lazio
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_lazio_started
+        Continuum_Hyde_lazio_started:
+          target: Continuum_Hyde_lazio
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+            - Continuum_Hyde_liri_start
+            - Continuum_Hyde_puglia_start
+            - Continuum_Hyde_romagna_start
+            - Continuum_Hyde_sardegna_start
+            - Continuum_Hyde_sicilia_start
+            - Continuum_Hyde_tevere_start
+            - Continuum_Hyde_toscana_start
+            - Continuum_Hyde_volturno_start
+        Continuum_Hyde_liguria_start:
+          target: Continuum_Hyde_liguria
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_liguria_started
+        Continuum_Hyde_liguria_started:
+          target: Continuum_Hyde_liguria
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+            - Continuum_Hyde_liri_start
+            - Continuum_Hyde_puglia_start
+            - Continuum_Hyde_romagna_start
+            - Continuum_Hyde_sardegna_start
+            - Continuum_Hyde_sicilia_start
+            - Continuum_Hyde_tevere_start
+            - Continuum_Hyde_toscana_start
+            - Continuum_Hyde_volturno_start
+        Continuum_Hyde_liri_start:
+          target: Continuum_Hyde_liri
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_liri_started
+        Continuum_Hyde_liri_started:
+          target: Continuum_Hyde_liri
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
         Continuum_Hyde_puglia_start:
           target: Continuum_Hyde_puglia
           activities:
@@ -2071,12 +2221,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-        Continuum_Hyde_romagna_create:
-          target: Continuum_Hyde_romagna
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_romagna_start
         Continuum_Hyde_romagna_start:
           target: Continuum_Hyde_romagna
           activities:
@@ -2089,12 +2233,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-        Continuum_Hyde_sardegna_create:
-          target: Continuum_Hyde_sardegna
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_sardegna_start
         Continuum_Hyde_sardegna_start:
           target: Continuum_Hyde_sardegna
           activities:
@@ -2107,12 +2245,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-        Continuum_Hyde_sicilia_create:
-          target: Continuum_Hyde_sicilia
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_sicilia_start
         Continuum_Hyde_sicilia_start:
           target: Continuum_Hyde_sicilia
           activities:
@@ -2125,12 +2257,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-        Continuum_Hyde_tevere_create:
-          target: Continuum_Hyde_tevere
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_tevere_start
         Continuum_Hyde_tevere_start:
           target: Continuum_Hyde_tevere
           activities:
@@ -2143,12 +2269,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-        Continuum_Hyde_toscana_create:
-          target: Continuum_Hyde_toscana
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_toscana_start
         Continuum_Hyde_toscana_start:
           target: Continuum_Hyde_toscana
           activities:
@@ -2161,12 +2281,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-        Continuum_Hyde_volturno_create:
-          target: Continuum_Hyde_volturno
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_volturno_start
         Continuum_Hyde_volturno_start:
           target: Continuum_Hyde_volturno
           activities:
@@ -2197,184 +2311,35 @@ topology_template:
             - call_operation: Standard.create
           on_success:
             - Continuum_HMC_marche_start
-            - Continuum_HMC_liguria_create
-            - Continuum_HMC_adige_create
-            - Continuum_HMC_basilicata_create
-            - Continuum_HMC_calabria_create
-            - Continuum_HMC_fvg_create
-            - Continuum_HMC_gargano_create
-            - Continuum_HMC_lazio_create
-            - Continuum_HMC_liri_create
-            - Continuum_HMC_po_create
-            - Continuum_HMC_puglia_create
-            - Continuum_HMC_romagna_create
-            - Continuum_HMC_sardegna_create
-            - Continuum_HMC_sicilia_create
-            - Continuum_HMC_tevere_create
-            - Continuum_HMC_toscana_create
-            - Continuum_HMC_volturno_create
+            - Continuum_HMC_po_start
+            - Continuum_HMC_adige_start
+            - Continuum_HMC_basilicata_start
+            - Continuum_HMC_calabria_start
+            - Continuum_HMC_fvg_start
+            - Continuum_HMC_gargano_start
+            - Continuum_HMC_lazio_start
+            - Continuum_HMC_liguria_start
         Continuum_HMC_marche_start:
           target: Continuum_HMC_marche
           activities:
             - call_operation: Standard.start
           on_success:
             - Continuum_HMC_marche_started
+            - Continuum_HMC_liri_start
+            - Continuum_HMC_puglia_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_sardegna_start
+            - Continuum_HMC_sicilia_start
+            - Continuum_HMC_tevere_start
+            - Continuum_HMC_toscana_start
+            - Continuum_HMC_volturno_start
         Continuum_HMC_marche_started:
           target: Continuum_HMC_marche
           activities:
             - set_state: started
           on_success:
             - CreateStagingAreaResultDir_start
-        Continuum_HMC_liguria_create:
-          target: Continuum_HMC_liguria
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_liguria_start
-        Continuum_HMC_liguria_start:
-          target: Continuum_HMC_liguria
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_HMC_liguria_started
-        Continuum_HMC_liguria_started:
-          target: Continuum_HMC_liguria
-          activities:
-            - set_state: started
-          on_success:
-            - CreateStagingAreaResultDir_start
-        Continuum_HMC_adige_create:
-          target: Continuum_HMC_adige
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_adige_start
-        Continuum_HMC_adige_start:
-          target: Continuum_HMC_adige
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_HMC_adige_started
-        Continuum_HMC_adige_started:
-          target: Continuum_HMC_adige
-          activities:
-            - set_state: started
-          on_success:
-            - CreateStagingAreaResultDir_start
-        Continuum_HMC_basilicata_create:
-          target: Continuum_HMC_basilicata
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_basilicata_start
-        Continuum_HMC_basilicata_start:
-          target: Continuum_HMC_basilicata
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_HMC_basilicata_started
-        Continuum_HMC_basilicata_started:
-          target: Continuum_HMC_basilicata
-          activities:
-            - set_state: started
-          on_success:
-            - CreateStagingAreaResultDir_start
-        Continuum_HMC_calabria_create:
-          target: Continuum_HMC_calabria
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_calabria_start
-        Continuum_HMC_calabria_start:
-          target: Continuum_HMC_calabria
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_HMC_calabria_started
-        Continuum_HMC_calabria_started:
-          target: Continuum_HMC_calabria
-          activities:
-            - set_state: started
-          on_success:
-            - CreateStagingAreaResultDir_start
-        Continuum_HMC_fvg_create:
-          target: Continuum_HMC_fvg
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_fvg_start
-        Continuum_HMC_fvg_start:
-          target: Continuum_HMC_fvg
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_HMC_fvg_started
-        Continuum_HMC_fvg_started:
-          target: Continuum_HMC_fvg
-          activities:
-            - set_state: started
-          on_success:
-            - CreateStagingAreaResultDir_start
-        Continuum_HMC_gargano_create:
-          target: Continuum_HMC_gargano
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_gargano_start
-        Continuum_HMC_gargano_start:
-          target: Continuum_HMC_gargano
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_HMC_gargano_started
-        Continuum_HMC_gargano_started:
-          target: Continuum_HMC_gargano
-          activities:
-            - set_state: started
-          on_success:
-            - CreateStagingAreaResultDir_start
-        Continuum_HMC_lazio_create:
-          target: Continuum_HMC_lazio
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_lazio_start
-        Continuum_HMC_lazio_start:
-          target: Continuum_HMC_lazio
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_HMC_lazio_started
-        Continuum_HMC_lazio_started:
-          target: Continuum_HMC_lazio
-          activities:
-            - set_state: started
-          on_success:
-            - CreateStagingAreaResultDir_start
-        Continuum_HMC_liri_create:
-          target: Continuum_HMC_liri
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_liri_start
-        Continuum_HMC_liri_start:
-          target: Continuum_HMC_liri
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_HMC_liri_started
-        Continuum_HMC_liri_started:
-          target: Continuum_HMC_liri
-          activities:
-            - set_state: started
-          on_success:
-            - CreateStagingAreaResultDir_start
-        Continuum_HMC_po_create:
-          target: Continuum_HMC_po
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_po_start
         Continuum_HMC_po_start:
           target: Continuum_HMC_po
           activities:
@@ -2387,12 +2352,165 @@ topology_template:
             - set_state: started
           on_success:
             - CreateStagingAreaResultDir_start
-        Continuum_HMC_puglia_create:
-          target: Continuum_HMC_puglia
+        Continuum_HMC_adige_start:
+          target: Continuum_HMC_adige
           activities:
-            - call_operation: Standard.create
+            - call_operation: Standard.start
           on_success:
+            - Continuum_HMC_adige_started
+            - Continuum_HMC_liri_start
             - Continuum_HMC_puglia_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_sardegna_start
+            - Continuum_HMC_sicilia_start
+            - Continuum_HMC_tevere_start
+            - Continuum_HMC_toscana_start
+            - Continuum_HMC_volturno_start
+        Continuum_HMC_adige_started:
+          target: Continuum_HMC_adige
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_basilicata_start:
+          target: Continuum_HMC_basilicata
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_basilicata_started
+            - Continuum_HMC_liri_start
+            - Continuum_HMC_puglia_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_sardegna_start
+            - Continuum_HMC_sicilia_start
+            - Continuum_HMC_tevere_start
+            - Continuum_HMC_toscana_start
+            - Continuum_HMC_volturno_start
+        Continuum_HMC_basilicata_started:
+          target: Continuum_HMC_basilicata
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_calabria_start:
+          target: Continuum_HMC_calabria
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_calabria_started
+            - Continuum_HMC_liri_start
+            - Continuum_HMC_puglia_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_sardegna_start
+            - Continuum_HMC_sicilia_start
+            - Continuum_HMC_tevere_start
+            - Continuum_HMC_toscana_start
+            - Continuum_HMC_volturno_start
+        Continuum_HMC_calabria_started:
+          target: Continuum_HMC_calabria
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_fvg_start:
+          target: Continuum_HMC_fvg
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_fvg_started
+            - Continuum_HMC_liri_start
+            - Continuum_HMC_puglia_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_sardegna_start
+            - Continuum_HMC_sicilia_start
+            - Continuum_HMC_tevere_start
+            - Continuum_HMC_toscana_start
+            - Continuum_HMC_volturno_start
+        Continuum_HMC_fvg_started:
+          target: Continuum_HMC_fvg
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_gargano_start:
+          target: Continuum_HMC_gargano
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_gargano_started
+            - Continuum_HMC_liri_start
+            - Continuum_HMC_puglia_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_sardegna_start
+            - Continuum_HMC_sicilia_start
+            - Continuum_HMC_tevere_start
+            - Continuum_HMC_toscana_start
+            - Continuum_HMC_volturno_start
+        Continuum_HMC_gargano_started:
+          target: Continuum_HMC_gargano
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_lazio_start:
+          target: Continuum_HMC_lazio
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_lazio_started
+            - Continuum_HMC_liri_start
+            - Continuum_HMC_puglia_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_sardegna_start
+            - Continuum_HMC_sicilia_start
+            - Continuum_HMC_tevere_start
+            - Continuum_HMC_toscana_start
+            - Continuum_HMC_volturno_start
+        Continuum_HMC_lazio_started:
+          target: Continuum_HMC_lazio
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_liguria_start:
+          target: Continuum_HMC_liguria
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_liguria_started
+            - Continuum_HMC_liri_start
+            - Continuum_HMC_puglia_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_sardegna_start
+            - Continuum_HMC_sicilia_start
+            - Continuum_HMC_tevere_start
+            - Continuum_HMC_toscana_start
+            - Continuum_HMC_volturno_start
+        Continuum_HMC_liguria_started:
+          target: Continuum_HMC_liguria
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_liri_start:
+          target: Continuum_HMC_liri
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_liri_started
+        Continuum_HMC_liri_started:
+          target: Continuum_HMC_liri
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
         Continuum_HMC_puglia_start:
           target: Continuum_HMC_puglia
           activities:
@@ -2405,12 +2523,6 @@ topology_template:
             - set_state: started
           on_success:
             - CreateStagingAreaResultDir_start
-        Continuum_HMC_romagna_create:
-          target: Continuum_HMC_romagna
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_romagna_start
         Continuum_HMC_romagna_start:
           target: Continuum_HMC_romagna
           activities:
@@ -2423,12 +2535,6 @@ topology_template:
             - set_state: started
           on_success:
             - CreateStagingAreaResultDir_start
-        Continuum_HMC_sardegna_create:
-          target: Continuum_HMC_sardegna
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_sardegna_start
         Continuum_HMC_sardegna_start:
           target: Continuum_HMC_sardegna
           activities:
@@ -2441,12 +2547,6 @@ topology_template:
             - set_state: started
           on_success:
             - CreateStagingAreaResultDir_start
-        Continuum_HMC_sicilia_create:
-          target: Continuum_HMC_sicilia
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_sicilia_start
         Continuum_HMC_sicilia_start:
           target: Continuum_HMC_sicilia
           activities:
@@ -2459,12 +2559,6 @@ topology_template:
             - set_state: started
           on_success:
             - CreateStagingAreaResultDir_start
-        Continuum_HMC_tevere_create:
-          target: Continuum_HMC_tevere
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_tevere_start
         Continuum_HMC_tevere_start:
           target: Continuum_HMC_tevere
           activities:
@@ -2477,12 +2571,6 @@ topology_template:
             - set_state: started
           on_success:
             - CreateStagingAreaResultDir_start
-        Continuum_HMC_toscana_create:
-          target: Continuum_HMC_toscana
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_toscana_start
         Continuum_HMC_toscana_start:
           target: Continuum_HMC_toscana
           activities:
@@ -2495,12 +2583,6 @@ topology_template:
             - set_state: started
           on_success:
             - CreateStagingAreaResultDir_start
-        Continuum_HMC_volturno_create:
-          target: Continuum_HMC_volturno
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_volturno_start
         Continuum_HMC_volturno_start:
           target: Continuum_HMC_volturno
           activities:
@@ -3071,23 +3153,15 @@ topology_template:
           activities:
             - call_operation: Standard.create
           on_success:
+            - Continuum_Hyde_po_start
+            - Continuum_Hyde_adige_start
+            - Continuum_Hyde_basilicata_start
+            - Continuum_Hyde_calabria_start
+            - Continuum_Hyde_fvg_start
+            - Continuum_Hyde_gargano_start
+            - Continuum_Hyde_lazio_start
+            - Continuum_Hyde_liguria_start
             - Continuum_Hyde_marche_start
-            - Continuum_Hyde_liguria_create
-            - Continuum_Hyde_adige_create
-            - Continuum_Hyde_basilicata_create
-            - Continuum_Hyde_calabria_create
-            - Continuum_Hyde_fvg_create
-            - Continuum_Hyde_gargano_create
-            - Continuum_Hyde_lazio_create
-            - Continuum_Hyde_liri_create
-            - Continuum_Hyde_po_create
-            - Continuum_Hyde_puglia_create
-            - Continuum_Hyde_romagna_create
-            - Continuum_Hyde_sardegna_create
-            - Continuum_Hyde_sicilia_create
-            - Continuum_Hyde_tevere_create
-            - Continuum_Hyde_toscana_create
-            - Continuum_Hyde_volturno_create
         Continuum_Hyde_marche_start:
           target: Continuum_Hyde_marche
           activities:
@@ -3099,157 +3173,15 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - Move_Hyde_Results_start
-        Continuum_Hyde_liguria_create:
-          target: Continuum_Hyde_liguria
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_liguria_start
-        Continuum_Hyde_liguria_start:
-          target: Continuum_Hyde_liguria
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_Hyde_liguria_started
-        Continuum_Hyde_liguria_started:
-          target: Continuum_Hyde_liguria
-          activities:
-            - set_state: started
-          on_success:
-            - Move_Hyde_Results_start
-        Continuum_Hyde_adige_create:
-          target: Continuum_Hyde_adige
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_adige_start
-        Continuum_Hyde_adige_start:
-          target: Continuum_Hyde_adige
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_Hyde_adige_started
-        Continuum_Hyde_adige_started:
-          target: Continuum_Hyde_adige
-          activities:
-            - set_state: started
-          on_success:
-            - Move_Hyde_Results_start
-        Continuum_Hyde_basilicata_create:
-          target: Continuum_Hyde_basilicata
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_basilicata_start
-        Continuum_Hyde_basilicata_start:
-          target: Continuum_Hyde_basilicata
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_Hyde_basilicata_started
-        Continuum_Hyde_basilicata_started:
-          target: Continuum_Hyde_basilicata
-          activities:
-            - set_state: started
-          on_success:
-            - Move_Hyde_Results_start
-        Continuum_Hyde_calabria_create:
-          target: Continuum_Hyde_calabria
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_calabria_start
-        Continuum_Hyde_calabria_start:
-          target: Continuum_Hyde_calabria
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_Hyde_calabria_started
-        Continuum_Hyde_calabria_started:
-          target: Continuum_Hyde_calabria
-          activities:
-            - set_state: started
-          on_success:
-            - Move_Hyde_Results_start
-        Continuum_Hyde_fvg_create:
-          target: Continuum_Hyde_fvg
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_fvg_start
-        Continuum_Hyde_fvg_start:
-          target: Continuum_Hyde_fvg
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_Hyde_fvg_started
-        Continuum_Hyde_fvg_started:
-          target: Continuum_Hyde_fvg
-          activities:
-            - set_state: started
-          on_success:
-            - Move_Hyde_Results_start
-        Continuum_Hyde_gargano_create:
-          target: Continuum_Hyde_gargano
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_gargano_start
-        Continuum_Hyde_gargano_start:
-          target: Continuum_Hyde_gargano
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_Hyde_gargano_started
-        Continuum_Hyde_gargano_started:
-          target: Continuum_Hyde_gargano
-          activities:
-            - set_state: started
-          on_success:
-            - Move_Hyde_Results_start
-        Continuum_Hyde_lazio_create:
-          target: Continuum_Hyde_lazio
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_lazio_start
-        Continuum_Hyde_lazio_start:
-          target: Continuum_Hyde_lazio
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_Hyde_lazio_started
-        Continuum_Hyde_lazio_started:
-          target: Continuum_Hyde_lazio
-          activities:
-            - set_state: started
-          on_success:
-            - Move_Hyde_Results_start
-        Continuum_Hyde_liri_create:
-          target: Continuum_Hyde_liri
-          activities:
-            - call_operation: Standard.create
-          on_success:
             - Continuum_Hyde_liri_start
-        Continuum_Hyde_liri_start:
-          target: Continuum_Hyde_liri
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_Hyde_liri_started
-        Continuum_Hyde_liri_started:
-          target: Continuum_Hyde_liri
-          activities:
-            - set_state: started
-          on_success:
+            - Continuum_Hyde_puglia_start
+            - Continuum_Hyde_romagna_start
+            - Continuum_Hyde_sardegna_start
+            - Continuum_Hyde_sicilia_start
+            - Continuum_Hyde_tevere_start
+            - Continuum_Hyde_toscana_start
+            - Continuum_Hyde_volturno_start
             - Move_Hyde_Results_start
-        Continuum_Hyde_po_create:
-          target: Continuum_Hyde_po
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_po_start
         Continuum_Hyde_po_start:
           target: Continuum_Hyde_po
           activities:
@@ -3262,12 +3194,158 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-        Continuum_Hyde_puglia_create:
-          target: Continuum_Hyde_puglia
+        Continuum_Hyde_adige_start:
+          target: Continuum_Hyde_adige
           activities:
-            - call_operation: Standard.create
+            - call_operation: Standard.start
           on_success:
+            - Continuum_Hyde_adige_started
+        Continuum_Hyde_adige_started:
+          target: Continuum_Hyde_adige
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+            - Continuum_Hyde_liri_start
             - Continuum_Hyde_puglia_start
+            - Continuum_Hyde_romagna_start
+            - Continuum_Hyde_sardegna_start
+            - Continuum_Hyde_sicilia_start
+            - Continuum_Hyde_tevere_start
+            - Continuum_Hyde_toscana_start
+            - Continuum_Hyde_volturno_start
+        Continuum_Hyde_basilicata_start:
+          target: Continuum_Hyde_basilicata
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_basilicata_started
+        Continuum_Hyde_basilicata_started:
+          target: Continuum_Hyde_basilicata
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+            - Continuum_Hyde_liri_start
+            - Continuum_Hyde_puglia_start
+            - Continuum_Hyde_romagna_start
+            - Continuum_Hyde_sardegna_start
+            - Continuum_Hyde_sicilia_start
+            - Continuum_Hyde_tevere_start
+            - Continuum_Hyde_toscana_start
+            - Continuum_Hyde_volturno_start
+        Continuum_Hyde_calabria_start:
+          target: Continuum_Hyde_calabria
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_calabria_started
+        Continuum_Hyde_calabria_started:
+          target: Continuum_Hyde_calabria
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+            - Continuum_Hyde_liri_start
+            - Continuum_Hyde_puglia_start
+            - Continuum_Hyde_romagna_start
+            - Continuum_Hyde_sardegna_start
+            - Continuum_Hyde_sicilia_start
+            - Continuum_Hyde_tevere_start
+            - Continuum_Hyde_toscana_start
+            - Continuum_Hyde_volturno_start
+        Continuum_Hyde_fvg_start:
+          target: Continuum_Hyde_fvg
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_fvg_started
+        Continuum_Hyde_fvg_started:
+          target: Continuum_Hyde_fvg
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+            - Continuum_Hyde_liri_start
+            - Continuum_Hyde_puglia_start
+            - Continuum_Hyde_romagna_start
+            - Continuum_Hyde_sardegna_start
+            - Continuum_Hyde_sicilia_start
+            - Continuum_Hyde_tevere_start
+            - Continuum_Hyde_toscana_start
+            - Continuum_Hyde_volturno_start
+        Continuum_Hyde_gargano_start:
+          target: Continuum_Hyde_gargano
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_gargano_started
+        Continuum_Hyde_gargano_started:
+          target: Continuum_Hyde_gargano
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+            - Continuum_Hyde_liri_start
+            - Continuum_Hyde_puglia_start
+            - Continuum_Hyde_romagna_start
+            - Continuum_Hyde_sardegna_start
+            - Continuum_Hyde_sicilia_start
+            - Continuum_Hyde_tevere_start
+            - Continuum_Hyde_toscana_start
+            - Continuum_Hyde_volturno_start
+        Continuum_Hyde_lazio_start:
+          target: Continuum_Hyde_lazio
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_lazio_started
+        Continuum_Hyde_lazio_started:
+          target: Continuum_Hyde_lazio
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+            - Continuum_Hyde_liri_start
+            - Continuum_Hyde_puglia_start
+            - Continuum_Hyde_romagna_start
+            - Continuum_Hyde_sardegna_start
+            - Continuum_Hyde_sicilia_start
+            - Continuum_Hyde_tevere_start
+            - Continuum_Hyde_toscana_start
+            - Continuum_Hyde_volturno_start
+        Continuum_Hyde_liguria_start:
+          target: Continuum_Hyde_liguria
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_liguria_started
+        Continuum_Hyde_liguria_started:
+          target: Continuum_Hyde_liguria
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+            - Continuum_Hyde_liri_start
+            - Continuum_Hyde_puglia_start
+            - Continuum_Hyde_romagna_start
+            - Continuum_Hyde_sardegna_start
+            - Continuum_Hyde_sicilia_start
+            - Continuum_Hyde_tevere_start
+            - Continuum_Hyde_toscana_start
+            - Continuum_Hyde_volturno_start
+        Continuum_Hyde_liri_start:
+          target: Continuum_Hyde_liri
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_liri_started
+        Continuum_Hyde_liri_started:
+          target: Continuum_Hyde_liri
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
         Continuum_Hyde_puglia_start:
           target: Continuum_Hyde_puglia
           activities:
@@ -3280,12 +3358,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-        Continuum_Hyde_romagna_create:
-          target: Continuum_Hyde_romagna
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_romagna_start
         Continuum_Hyde_romagna_start:
           target: Continuum_Hyde_romagna
           activities:
@@ -3298,12 +3370,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-        Continuum_Hyde_sardegna_create:
-          target: Continuum_Hyde_sardegna
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_sardegna_start
         Continuum_Hyde_sardegna_start:
           target: Continuum_Hyde_sardegna
           activities:
@@ -3316,12 +3382,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-        Continuum_Hyde_sicilia_create:
-          target: Continuum_Hyde_sicilia
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_sicilia_start
         Continuum_Hyde_sicilia_start:
           target: Continuum_Hyde_sicilia
           activities:
@@ -3334,12 +3394,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-        Continuum_Hyde_tevere_create:
-          target: Continuum_Hyde_tevere
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_tevere_start
         Continuum_Hyde_tevere_start:
           target: Continuum_Hyde_tevere
           activities:
@@ -3352,12 +3406,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-        Continuum_Hyde_toscana_create:
-          target: Continuum_Hyde_toscana
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_toscana_start
         Continuum_Hyde_toscana_start:
           target: Continuum_Hyde_toscana
           activities:
@@ -3370,12 +3418,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-        Continuum_Hyde_volturno_create:
-          target: Continuum_Hyde_volturno
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_Hyde_volturno_start
         Continuum_Hyde_volturno_start:
           target: Continuum_Hyde_volturno
           activities:
@@ -3406,184 +3448,35 @@ topology_template:
             - call_operation: Standard.create
           on_success:
             - Continuum_HMC_marche_start
-            - Continuum_HMC_liguria_create
-            - Continuum_HMC_adige_create
-            - Continuum_HMC_basilicata_create
-            - Continuum_HMC_calabria_create
-            - Continuum_HMC_fvg_create
-            - Continuum_HMC_gargano_create
-            - Continuum_HMC_lazio_create
-            - Continuum_HMC_liri_create
-            - Continuum_HMC_po_create
-            - Continuum_HMC_puglia_create
-            - Continuum_HMC_romagna_create
-            - Continuum_HMC_sardegna_create
-            - Continuum_HMC_sicilia_create
-            - Continuum_HMC_tevere_create
-            - Continuum_HMC_toscana_create
-            - Continuum_HMC_volturno_create
+            - Continuum_HMC_po_start
+            - Continuum_HMC_adige_start
+            - Continuum_HMC_basilicata_start
+            - Continuum_HMC_calabria_start
+            - Continuum_HMC_fvg_start
+            - Continuum_HMC_gargano_start
+            - Continuum_HMC_lazio_start
+            - Continuum_HMC_liguria_start
         Continuum_HMC_marche_start:
           target: Continuum_HMC_marche
           activities:
             - call_operation: Standard.start
           on_success:
             - Continuum_HMC_marche_started
+            - Continuum_HMC_liri_start
+            - Continuum_HMC_puglia_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_sardegna_start
+            - Continuum_HMC_sicilia_start
+            - Continuum_HMC_tevere_start
+            - Continuum_HMC_toscana_start
+            - Continuum_HMC_volturno_start
         Continuum_HMC_marche_started:
           target: Continuum_HMC_marche
           activities:
             - set_state: started
           on_success:
             - CreateStagingAreaResultDir_start
-        Continuum_HMC_liguria_create:
-          target: Continuum_HMC_liguria
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_liguria_start
-        Continuum_HMC_liguria_start:
-          target: Continuum_HMC_liguria
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_HMC_liguria_started
-        Continuum_HMC_liguria_started:
-          target: Continuum_HMC_liguria
-          activities:
-            - set_state: started
-          on_success:
-            - CreateStagingAreaResultDir_start
-        Continuum_HMC_adige_create:
-          target: Continuum_HMC_adige
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_adige_start
-        Continuum_HMC_adige_start:
-          target: Continuum_HMC_adige
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_HMC_adige_started
-        Continuum_HMC_adige_started:
-          target: Continuum_HMC_adige
-          activities:
-            - set_state: started
-          on_success:
-            - CreateStagingAreaResultDir_start
-        Continuum_HMC_basilicata_create:
-          target: Continuum_HMC_basilicata
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_basilicata_start
-        Continuum_HMC_basilicata_start:
-          target: Continuum_HMC_basilicata
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_HMC_basilicata_started
-        Continuum_HMC_basilicata_started:
-          target: Continuum_HMC_basilicata
-          activities:
-            - set_state: started
-          on_success:
-            - CreateStagingAreaResultDir_start
-        Continuum_HMC_calabria_create:
-          target: Continuum_HMC_calabria
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_calabria_start
-        Continuum_HMC_calabria_start:
-          target: Continuum_HMC_calabria
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_HMC_calabria_started
-        Continuum_HMC_calabria_started:
-          target: Continuum_HMC_calabria
-          activities:
-            - set_state: started
-          on_success:
-            - CreateStagingAreaResultDir_start
-        Continuum_HMC_fvg_create:
-          target: Continuum_HMC_fvg
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_fvg_start
-        Continuum_HMC_fvg_start:
-          target: Continuum_HMC_fvg
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_HMC_fvg_started
-        Continuum_HMC_fvg_started:
-          target: Continuum_HMC_fvg
-          activities:
-            - set_state: started
-          on_success:
-            - CreateStagingAreaResultDir_start
-        Continuum_HMC_gargano_create:
-          target: Continuum_HMC_gargano
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_gargano_start
-        Continuum_HMC_gargano_start:
-          target: Continuum_HMC_gargano
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_HMC_gargano_started
-        Continuum_HMC_gargano_started:
-          target: Continuum_HMC_gargano
-          activities:
-            - set_state: started
-          on_success:
-            - CreateStagingAreaResultDir_start
-        Continuum_HMC_lazio_create:
-          target: Continuum_HMC_lazio
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_lazio_start
-        Continuum_HMC_lazio_start:
-          target: Continuum_HMC_lazio
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_HMC_lazio_started
-        Continuum_HMC_lazio_started:
-          target: Continuum_HMC_lazio
-          activities:
-            - set_state: started
-          on_success:
-            - CreateStagingAreaResultDir_start
-        Continuum_HMC_liri_create:
-          target: Continuum_HMC_liri
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_liri_start
-        Continuum_HMC_liri_start:
-          target: Continuum_HMC_liri
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Continuum_HMC_liri_started
-        Continuum_HMC_liri_started:
-          target: Continuum_HMC_liri
-          activities:
-            - set_state: started
-          on_success:
-            - CreateStagingAreaResultDir_start
-        Continuum_HMC_po_create:
-          target: Continuum_HMC_po
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_po_start
         Continuum_HMC_po_start:
           target: Continuum_HMC_po
           activities:
@@ -3596,12 +3489,165 @@ topology_template:
             - set_state: started
           on_success:
             - CreateStagingAreaResultDir_start
-        Continuum_HMC_puglia_create:
-          target: Continuum_HMC_puglia
+        Continuum_HMC_adige_start:
+          target: Continuum_HMC_adige
           activities:
-            - call_operation: Standard.create
+            - call_operation: Standard.start
           on_success:
+            - Continuum_HMC_adige_started
+            - Continuum_HMC_liri_start
             - Continuum_HMC_puglia_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_sardegna_start
+            - Continuum_HMC_sicilia_start
+            - Continuum_HMC_tevere_start
+            - Continuum_HMC_toscana_start
+            - Continuum_HMC_volturno_start
+        Continuum_HMC_adige_started:
+          target: Continuum_HMC_adige
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_basilicata_start:
+          target: Continuum_HMC_basilicata
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_basilicata_started
+            - Continuum_HMC_liri_start
+            - Continuum_HMC_puglia_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_sardegna_start
+            - Continuum_HMC_sicilia_start
+            - Continuum_HMC_tevere_start
+            - Continuum_HMC_toscana_start
+            - Continuum_HMC_volturno_start
+        Continuum_HMC_basilicata_started:
+          target: Continuum_HMC_basilicata
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_calabria_start:
+          target: Continuum_HMC_calabria
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_calabria_started
+            - Continuum_HMC_liri_start
+            - Continuum_HMC_puglia_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_sardegna_start
+            - Continuum_HMC_sicilia_start
+            - Continuum_HMC_tevere_start
+            - Continuum_HMC_toscana_start
+            - Continuum_HMC_volturno_start
+        Continuum_HMC_calabria_started:
+          target: Continuum_HMC_calabria
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_fvg_start:
+          target: Continuum_HMC_fvg
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_fvg_started
+            - Continuum_HMC_liri_start
+            - Continuum_HMC_puglia_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_sardegna_start
+            - Continuum_HMC_sicilia_start
+            - Continuum_HMC_tevere_start
+            - Continuum_HMC_toscana_start
+            - Continuum_HMC_volturno_start
+        Continuum_HMC_fvg_started:
+          target: Continuum_HMC_fvg
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_gargano_start:
+          target: Continuum_HMC_gargano
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_gargano_started
+            - Continuum_HMC_liri_start
+            - Continuum_HMC_puglia_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_sardegna_start
+            - Continuum_HMC_sicilia_start
+            - Continuum_HMC_tevere_start
+            - Continuum_HMC_toscana_start
+            - Continuum_HMC_volturno_start
+        Continuum_HMC_gargano_started:
+          target: Continuum_HMC_gargano
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_lazio_start:
+          target: Continuum_HMC_lazio
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_lazio_started
+            - Continuum_HMC_liri_start
+            - Continuum_HMC_puglia_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_sardegna_start
+            - Continuum_HMC_sicilia_start
+            - Continuum_HMC_tevere_start
+            - Continuum_HMC_toscana_start
+            - Continuum_HMC_volturno_start
+        Continuum_HMC_lazio_started:
+          target: Continuum_HMC_lazio
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_liguria_start:
+          target: Continuum_HMC_liguria
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_liguria_started
+            - Continuum_HMC_liri_start
+            - Continuum_HMC_puglia_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_sardegna_start
+            - Continuum_HMC_sicilia_start
+            - Continuum_HMC_tevere_start
+            - Continuum_HMC_toscana_start
+            - Continuum_HMC_volturno_start
+        Continuum_HMC_liguria_started:
+          target: Continuum_HMC_liguria
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_liri_start:
+          target: Continuum_HMC_liri
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_liri_started
+        Continuum_HMC_liri_started:
+          target: Continuum_HMC_liri
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
         Continuum_HMC_puglia_start:
           target: Continuum_HMC_puglia
           activities:
@@ -3614,12 +3660,6 @@ topology_template:
             - set_state: started
           on_success:
             - CreateStagingAreaResultDir_start
-        Continuum_HMC_romagna_create:
-          target: Continuum_HMC_romagna
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_romagna_start
         Continuum_HMC_romagna_start:
           target: Continuum_HMC_romagna
           activities:
@@ -3632,12 +3672,6 @@ topology_template:
             - set_state: started
           on_success:
             - CreateStagingAreaResultDir_start
-        Continuum_HMC_sardegna_create:
-          target: Continuum_HMC_sardegna
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_sardegna_start
         Continuum_HMC_sardegna_start:
           target: Continuum_HMC_sardegna
           activities:
@@ -3650,12 +3684,6 @@ topology_template:
             - set_state: started
           on_success:
             - CreateStagingAreaResultDir_start
-        Continuum_HMC_sicilia_create:
-          target: Continuum_HMC_sicilia
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_sicilia_start
         Continuum_HMC_sicilia_start:
           target: Continuum_HMC_sicilia
           activities:
@@ -3668,12 +3696,6 @@ topology_template:
             - set_state: started
           on_success:
             - CreateStagingAreaResultDir_start
-        Continuum_HMC_tevere_create:
-          target: Continuum_HMC_tevere
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_tevere_start
         Continuum_HMC_tevere_start:
           target: Continuum_HMC_tevere
           activities:
@@ -3686,12 +3708,6 @@ topology_template:
             - set_state: started
           on_success:
             - CreateStagingAreaResultDir_start
-        Continuum_HMC_toscana_create:
-          target: Continuum_HMC_toscana
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_toscana_start
         Continuum_HMC_toscana_start:
           target: Continuum_HMC_toscana
           activities:
@@ -3704,12 +3720,6 @@ topology_template:
             - set_state: started
           on_success:
             - CreateStagingAreaResultDir_start
-        Continuum_HMC_volturno_create:
-          target: Continuum_HMC_volturno
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Continuum_HMC_volturno_start
         Continuum_HMC_volturno_start:
           target: Continuum_HMC_volturno
           activities:

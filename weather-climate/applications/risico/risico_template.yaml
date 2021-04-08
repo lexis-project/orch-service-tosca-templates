@@ -9,11 +9,13 @@ description: RISICO template
 
 imports:
   - yorc-types:1.1.0
+  - yorc-openstack-types:3.0.0
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
   - org.lexis.common.heappe-types:1.0.3
   - org.lexis.common.ddi-types:0.1.3
+  - org.lexis.common.dynamic-orchestration-types:0.1.0
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
@@ -41,7 +43,7 @@ topology_template:
     preprocessing_image:
       type: string
       description: Pre-processing container repository path
-      default: "laurentg/wps.gfs:0.4.2"
+      default: "cimafoundation/wps-da.gfs:v2.0.0"
       required: false
     preprocessing_dataset_geographical_data:
       type: string
@@ -67,10 +69,35 @@ topology_template:
       default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c"
       required: false
   node_templates:
-    PublicNet:
-      type: tosca.nodes.Network
+    # Job gathering info on the input dataset:
+    # - on which locations it is available
+    # - size
+    # - number of files
+    # to take placement decisions on computing resources using this dataset
+    InputDatasetInfoJob:
+      type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
       properties:
-        ip_version: 4
+        token: {get_input: token}
+        dataset_path: {get_input: preprocessing_dataset_geographical_data}
+    # Find the best cloud location depending on the input dataset and needed cloud resources
+    FindCloudLocationJob:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - InputDataset:
+            type_requirement: input_dataset
+            node: InputDatasetInfoJob
+            capability: org.lexis.common.ddi.capabilities.DatasetInfo
+            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
+        - CloudResourceVM:
+            type_requirement: cloud_instance
+            node: RisicoVM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.dynamic.orchestration.relationships.CloudResource
+    # Floating IP address network
+    PublicNet:
+      type: yorc.nodes.openstack.FloatingIP
     RisicoVM:
       type: tosca.nodes.Compute
       requirements:
@@ -109,6 +136,12 @@ topology_template:
         ddi_dataset_path: { get_input: preprocessing_dataset_geographical_data }
         cloud_staging_area_directory_path: "risico_preprocessing_geog"
         timestamp_cloud_staging_area_directory: true
+      requirements:
+        - sameSite:
+            type_requirement: os
+            node: RisicoVM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
     MountGEOGDataset:
       type: org.lexis.common.datatransfer.nodes.SSHMountStagingAreaDataset
       properties:
@@ -205,6 +238,43 @@ topology_template:
             node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
+    # Get pre-processing results details (size, number of files)
+    GetPreprocessDatasetInfo:
+      type: org.lexis.common.ddi.nodes.GetComputeInstanceDatasetInfo
+      properties:
+        dataset_path: "/wps_data/output"
+      requirements:
+        - host:
+            type_requirement: host
+            node: RisicoVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    # Find the best HPC location depending on the input dataset and needed HPC resources
+    FindHPCLocationsJob:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - InputDataset:
+            type_requirement: input_dataset
+            node: GetPreprocessDatasetInfo
+            capability: org.lexis.common.ddi.capabilities.DatasetInfo
+            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
+        - HPCResourceWRFJob1:
+            type_requirement: heappe_job
+            node: WRF_DAY_1
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.dynamic.orchestration.relationships.HeappeJob
+        - HPCResourceWRFJob2:
+            type_requirement: heappe_job
+            node: WRF_DAY_2
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.dynamic.orchestration.relationships.HeappeJob
+        - HPCResourceWRFJob3:
+            type_requirement: heappe_job
+            node: WRF_DAY_3
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.dynamic.orchestration.relationships.HeappeJob
     WRF_DAY_3:
       type: org.lexis.common.heappe.nodes.Job
       metadata:
@@ -600,12 +670,16 @@ topology_template:
       description: DDI path to RISICO post-processing results
       value: { get_attribute: [ CloudToDDIJob, destination_path ] }
   workflows:
+    # Nothing to do at deployment time
+    # In LEXIS, overriding the default workflow that would be generated by
+    # Alien4Could, as it would allocate all infrastructure resources at
+    # deployment time
     install:
       steps:
-        Network_install:
-          target: PublicNet
+        Compute_initial:
+          target: RisicoVM
           activities:
-            - delegate: install
+            - set_state: initial
     uninstall:
       steps:
         Compute_uninstall:
@@ -620,6 +694,54 @@ topology_template:
             - delegate: uninstall
     Run:
       steps:
+        # Submit DDI job to get info on dataset (DDI location where it is availablr, size...)
+        InputDatasetInfoJob_submit:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - InputDatasetInfoJob_run
+        InputDatasetInfoJob_run:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - InputDatasetInfoJob_executed
+        InputDatasetInfoJob_executed:
+          target: InputDatasetInfoJob
+          activities:
+            - set_state: executed
+          on_success:
+            - FindCloudLocationJob_submit
+        # Submit the computation to find the best location from these inputs
+        FindCloudLocationJob_submit:
+          target: FindCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindCloudLocationJob_run
+        FindCloudLocationJob_run:
+          target: FindCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindCloudLocationJob_executed
+        FindCloudLocationJob_executed:
+          target: FindCloudLocationJob
+          activities:
+            - set_state: executed
+          on_success:
+            - DDIToCloudGEOGDatasetJob_create
+            - Network_install
+        # Get a floating IP address for the Cloud Compute instance
+        Network_install:
+          target: PublicNet
+          activities:
+            - delegate: install
+          on_success:
+            - Compute_install
         Compute_install:
           target: RisicoVM
           activities:
@@ -638,7 +760,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - DDIToCloudGEOGDatasetJob_create
+            - MountGEOGDataset_create
         DDIToCloudGEOGDatasetJob_create:
           target: DDIToCloudGEOGDatasetJob
           operation_host: ORCHESTRATOR
@@ -761,9 +883,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - WRF_DAY_1_create
-            - WRF_DAY_2_create
-            - WRF_DAY_3_create
+            - GetPreprocessDatasetInfo_create
             - WPS_GFS_delete
         WPS_GFS_delete:
           target: WPS_GFS
@@ -775,6 +895,44 @@ topology_template:
           target: WPS_GFS
           activities:
             - set_state: deleted
+        GetPreprocessDatasetInfo_create:
+          target: GetPreprocessDatasetInfo
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - GetPreprocessDatasetInfo_start
+        GetPreprocessDatasetInfo_start:
+          target: GetPreprocessDatasetInfo
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetPreprocessDatasetInfo_started
+        GetPreprocessDatasetInfo_started:
+          target: GetPreprocessDatasetInfo
+          activities:
+            - set_state: started
+          on_success:
+            - FindHPCLocationsJob_submit
+        FindHPCLocationsJob_submit:
+          target: FindHPCLocationsJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindHPCLocationsJob_run
+        FindHPCLocationsJob_run:
+          target: FindHPCLocationsJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindHPCLocationsJob_executed
+        FindHPCLocationsJob_executed:
+          target: FindHPCLocationsJob
+          activities:
+            - set_state: executed
+          on_success:
+            - WRF_DAY_1_create
+            - WRF_DAY_2_create
+            - WRF_DAY_3_create
         WRF_DAY_1_create:
           target: WRF_DAY_1
           operation_host: ORCHESTRATOR
