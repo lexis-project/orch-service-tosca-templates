@@ -326,6 +326,7 @@ node_types:
           relationship: org.lexis.common.datatransfer.relationships.MountCloudStagingArea
           occurrences: [1, 1]
     attributes:
+      staging_area_name: {get_operation_output: [SELF, Standard, start, staging_area_name]}
       user_name: {get_operation_output: [SELF, Standard, start, user_name]}
       directory_absolute_path: {get_operation_output: [SELF, Standard, start, directory_absolute_path]}
     interfaces:
@@ -334,6 +335,7 @@ node_types:
           implementation: playbooks/noop.yaml
         start:
           inputs:
+            staging_area_name: {get_attribute: [REQ_TARGET, cloud_staging_area_access, staging_area_name]}
             remote_file_system: {get_attribute: [REQ_TARGET, cloud_staging_area_access, remote_file_system]}
             mount_type: {get_attribute: [REQ_TARGET, cloud_staging_area_access, mount_type]}
             mount_options: {get_attribute: [REQ_TARGET, cloud_staging_area_access, mount_options]}
@@ -359,6 +361,7 @@ node_types:
         default: false
         required: false
     attributes:
+      staging_area_name: {get_operation_output: [SELF, Standard, start, staging_area_name]}
       staging_area_directory_path: {get_operation_output: [SELF, Standard, start, STAGING_AREA_DIRECTORY]}
       directory_absolute_path: {get_operation_output: [SELF, Standard, start, DIRECTORY_ABSOLUTE_PATH]}
       user_name: {get_operation_output: [SELF, Standard, start, USER_NAME]}
@@ -378,6 +381,7 @@ node_types:
           inputs:
             directory: {get_property: [SELF, directory]}
             create_timestamp_destination_subdirectory: {get_property: [SELF, create_timestamp_destination_subdirectory]}
+            staging_area_name: {get_attribute: [REQ_TARGET, mounted_staging_area, staging_area_name]}
             staging_area_directory_path: {get_attribute: [REQ_TARGET, mounted_staging_area, staging_area_directory_path]}
             mounted_directory_absolute_path: {get_attribute: [REQ_TARGET, mounted_staging_area, directory_absolute_path]}
             user_name: {get_attribute: [REQ_TARGET, mounted_staging_area, user_name]}
@@ -522,6 +526,7 @@ node_types:
         default: false
         required: false
     attributes:
+      staging_area_name: {get_operation_output: [SELF, Standard, start, staging_area_name]}
       staging_area_directory_path: {get_operation_output: [SELF, Standard, start, STAGING_AREA_DIRECTORY]}
       directory_absolute_path: {get_operation_output: [SELF, Standard, start, DIRECTORY_ABSOLUTE_PATH]}
     capabilities:
@@ -541,6 +546,7 @@ node_types:
             source_directory: {get_property: [SELF, source_directory]}
             destination_directory: {get_property: [SELF, destination_directory]}
             create_timestamp_destination_subdirectory: {get_property: [SELF, create_timestamp_destination_subdirectory]}
+            staging_area_name: {get_attribute: [REQ_TARGET, mounted_staging_area, staging_area_name]}
             directory_absolute_path: {get_attribute: [REQ_TARGET, mounted_staging_area, directory_absolute_path]}
             user_name: {get_attribute: [REQ_TARGET, mounted_staging_area, user_name]}
           implementation: playbooks/copy_to_staging_area.yaml
@@ -638,6 +644,7 @@ node_types:
       user_name: {get_operation_output: [SELF, Standard, start, USER]}
       directory_absolute_path: {get_operation_output: [SELF, Standard, start, DIRECTORY_PATH]}
       data_absolute_path: {get_operation_output: [SELF, Standard, start, DATA_PATH]}
+      staging_area_name: {get_operation_output: [SELF, Standard, start, staging_area_name]}
       staging_area_directory_path: {get_operation_output: [SELF, Standard, start, STAGING_AREA_DIRECTORY_PATH]}
       sshfsuser: {get_operation_output: [SELF, Standard, start, SSHFS_USER]}
       staging_area_root_directory: {get_operation_output: [SELF, Standard, start, STAGING_AREA_ROOT_DIRECTORY]}
@@ -666,6 +673,7 @@ node_types:
             MOUNT_POINT_DIRECTORY: { get_property: [SELF, mount_point_directory] }
             URL: {get_attribute: [REQ_TARGET, ddi_access, sshfs_url]}
             IP_ADDRESS: { get_attribute: [HOST, public_address] }
+            staging_area_name: {get_attribute: [REQ_TARGET, data_transfer, staging_area_name]}
             STAGING_AREA_DIRECTORY: {get_attribute: [REQ_TARGET, data_transfer, staging_area_directory_path]}
             TARGET_PATH: {get_attribute: [REQ_TARGET, data_transfer, destination_path]}
           implementation: playbooks/sshfs_export_mount.yaml
@@ -685,6 +693,9 @@ capability_types:
       A capability fulfilling requirements of a node requiring to be
       associated with a mounted staging area.
     attributes:
+      staging_area_name:
+        type: string
+        description: Name of the cloud staging area
       directory_absolute_path:
         type: string
         description: Directory where the cloud staging area file system is mounted
