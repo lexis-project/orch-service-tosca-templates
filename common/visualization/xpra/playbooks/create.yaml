@@ -1,0 +1,43 @@
+- name: Install Xpra
+  hosts: all
+  strategy: free
+  become: true
+  become_method: sudo
+  tasks:
+    - name: RedHat - install dnf requirements
+      yum:
+        name:
+          - epel-release
+          - dnf
+          - python-dnf
+        state: present
+        update_cache: yes
+      when: ansible_os_family == 'RedHat'
+    - name: Import key used for signing the packages
+      rpm_key:
+        state: present
+        key: https://xpra.org/gpg.asc
+      when: ansible_os_family == 'RedHat'
+    - name: RedHat - Create yum repository if needed
+      file:
+        path: "/etc/yum.repos.d"
+        state: directory
+        recurse: yes
+        mode: 0755
+      when: ansible_os_family == 'RedHat'
+    - name: Add repository
+      get_url:
+        url: "https://xpra.org/repos/CentOS/xpra.repo"
+        dest: "/etc/yum.repos.d/xpra.repo"
+        mode: 0755
+      when: ansible_os_family == 'RedHat'
+    - name: RedHat - install Xpra
+      dnf:
+        name: xpra
+        state: present
+      when: ansible_os_family == 'RedHat'
+    - name: RedHat - install paraview
+      dnf:
+        name: paraview
+        state: present
+      when: ansible_os_family == 'RedHat'

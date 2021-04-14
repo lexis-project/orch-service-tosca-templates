@@ -1,0 +1,34 @@
+- name: Check Xpra status
+  hosts: all
+  strategy: free
+  tasks:
+    - name: Check that the PID status file exists
+      stat:
+        path: "/proc/{{ TOSCA_JOB_ID }}/status"
+      register: xpra_pid
+    - name: Job status failed if the process doesn't run anymore
+      set_fact:
+        TOSCA_JOB_STATUS: "FAILED"
+      when: not xpra_pid.stat.exists
+    - meta: end_play
+      when: not xpra_pid.stat.exists
+
+    - name: Get elasped time
+      set_fact:
+        elapsedTime: "{{ (ansible_date_time.epoch | int)  - (SUBMIT_DATE_EPOCH | int) }}"
+    - name: Job status is running if wall time is not yet reached
+      set_fact:
+        TOSCA_JOB_STATUS: "RUNNING"
+      when: elapsedTime|int < WALLTIME|int
+    - meta: end_play
+      when: elapsedTime|int < WALLTIME|int
+
+    - name: End Xpra as time has elapsedTime
+      command: "/bin/kill -TERM {{ TOSCA_JOB_ID }}"
+    - name: Waiting until running process is killed
+      wait_for:
+        path: "/proc/{{ TOSCA_JOB_ID }}/status"
+        state: absent
+    - name: Job status is completed
+      set_fact:
+        TOSCA_JOB_STATUS: "COMPLETED"

@@ -1,0 +1,70 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: org.lexis.common.visualization.xpra
+  template_version: 0.1.0
+  template_author: lexis
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - yorc-types:1.1.0
+node_types:
+  #
+  # Xpra visualization service
+  #
+  org.lexis.common.visualization.xpra.nodes.Xpra:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      port:
+        type: integer
+        description: Port to use
+        required: true
+    attributes:
+      url: { concat: ["http://", get_attribute: [HOST, public_ip_address], ":", get_property: [SELF, port] ] }
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/create.yaml
+        start:
+          inputs:
+            PORT: {get_property: [SELF, port] }
+          implementation: playbooks/start.yaml
+        stop:
+          implementation: playbooks/stop.yaml
+        delete:
+          implementation: playbooks/delete.yaml
+  #
+  # Xpra visualization job - terminates after the specifed walltime
+  #
+  org.lexis.common.visualization.xpra.nodes.XpraCloudJob:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      port:
+        type: integer
+        description: Port to use
+        required: true
+      walltime_seconds:
+        type: integer
+        description: Duration in seconds of the job execution
+        required: true
+    attributes:
+      url: { concat: ["http://", get_attribute: [HOST, public_ip_address], ":", get_property: [SELF, port] ] }
+      submit_date_epoch: { get_operation_output: [SELF, tosca.interfaces.node.lifecycle.Runnable, submit, XPRA_SUBMIT_DATE_EPOCH] }
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/create.yaml
+        delete:
+          implementation: playbooks/delete.yaml
+      tosca.interfaces.node.lifecycle.Runnable:
+        submit:
+          inputs:
+            PORT: {get_property: [SELF, port] }
+          implementation: playbooks/submit_xpra.yaml
+        run:
+          inputs:
+            SUBMIT_DATE_EPOCH: {get_attribute: [SELF, submit_date_epoch] }
+            WALLTIME: {get_property: [SELF, walltime_seconds] }
+          implementation: playbooks/run_xpra.yaml
+        cancel:
+          implementation: playbooks/cancel_xpra.yaml

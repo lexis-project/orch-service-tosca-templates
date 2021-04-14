@@ -1,0 +1,25 @@
+- name: Submit Xpra
+  hosts: all
+  strategy: free
+  tasks:
+    - name: Start Xrv
+      command: "/bin/xpra start --bind-tcp=0.0.0.0:{{ PORT }} --start-child=\"paraview\" --html=on --pidfile=/tmp/xprapid"
+    - name: Wait for Xpra PID file
+      wait_for:
+        timeout: 60
+        delay: 5
+        sleep: 5
+        path: /tmp/xprapid
+    - name: Get Xpra pid file content
+      slurp:
+          src: "/tmp/xprapid"
+      register: xprapid_file
+    - name: Set Job ID
+      set_fact:
+        TOSCA_JOB_ID: "{{ xprapid_file.content | b64decode }}"
+    - name: Set Job status
+      set_fact:
+        TOSCA_JOB_STATUS: "SUBMITTED"
+    - name: Set XPRA_SUBMIT_DATE_EPOCH
+      set_fact:
+        XPRA_SUBMIT_DATE_EPOCH: "{{ ansible_date_time.epoch }}"
