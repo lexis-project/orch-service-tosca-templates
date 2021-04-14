@@ -3,4 +3,4 @@
   strategy: free
   tasks:
     - name: Start Xpra
-      command: "/bin/xpra start --bind-tcp=0.0.0.0:{{ PORT }} --start-child=\"paraview\" --html=on"
+      command: "xpra start --bind-tcp=0.0.0.0:{{ PORT }} --start-child=\"paraview\" --html=on"

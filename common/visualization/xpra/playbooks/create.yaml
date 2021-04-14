@@ -13,7 +13,7 @@
         state: present
         update_cache: yes
       when: ansible_os_family == 'RedHat'
-    - name: Import key used for signing the packages
+    - name: RedHat - Import key used for signing the packages
       rpm_key:
         state: present
         key: https://xpra.org/gpg.asc
@@ -25,7 +25,7 @@
         recurse: yes
         mode: 0755
       when: ansible_os_family == 'RedHat'
-    - name: Add repository
+    - name: RedHat - Add repository
       get_url:
         url: "https://xpra.org/repos/CentOS/xpra.repo"
         dest: "/etc/yum.repos.d/xpra.repo"
@@ -35,9 +35,43 @@
       dnf:
         name: xpra
         state: present
+        update_cache: yes
       when: ansible_os_family == 'RedHat'
+    - name: Debian - install gpg
+      apt:
+        name:
+          - gpg
+        state: present
+        update_cache: yes
+      when: ansible_os_family == 'Debian'
+    - name: Debian - Import key used for signing the packages
+      apt_key:
+        url: https://xpra.org/gpg.asc
+        state: present
+      when: ansible_os_family == 'Debian'
+    - name: Debian - Add repository
+      get_url:
+        url: "https://xpra.org/repos/{{ ansible_distribution_release }}/xpra.list"
+        dest: "/etc/apt/sources.list.d/xpra.list"
+        mode: 0755
+      when: ansible_os_family == 'Debian'
+    - name: Debian - install xrpa
+      apt:
+        name:
+          - xpra
+        state: present
+        update_cache: yes
+      when: ansible_os_family == 'Debian'
     - name: RedHat - install paraview
       dnf:
         name: paraview
         state: present
+        update_cache: yes
       when: ansible_os_family == 'RedHat'
+    - name: Debian - install paraview
+      apt:
+        name:
+          - paraview
+        state: present
+        update_cache: yes
+      when: ansible_os_family == 'Debian'
