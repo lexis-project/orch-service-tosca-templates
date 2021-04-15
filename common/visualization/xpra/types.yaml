@@ -22,7 +22,6 @@ node_types:
     attributes:
       rand_pass: {get_operation_output: [SELF, Standard, create, RAND_PASS]}
       endpoint: {get_operation_output: [SELF, Standard, start, ENDPOINT]}
-#      url: { concat: ["http://", get_attribute: [HOST, public_ip_address], ":", get_property: [SELF, port], "/index.html?password=", get_attribute: [SELF, rand_pass] ] }
       url: { concat: ["https://", get_attribute: [HOST, public_ip_address], ":", get_property: [SELF, port], get_attribute: [SELF, endpoint] ] }
     interfaces:
       Standard:
