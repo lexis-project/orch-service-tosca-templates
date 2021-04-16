@@ -13,9 +13,9 @@
     - meta: end_play
       when: not xpra_pid.stat.exists
 
-    - name: Get elasped time
+    - name: Get elasped time in minutes
       set_fact:
-        elapsedTime: "{{ (ansible_date_time.epoch | int)  - (SUBMIT_DATE_EPOCH | int) }}"
+        elapsedTime: "{{ ((ansible_date_time.epoch | int)  - (SUBMIT_DATE_EPOCH | int)) / 60 }}"
     - name: Job status is running if wall time is not yet reached
       set_fact:
         TOSCA_JOB_STATUS: "RUNNING"

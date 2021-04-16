@@ -2,8 +2,23 @@
   hosts: all
   strategy: free
   tasks:
-    - name: Start Xrv
-      command: "/bin/xpra start --bind-tcp=0.0.0.0:{{ PORT }} --start-child=\"paraview\" --html=on --pidfile=/tmp/xprapid"
+    - name: Create password file
+      copy:
+        content: "{{ RAND_PASS }}"
+        dest: "{{ansible_env.HOME}}/.password.txt"
+    - name: Get xpra certificate
+      copy:
+        src: /etc/xpra/ssl-cert.pem
+        dest: "{{ansible_env.HOME}}/.ssl-cert-xpra.pem"
+        owner: "{{ ansible_env.USER }}"
+        remote_src: yes
+      become: yes
+      become_method: sudo
+    - name: Start Xpra
+      command: "xpra start --bind-wss=0.0.0.0:{{ PORT }} --exit-with-children --start-child=\"paraview\" --html=on --pidfile=/tmp/xprapid --wss-auth=file:filename={{ansible_env.HOME}}/.password.txt --ssl-cert {{ansible_env.HOME}}/.ssl-cert-xpra.pem"
+    - name: Expose endpoint as operation output
+      set_fact:
+        ENDPOINT: "/index.html?password={{ RAND_PASS }}"
     - name: Wait for Xpra PID file
       wait_for:
         timeout: 60
