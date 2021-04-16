@@ -11,3 +11,11 @@
       become: true
       become_method: sudo
       when: as_user != ""
+    - name: "Update permissions"
+      file:
+        path: "{{ destination }}"
+        recurse: yes
+        mode: 0777
+      become: true
+      become_method: sudo
+      when: as_user != ""
