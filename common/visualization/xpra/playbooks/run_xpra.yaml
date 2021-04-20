@@ -6,9 +6,9 @@
       stat:
         path: "/proc/{{ TOSCA_JOB_ID }}/status"
       register: xpra_pid
-    - name: Job status failed if the process doesn't run anymore
+    - name: Job status completed if the process doesn't run anymore (user stopped Xpra from menu)
       set_fact:
-        TOSCA_JOB_STATUS: "FAILED"
+        TOSCA_JOB_STATUS: "COMPLETED"
       when: not xpra_pid.stat.exists
     - meta: end_play
       when: not xpra_pid.stat.exists
