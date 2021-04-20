@@ -16,8 +16,8 @@ imports:
   - docker-types:3.0.0
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
-  - org.lexis.common.heappe-types:1.0.3
-  - org.lexis.common.ddi-types:0.1.3
+  - org.lexis.common.heappe-types:1.0.6
+  - org.lexis.common.ddi-types:0.1.4
   - org.lexis.common.dynamic-orchestration-types:0.1.0
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
 
@@ -25,7 +25,7 @@ topology_template:
   #
   # Input parameters.
   # The only required parameter is the OpenID Connect token.
-  # Other paramters have default values.
+  # Other parameters have default values.
   #
   # Naming convention expected by LEXIS Portal:
   # - input parameters used in the pre-processing phase start with preprocessing_
@@ -37,7 +37,7 @@ topology_template:
   inputs:
     token:
       type: string
-      description: "Access token"
+      description: "OpenID Connect token"
       required: true
     preprocessing_dataset_path_input_data:
       type: string
@@ -206,7 +206,7 @@ topology_template:
     DDIToCloudInputDatasetJob:
       type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
-        token: { get_input: token }
+        token: {get_input: token}
         ddi_dataset_path: { get_input: preprocessing_dataset_path_input_data }
         cloud_staging_area_directory_path: "lexis_test_preprocessing"
         timestamp_cloud_staging_area_directory: true
@@ -242,7 +242,7 @@ topology_template:
     FindCloudLocation:
       type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
       properties:
-        token: { get_input: token }
+        token: {get_input: token}
       requirements:
         - InputDataset:
             type_requirement: input_dataset
@@ -272,7 +272,7 @@ topology_template:
     MountInputDataset:
       type: org.lexis.common.datatransfer.nodes.SSHMountStagingAreaDataset
       properties:
-        token: { get_input: token }
+        token: {get_input: token}
         mount_point_directory: { get_input: preprocessing_mount_point_input_dataset }
       requirements:
         - ddi_access:
@@ -326,7 +326,6 @@ topology_template:
         keep_volumes: true
         restart_policy: no
         cpu_share: 1.0
-        mem_share: "128 MB"
         volumes: {get_input: preprocessing_container_volumes}
         docker_env_vars: {get_input: preprocessing_container_env_vars}
       requirements:
@@ -352,7 +351,7 @@ topology_template:
     FindHPCLocationJob:
       type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
       properties:
-        token: { get_input: token }
+        token: {get_input: token}
       requirements:
         - InputDataset:
             type_requirement: input_dataset
@@ -371,7 +370,7 @@ topology_template:
       metadata:
         task: computation
       properties:
-        token: { get_input: token }
+        token: {get_input: token}
         JobSpecification: { get_input: computation_heappe_job }
 
     # Component managing the transfer of data from the cloud staging area to the
@@ -397,7 +396,7 @@ topology_template:
     HPCToDDIJob:
       type: org.lexis.common.ddi.nodes.HPCToDDIJob
       properties:
-        token: { get_input: token }
+        token: {get_input: token}
         metadata: { get_input: computation_result_dataset_metadata }
         ddi_path: { get_input: postprocessing_ddi_path }
         task_name: { get_input: computation_heappe_task_name }
@@ -452,7 +451,6 @@ topology_template:
         keep_volumes: true
         restart_policy: no
         cpu_share: 1.0
-        mem_share: "128 MB"
         volumes: {get_input: postprocessing_container_volumes}
         docker_env_vars: {get_input: postprocessing_container_env_vars}
       requirements:
@@ -501,7 +499,7 @@ topology_template:
       type: org.lexis.common.ddi.nodes.CloudToDDIJob
       properties:
         metadata: { get_input: postprocessing_result_dataset_metadata }
-        token: { get_input: token }
+        token: {get_input: token}
         ddi_path: { get_input: postprocessing_ddi_path }
       requirements:
         - cloud_area_directory_provider:
@@ -514,7 +512,7 @@ topology_template:
     CleanupCloudStagingAreaJob:
       type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
       properties:
-        token: { get_input: token }
+        token: {get_input: token}
       requirements:
         - cloud_area_dataset_provider:
             type_requirement: cloud_area_dataset_provider
