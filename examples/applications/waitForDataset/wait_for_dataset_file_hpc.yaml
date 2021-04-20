@@ -9,8 +9,8 @@ description: ""
 
 imports:
   - yorc-types:1.1.0
-  - org.lexis.common.heappe-types:1.0.3
-  - org.lexis.common.ddi-types:0.1.3
+  - org.lexis.common.heappe-types:1.0.6
+  - org.lexis.common.ddi-types:0.1.4
   - tosca-normative-types:1.0.0-ALIEN20
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
 
@@ -18,7 +18,7 @@ topology_template:
   inputs:
     token:
       type: string
-      description: "Access token"
+      description: "OpenID Connect token"
       required: true
     metadata:
       type: org.lexis.common.ddi.types.Metadata

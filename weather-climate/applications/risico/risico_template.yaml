@@ -13,8 +13,8 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
-  - org.lexis.common.heappe-types:1.0.3
-  - org.lexis.common.ddi-types:0.1.3
+  - org.lexis.common.heappe-types:1.0.6
+  - org.lexis.common.ddi-types:0.1.4
   - org.lexis.common.dynamic-orchestration-types:0.1.0
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
@@ -26,8 +26,8 @@ topology_template:
   inputs:
     token:
       type: string
+      description: "OpenID Connect token"
       required: true
-      description: "Access token"
     preprocessing_start_date:
       type: string
       description: Download GFS files from this date, format YYYYMMDDHH
@@ -43,7 +43,7 @@ topology_template:
     preprocessing_image:
       type: string
       description: Pre-processing container repository path
-      default: "cimafoundation/wps-da.gfs:v2.0.0"
+      default: "cimafoundation/wps-da.gfs:v2.0.2"
       required: false
     preprocessing_dataset_geographical_data:
       type: string
@@ -205,9 +205,9 @@ topology_template:
         keep_volumes: true
         restart_policy: no
         cpu_share: 1.0
-        mem_share: "128 MB"
+        shm_size: "64 GB"
         volumes: {get_input: preprocessing_volumes}
-        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_end_date, "\", \"WPS_MODE\": \"WARMUP\"}"]}
+        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_end_date, "\", \"WPS_MODE\": \"WARMUPDA\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
@@ -226,7 +226,7 @@ topology_template:
         start_date: {get_input: preprocessing_start_date}
         end_date: {get_input: preprocessing_end_date}
         number_of_past_days: 2
-        with_data_assimilation: false
+        with_data_assimilation: true
         left_longitude: "-19.0"
         right_longitude: "48.0"
         top_latitude: "64.0"
@@ -553,7 +553,6 @@ topology_template:
         keep_volumes: true
         restart_policy: no
         cpu_share: 1.0
-        mem_share: "128 MB"
         volumes: ["/risico_data/:/home/risico/data"]
         docker_env_vars:  {concat: ["{\"RISICO_RUN_DATE\": \"", get_input: postprocessing_risico_run_date, "0000\"}"]}
       requirements:

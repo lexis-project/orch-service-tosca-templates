@@ -34,7 +34,7 @@ description: RISICO template
 # so that they can be instantiated in our template
 imports:
   - yorc-types:1.1.0
-  - org.lexis.common.heappe-types:1.0.3
+  - org.lexis.common.heappe-types:1.0.6
 
 # Section topology_template describe the application template:
 # input parameters, components and relationships, outputs, workflows
@@ -44,7 +44,7 @@ topology_template:
     token:
       type: string
       required: true
-      description: "Access token"
+      description: "OpenID Connect token"
     ...
   # Description of components and relationships between these components
   node_templates:
@@ -88,7 +88,7 @@ This section allows to import archives from the Alien4Cloud catalog, to add data
 For example, this import:
 ```yaml
 imports:
-  - org.lexis.common.heappe-types:1.0.3
+  - org.lexis.common.heappe-types:1.0.6
 ```
 
 will import from Alien4Cloud the definition of HEAppE data types and node types
@@ -135,7 +135,7 @@ node_types:
     # Properties having static values
     properties:
       token:
-        description: Access token
+        description: OpenID Connect token
         type: string
         required: false
       JobSpecification:
@@ -207,7 +207,7 @@ thanks to these lines in the import section:
 # Section imports declare which types to import from Alien4Cloud catalog
 # so that they can be instantiated in our template
 imports:
-  - org.lexis.common.heappe-types:1.0.3
+  - org.lexis.common.heappe-types:1.0.6
 ```
 
 <a name="topology_template"></a>
@@ -231,7 +231,7 @@ topology_template:
     token:
       type: string
       required: true
-      description: "Access token"
+      description: "OpenID Connect token"
 ```
 
 These input parameters can be referenced in the next section node_templates in

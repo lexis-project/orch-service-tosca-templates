@@ -6,8 +6,8 @@ metadata:
   template_author: lexis
 
 imports:
-  - org.lexis.common.heappe-types:1.0.3
-  - org.lexis.common.ddi-types:0.1.3
+  - org.lexis.common.heappe-types:1.0.6
+  - org.lexis.common.ddi-types:0.1.4
   - org.ystia.docker.images:3.0.0-SNAPSHOT
   - yorc-types:1.1.0
 node_types:
@@ -150,7 +150,7 @@ node_types:
         type: string
         required: true
       destination:
-        description: Destination file or directory
+        description: Destination file or directory (if directory, must exist)
         type: string
         required: true
       as_user:
@@ -633,7 +633,7 @@ node_types:
        SSH mount the directory of a dataset in the staging area
     properties:
       token:
-        description: Access token
+        description: OpenID Connect token
         type: string
         required: true
       mount_point_directory:

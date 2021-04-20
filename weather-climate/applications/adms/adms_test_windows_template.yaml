@@ -19,7 +19,7 @@ topology_template:
     token:
       type: string
       required: true
-      description: "Access token"
+      description: "OpenID Connect token"
     postprocessing_adms_type:
       type: string
       description: type of ADMS simulation executed, urban or industrial

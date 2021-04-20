@@ -12,16 +12,16 @@ imports:
   - yorc-openstack-types:3.0.0
   - tosca-normative-types:1.0.0-ALIEN20
   - alien-base-types:3.0.0
-  - org.lexis.common.ddi-types:0.1.3
+  - org.lexis.common.ddi-types:0.1.4
   - org.lexis.common.dynamic-orchestration-types:0.1.0
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
   - org.lexis.common.visualization.xpra:0.1.0
 
 topology_template:
   inputs:
-    accessToken:
+    token:
       type: string
-      description: "OpenID Connect Access token"
+      description: "OpenID Connect token"
       required: true
     visualization_dataset_path_input_data:
       type: string
@@ -55,14 +55,14 @@ topology_template:
     InputDatasetInfoJob:
       type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
       properties:
-        accessToken: {get_input: accessToken}
+        token: {get_input: token}
         dataset_path: {get_input: visualization_dataset_path_input_data}
 
     # Find the best cloud location depending on the input dataset and needed cloud resources
     FindCloudLocationJob:
       type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
       properties:
-        accessToken: { get_input: accessToken }
+        token: { get_input: token }
       requirements:
         - InputDataset:
             type_requirement: input_dataset
@@ -112,7 +112,7 @@ topology_template:
     DDIToCloudDatasetJob:
       type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
-        accessToken: { get_input: accessToken }
+        token: { get_input: token }
         ddi_dataset_path: { get_input: visualization_dataset_path_input_data }
         cloud_staging_area_directory_path: "visualization"
         timestamp_cloud_staging_area_directory: true
@@ -137,7 +137,7 @@ topology_template:
     MountDataset:
       type: org.lexis.common.datatransfer.nodes.SSHMountStagingAreaDataset
       properties:
-        accessToken: { get_input: accessToken }
+        token: { get_input: token }
         mount_point_directory: { get_input: mount_point }
       requirements:
         - ddi_access:
@@ -199,7 +199,7 @@ topology_template:
     DeleteCloudDataJob:
       type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
       properties:
-        accessToken: { get_input: accessToken }
+        token: { get_input: token }
       requirements:
         - cloud_area_dataset_provider:
             type_requirement: cloud_area_dataset_provider

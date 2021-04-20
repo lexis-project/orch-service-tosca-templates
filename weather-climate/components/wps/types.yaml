@@ -23,7 +23,7 @@ node_types:
         description: Download GFS files up to this date, format YYYYMMDDHH
         required: true
       number_of_past_days:
-        type: string
+        type: integer
         description: Download additional warmup data for this given number of days before the start date
         required: true
       output_directory:

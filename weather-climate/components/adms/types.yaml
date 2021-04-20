@@ -17,7 +17,7 @@ node_types:
         description: type of ADMS simulation executed, urban or industrial
         required: true
       token:
-        description: Access token
+        description: OpenID Connect token
         type: string
         required: true
       dataset_title_adms_result:
