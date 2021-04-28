@@ -236,7 +236,7 @@ topology_template:
             capability: org.lexis.common.heappe.capabilities.HeappeJob
             relationship: org.lexis.common.heappe.relationships.GetResultsFromJob
   outputs:
-    XpraJob_url:
+    visualization_url:
       value: { get_attribute: [ XpraJob, url ] }
     postprocessing_dataset_result_path:
       description: DDI path to OpenFOAM results

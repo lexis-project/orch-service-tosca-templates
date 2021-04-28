@@ -207,7 +207,7 @@ topology_template:
             capability: org.lexis.common.ddi.capabilities.DataTransferCloud
             relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
   outputs:
-    XpraJob_url:
+    visualization_url:
       description: URL of the remote visualization session
       value: { get_attribute: [ XpraJob, url ] }
   workflows:
