@@ -135,7 +135,7 @@ topology_template:
 
     # Mount the cloud staging area directory on the Compute instance
     MountDataset:
-      type: org.lexis.common.datatransfer.nodes.SSHMountStagingAreaDataset
+      type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
       properties:
         token: { get_input: token }
         mount_point_directory: { get_input: mount_point }
@@ -330,6 +330,12 @@ topology_template:
           activities:
             - set_state: created
           on_success:
+            - MountDataset_refresh_token
+        MountDataset_refresh_token:
+          target: MountDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
             - MountDataset_start
         MountDataset_start:
           target: MountDataset
@@ -393,6 +399,12 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - MountDataset_refresh_token_for_stop
+        MountDataset_refresh_token_for_stop:
+          target: MountDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
             - MountDataset_stop
         MountDataset_stop:
           target: MountDataset
@@ -447,6 +459,12 @@ topology_template:
     # Unmount dataset from cloud staging area
     unmountCloudStagingAreaDataset:
       steps:
+        MountDataset_refresh_token_for_stop:
+          target: MountDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountDataset_stop
         MountDataset_stop:
           target: MountDataset
           activities:

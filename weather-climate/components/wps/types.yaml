@@ -5,6 +5,8 @@ metadata:
   template_version: 0.1.1-SNAPSHOT
   template_author: lexis
 
+description: WPS types - WRF pre-processing
+
 imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - yorc-types:1.1.0
@@ -121,14 +123,28 @@ node_types:
     derived_from: tosca.nodes.SoftwareComponent
     description: Download ECMWF data
     properties:
-      date:
+      start_date:
         type: string
-        description: Download ECMWF data for this date, format YYYYMMDDHH
+        description: Start date, format YYYYMMDDHH
+        required: true
+      wps_mode:
+        type: string
+        description: WPS mode - can WRF or WARMUP, or for data assimiliation WRFDA or WARMUPDA
         required: true
       output_directory:
         type: string
         description: Absolute path to directory where to store donwloaded data
         required: true
+      number_of_hours:
+        type: integer
+        description: number of hours of data to get
+        required: false
+        default: 48
+      past_day:
+        type: integer
+        description: Download warmup data for this nth day before the start_date
+        required: false
+        default: 0
     interfaces:
       Standard:
         inputs:
@@ -137,7 +153,10 @@ node_types:
           implementation: playbooks/install_ecmwf_dependencies.yaml
         start:
           inputs:
-            DATE: {get_property: [SELF, date]}
+            START_DATE: {get_property: [SELF, start_date]}
+            PAST_DAY: {get_property: [SELF, past_day]}
+            NUMBER_OF_HOURS: {get_property: [SELF, number_of_hours]}
+            WPS_MODE: {get_property: [SELF, wps_mode]}
             EMAIL_ADDRESS: { get_secret: ["/secret/wp7/ecmwf/creds", "data=email"]}
             KEY: { get_secret: ["/secret/wp7/ecmwf/creds", "data=key"]}
           implementation: scripts/download_ecmwf.py

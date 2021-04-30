@@ -11,39 +11,22 @@
     - name: Get python major version
       set_fact:
         python_major_version: "{{pri.python_version | replace('\n', '') | regex_replace('^(\\d+).*', '\\1') }}"
-    - name: RedHat - install python3
-      yum:
-        name: python3
-        state: present
-        update_cache: yes
-      when: python_major_version == "2" and ansible_os_family == 'RedHat'
-    - name: Debian - install python3
-      apt:
-        name: python3
-        state: present
-        update_cache: yes
-      when: python_major_version == "2" and ansible_os_family == 'Debian'
-    - name: Create a symbolic link to python installed version
-      file:
-        src: /usr/bin/python3
-        dest: /usr/bin/python
-        state: link
+    - name: Check python3 requirement
+      fail:
+         msg: This component requires python3
       when: python_major_version == "2"
-    - name: Create a symbolic link to python pre-installed version
-      file:
-        src: "{{ pri.python }}"
-        dest: /usr/bin/python
-        state: link
-      when: python_major_version == "3"
-    - name: RedHat - install prerequisites
-      yum:
-        name: python3-pip
+    - name: RedHat -  install requirements
+      dnf:
+        name:
+          - python3-pip
+          - git
         state: present
-        update_cache: yes
       when: ansible_os_family == 'RedHat'
-    - name: Debian - install prerequisites
+    - name: Debian - install requirements
       apt:
-        name: python3-pip
+        name:
+          - python3-pip
+          - git
         state: present
         update_cache: yes
       when: ansible_os_family == 'Debian'

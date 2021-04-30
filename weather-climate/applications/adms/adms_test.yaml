@@ -137,7 +137,7 @@ topology_template:
         - mountedCloudStagingArea:
             type_requirement: mounted_staging_area
             node: MountStagingArea
-            capability: org.lexis.common.datatransfer.capabilities.MountedStagingAreaAccess
+            capability: org.lexis.common.ddi.capabilities.MountedStagingAreaAccess
             relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
         - hostedOnComputeHost:
             type_requirement: host

@@ -143,7 +143,7 @@ topology_template:
             capability: tosca.capabilities.OperatingSystem
             relationship: org.lexis.common.ddi.relationships.SameSite
     MountGEOGDataset:
-      type: org.lexis.common.datatransfer.nodes.SSHMountStagingAreaDataset
+      type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
       properties:
         token: { get_input: token }
         mount_point_directory: "/mnt/cloud_staging_area/risico"
@@ -575,7 +575,7 @@ topology_template:
         - mountedCloudStagingArea:
             type_requirement: mounted_staging_area
             node: MountGEOGDataset
-            capability: org.lexis.common.datatransfer.capabilities.MountedStagingAreaAccess
+            capability: org.lexis.common.ddi.capabilities.MountedStagingAreaAccess
             relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
         - hostedOnComputeHost:
             type_requirement: host
@@ -617,7 +617,7 @@ topology_template:
         - mountedCloudStagingArea:
             type_requirement: mounted_staging_area
             node: MountGEOGDataset
-            capability: org.lexis.common.datatransfer.capabilities.MountedStagingAreaAccess
+            capability: org.lexis.common.ddi.capabilities.MountedStagingAreaAccess
             relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
         - hostedOnComputeHost:
             type_requirement: host
@@ -803,6 +803,12 @@ topology_template:
           target: MountGEOGDataset
           activities:
             - set_state: created
+          on_success:
+            - MountGEOGDataset_refresh_token
+        MountGEOGDataset_refresh_token:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: custom.refresh_token
           on_success:
             - MountGEOGDataset_start
         MountGEOGDataset_start:
@@ -1346,6 +1352,12 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - MountGEOGDataset_refresh_token_for_stop
+        MountGEOGDataset_refresh_token_for_stop:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
             - MountGEOGDataset_stop
         MountGEOGDataset_stop:
           target: MountGEOGDataset
@@ -1404,6 +1416,12 @@ topology_template:
             - delegate: uninstall
     cleanupRun:
       steps:
+        MountGEOGDataset_refresh_token:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountGEOGDataset_stop
         MountGEOGDataset_stop:
           target: MountGEOGDataset
           activities:
@@ -1870,6 +1888,12 @@ topology_template:
           target: CloudToDDIJob
           activities:
             - set_state: executed
+          on_success:
+            - MountGEOGDataset_refresh_token_for_stop
+        MountGEOGDataset_refresh_token_for_stop:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: custom.refresh_token
           on_success:
             - MountGEOGDataset_stop
         MountGEOGDataset_stop:

@@ -16,10 +16,6 @@ node_types:
         type: string
         description: type of ADMS simulation executed, urban or industrial
         required: true
-      token:
-        description: OpenID Connect token
-        type: string
-        required: true
       dataset_title_adms_result:
         type: string
         description: Which will be the title of the dataset containing ADMS results
@@ -63,12 +59,18 @@ node_types:
         description: IP address of a SPTP server where to store results (no upload to sftp server if not defined)
         required: false
         default: "/"
-      tmp_ddi_endpoint:
-        type: string
-        description: Temporary input for tests - REST Endpoint of the DDI
-        default: https://lexis-ddi.srv.lrz.de
-        required: false
+    requirements:
+      - ddi_access:
+          capability: org.lexis.common.ddi.capabilities.DDIAccess
+          relationship: org.lexis.common.ddi.relationships.DDIAccessProvider
+          occurrences: [1, 1]
     attributes:
+      access_token:
+        type: string
+        description: OpenID Connect access token
+      refresh_token:
+        type: string
+        description: OpenID Connect refresh token
       dataset_id_result: {get_operation_output: [SELF, Standard, start, DATASET_ID_RESULT]}
     interfaces:
       Standard:
@@ -77,7 +79,7 @@ node_types:
         start:
           inputs:
             ADMS_TYPE: {get_property: [SELF, adms_type]}
-            TOKEN: {get_property: [SELF, token]}
+            ACCESS_TOKEN: {get_attribute: [SELF, access_token]}
             METEO_DATASET_NAME: {get_property: [SELF, dataset_title_ncl_result]}
             ADMS_RESULT_DATASET_NAME: {get_property: [SELF, dataset_title_adms_result]}
             ADMS_URBAN_APP_DATASET: {get_property: [SELF, dataset_id_adms_urban_app]}
@@ -90,5 +92,5 @@ node_types:
             ADMS_SFTP_PASSWORD: { get_secret: ["/secret/wp7/adms/creds", "data=password"]}
             ADMS_SFTP_INDUSTRIAL_DIR: {get_property: [SELF, adms_sftp_industrial_dir]}
             ADMS_SFTP_URBAN_DIR: {get_property: [SELF, adms_sftp_urban_dir]}
-            DDI_ENDPOINT: {get_property: [SELF, tmp_ddi_endpoint]}
+            DATASET_URL: {get_attribute: [REQ_TARGET, ddi_access, dataset_url]}
           implementation: playbooks/adms_run.yaml

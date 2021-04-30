@@ -95,6 +95,22 @@ topology_template:
         os:
           properties:
             type: "windows"
+    GetDDIAccessWinVM:
+      type: org.lexis.common.ddi.nodes.DDIAccess
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: os
+            node: ADMS_WIN_VM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
+    RefreshTargetTokens:
+      type: org.lexis.common.ddi.nodes.RefreshTargetTokens
+      requirements:
+        - target:
+            type_requirement: target
+            node: ADMS
+            capability: tosca.capabilities.Node
+            relationship: tosca.relationships.DependsOn
     ADMS:
       type: org.lexis.wp7.nodes.ADMS
       properties:
@@ -111,6 +127,11 @@ topology_template:
         adms_sftp_industrial_dir: { get_input: postprocessing_adms_sftp_industrial_dir }
         adms_sftp_urban_dir: { get_input: postprocessing_adms_sftp_urban_dir }
       requirements:
+        - ddi_access:
+            type_requirement: ddi_access
+            node: GetDDIAccessWinVM
+            capability: org.lexis.common.ddi.capabilities.DDIAccess
+            relationship: org.lexis.common.ddi.relationships.DDIAccessProvider
         - hostedOnAdmsVmHost:
             type_requirement: host
             node: ADMS_WIN_VM
@@ -123,6 +144,30 @@ topology_template:
   workflows:
     testADMS:
       steps:
+        GetDDIAccessWinVM_start:
+          target: GetDDIAccessWinVM
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetDDIAccessWinVM_started
+        GetDDIAccess_started:
+          target: GetDDIAccessWinVM
+          activities:
+            - set_state: started
+          on_success:
+            - RefreshTargetTokens_start
+        RefreshTargetTokens_start:
+          target: RefreshTargetTokens
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshTargetTokens_started
+        RefreshTargetTokens_started:
+          target: RefreshTargetTokens
+          activities:
+            - set_state: started
+          on_success:
+            - ADMS_start
         ADMS_start:
           target: ADMS
           activities:

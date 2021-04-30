@@ -51,7 +51,7 @@ topology_template:
     preprocessing_docker_image:
       type: string
       description: Pre-processing container repository path
-      default: "cimafoundation/wps-da.gfs:v2.0.0"
+      default: "cimafoundation/wps-da.gfs:v2.0.2"
       required: false
     preprocessing_dataset_geographical_data:
       type: string
@@ -207,7 +207,7 @@ topology_template:
             capability: tosca.capabilities.OperatingSystem
             relationship: org.lexis.common.ddi.relationships.SameSite
     MountGEOGDataset:
-      type: org.lexis.common.datatransfer.nodes.SSHMountStagingAreaDataset
+      type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
       properties:
         token: { get_input: token }
         mount_point_directory: "/mnt/cloud_staging_area/adms"
@@ -411,7 +411,7 @@ topology_template:
         - mountedCloudStagingArea:
             type_requirement: mounted_staging_area
             node: MountGEOGDataset
-            capability: org.lexis.common.datatransfer.capabilities.MountedStagingAreaAccess
+            capability: org.lexis.common.ddi.capabilities.MountedStagingAreaAccess
             relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
         - hostedOnComputeHost:
             type_requirement: host
@@ -448,7 +448,7 @@ topology_template:
             capability: tosca.capabilities.OperatingSystem
             relationship: org.lexis.common.ddi.relationships.SameSite
     MountDockerImageDataset:
-      type: org.lexis.common.datatransfer.nodes.SSHMountStagingAreaDataset
+      type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
       properties:
         token: { get_input: token }
         mount_point_directory: "/mnt/cloud_staging_area/docker_image"
@@ -513,7 +513,7 @@ topology_template:
             capability: tosca.capabilities.OperatingSystem
             relationship: org.lexis.common.ddi.relationships.SameSite
     MountNCLScriptDataset:
-      type: org.lexis.common.datatransfer.nodes.SSHMountStagingAreaDataset
+      type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
       properties:
         token: { get_input: token }
         mount_point_directory: "/mnt/cloud_staging_area/ncl_script"
@@ -597,7 +597,7 @@ topology_template:
         - mountedCloudStagingArea:
             type_requirement: mounted_staging_area
             node: MountGEOGDataset
-            capability: org.lexis.common.datatransfer.capabilities.MountedStagingAreaAccess
+            capability: org.lexis.common.ddi.capabilities.MountedStagingAreaAccess
             relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
         - hostedOnComputeHost:
             type_requirement: host
@@ -696,6 +696,22 @@ topology_template:
         os:
           properties:
             type: "windows"
+    GetDDIAccessWinVM:
+      type: org.lexis.common.ddi.nodes.DDIAccess
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: os
+            node: ADMS_WIN_VM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
+    RefreshTargetTokens:
+      type: org.lexis.common.ddi.nodes.RefreshTargetTokens
+      requirements:
+        - target:
+            type_requirement: target
+            node: ADMS
+            capability: tosca.capabilities.Node
+            relationship: tosca.relationships.DependsOn
     ADMS:
       type: org.lexis.wp7.nodes.ADMS
       properties:
@@ -712,6 +728,11 @@ topology_template:
         adms_sftp_industrial_dir: { get_input: postprocessing_adms_sftp_industrial_dir }
         adms_sftp_urban_dir: { get_input: postprocessing_adms_sftp_urban_dir }
       requirements:
+        - ddi_access:
+            type_requirement: ddi_access
+            node: GetDDIAccessWinVM
+            capability: org.lexis.common.ddi.capabilities.DDIAccess
+            relationship: org.lexis.common.ddi.relationships.DDIAccessProvider
         - hostedOnAdmsVmHost:
             type_requirement: host
             node: ADMS_WIN_VM
@@ -868,6 +889,12 @@ topology_template:
           target: MountGEOGDataset
           activities:
             - set_state: created
+          on_success:
+            - MountGEOGDataset_refresh_token
+        MountGEOGDataset_refresh_token:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: custom.refresh_token
           on_success:
             - MountGEOGDataset_start
         MountGEOGDataset_start:
@@ -1179,6 +1206,12 @@ topology_template:
           activities:
             - set_state: created
           on_success:
+            - MountDockerImageDataset_refresh_token
+        MountDockerImageDataset_refresh_token:
+          target: MountDockerImageDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
             - MountDockerImageDataset_start
         MountDockerImageDataset_start:
           target: MountDockerImageDataset
@@ -1271,6 +1304,12 @@ topology_template:
           target: MountNCLScriptDataset
           activities:
             - set_state: created
+          on_success:
+            - MountNCLScriptDataset_refresh_token
+        MountNCLScriptDataset_refresh_token:
+          target: MountNCLScriptDataset
+          activities:
+            - call_operation: custom.refresh_token
           on_success:
             - MountNCLScriptDataset_start
         MountNCLScriptDataset_start:
@@ -1389,6 +1428,30 @@ topology_template:
           activities:
             - delegate: install
           on_success:
+            - GetDDIAccessWinVM_start
+        GetDDIAccessWinVM_start:
+          target: GetDDIAccessWinVM
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetDDIAccessWinVM_started
+        GetDDIAccess_started:
+          target: GetDDIAccessWinVM
+          activities:
+            - set_state: started
+          on_success:
+            - RefreshTargetTokens_start
+        RefreshTargetTokens_start:
+          target: RefreshTargetTokens
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshTargetTokens_started
+        RefreshTargetTokens_started:
+          target: RefreshTargetTokens
+          activities:
+            - set_state: started
+          on_success:
             - ADMS_start
         ADMS_start:
           target: ADMS
@@ -1402,9 +1465,9 @@ topology_template:
             - set_state: started
           on_success:
             - WindowsCompute_uninstall
-            - MountGEOGDataset_stop
-            - MountDockerImageDataset_stop
-            - MountNCLScriptDataset_stop
+            - MountGEOGDataset_refresh_token_for_stop
+            - MountDockerImageDataset_refresh_token_for_stop
+            - MountNCLScriptDataset_refresh_token_for_stop
         WindowsCompute_uninstall:
           target: ADMS_WIN_VM
           activities:
@@ -1417,6 +1480,12 @@ topology_template:
             - delegate: uninstall
           on_success:
             - Compute_uninstall
+        MountGEOGDataset_refresh_token_for_stop:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountGEOGDataset_stop
         MountGEOGDataset_stop:
           target: MountGEOGDataset
           activities:
@@ -1429,6 +1498,12 @@ topology_template:
             - set_state: stopped
           on_success:
             - DeleteCloudDataGEOGJob_create
+        MountDockerImageDataset_refresh_token_for_stop:
+          target: MountDockerImageDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountDockerImageDataset_stop
         MountDockerImageDataset_stop:
           target: MountDockerImageDataset
           activities:
@@ -1441,6 +1516,13 @@ topology_template:
             - set_state: stopped
           on_success:
             - DeleteCloudDataImageJob_create
+            - MountNCLScriptDataset_refresh_token
+        MountNCLScriptDataset_refresh_token_for_stop:
+          target: MountNCLScriptDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountNCLScriptDataset_stop
         MountNCLScriptDataset_stop:
           target: MountNCLScriptDataset
           activities:
@@ -1764,6 +1846,12 @@ topology_template:
           activities:
             - set_state: created
           on_success:
+            - MountDockerImageDataset_refresh_token
+        MountDockerImageDataset_refresh_token:
+          target: MountDockerImageDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
             - MountDockerImageDataset_start
         MountDockerImageDataset_start:
           target: MountDockerImageDataset
@@ -1856,6 +1944,12 @@ topology_template:
           target: MountNCLScriptDataset
           activities:
             - set_state: created
+          on_success:
+            - MountNCLScriptDataset_refresh_token
+        MountNCLScriptDataset_refresh_token:
+          target: MountNCLScriptDataset
+          activities:
+            - call_operation: custom.refresh_token
           on_success:
             - MountNCLScriptDataset_start
         MountNCLScriptDataset_start:
@@ -1974,6 +2068,30 @@ topology_template:
           activities:
             - delegate: install
           on_success:
+            - GetDDIAccessWinVM_start
+        GetDDIAccessWinVM_start:
+          target: GetDDIAccessWinVM
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetDDIAccessWinVM_started
+        GetDDIAccess_started:
+          target: GetDDIAccessWinVM
+          activities:
+            - set_state: started
+          on_success:
+            - RefreshTargetTokens_start
+        RefreshTargetTokens_start:
+          target: RefreshTargetTokens
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshTargetTokens_started
+        RefreshTargetTokens_started:
+          target: RefreshTargetTokens
+          activities:
+            - set_state: started
+          on_success:
             - ADMS_start
         ADMS_start:
           target: ADMS
@@ -1987,9 +2105,9 @@ topology_template:
             - set_state: started
           on_success:
             - WindowsCompute_uninstall
-            - MountGEOGDataset_stop
-            - MountDockerImageDataset_stop
-            - MountNCLScriptDataset_stop
+            - MountGEOGDataset_refresh_token_for_stop
+            - MountDockerImageDataset_refresh_token_for_stop
+            - MountNCLScriptDataset_refresh_token_for_stop
         WindowsCompute_uninstall:
           target: ADMS_WIN_VM
           activities:
@@ -2002,6 +2120,12 @@ topology_template:
             - delegate: uninstall
           on_success:
             - Compute_uninstall
+        MountGEOGDataset_refresh_token_for_stop:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountGEOGDataset_stop
         MountGEOGDataset_stop:
           target: MountGEOGDataset
           activities:
@@ -2014,6 +2138,12 @@ topology_template:
             - set_state: stopped
           on_success:
             - DeleteCloudDataGEOGJob_create
+        MountDockerImageDataset_refresh_token_for_stop:
+          target: MountDockerImageDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountDockerImageDataset_stop
         MountDockerImageDataset_stop:
           target: MountDockerImageDataset
           activities:
@@ -2026,6 +2156,12 @@ topology_template:
             - set_state: stopped
           on_success:
             - DeleteCloudDataImageJob_create
+        MountNCLScriptDataset_refresh_token_for_stop:
+          target: MountNCLScriptDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountNCLScriptDataset_stop
         MountNCLScriptDataset_stop:
           target: MountNCLScriptDataset
           activities:

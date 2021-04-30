@@ -5,6 +5,8 @@ metadata:
   template_version: 0.1.0
   template_author: lexis
 
+description: Continuum static data donwload component type
+
 imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - yorc-types:1.1.0
