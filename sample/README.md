@@ -80,7 +80,7 @@ The computation is now done, the final phase is a cleanup phase where infrastruc
 resources that were allocated for the computation are now released.
 Two branches run in parallel on the workflow:
 * the branch excuted after the transfer of HPC job results, taking care of deleting the job
-* the branch executed after the post-processing, taking care of cleaning up the Cloud Staging are
+* the branch executed after the post-processing, taking care of cleaning up the Cloud Staging area
   and deleting Cloud compute resources.
 
 ![cleanup](images/workflow6_cleanup.png)

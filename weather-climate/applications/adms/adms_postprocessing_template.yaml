@@ -27,6 +27,14 @@ topology_template:
       type: string
       description: "OpenID Connect token"
       required: true
+    project_id:
+      type: string
+      description: "LEXIS project identifier"
+      required: true
+    project_short_name:
+      type: string
+      description: "DDI project short name"
+      required: true
     postprocessing_MET_results_title:
       type: string
       description: Title of the MET processing results dataset to create in DDI
@@ -78,7 +86,7 @@ topology_template:
         description: IP address of a SPTP server where to store results (no upload to sftp server if not defined)
         required: false
         default: "/admsurban"
-    postprocessing_dataset_title_adms_result:
+    postprocessing_title_dataset_adms_result:
       type: string
       description: Which will be the title of the dataset containing ADMS results
       default: ADMS tests results
@@ -117,6 +125,8 @@ topology_template:
     # Find the best cloud location depending on the input dataset and needed cloud resources
     FindCloudLocationJob:
       type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
       properties:
         token: { get_input: token }
       requirements:
@@ -496,7 +506,7 @@ topology_template:
             capability: tosca.capabilities.OperatingSystem
             relationship: org.lexis.common.ddi.relationships.SameSite
     RefreshTargetTokens:
-      type: org.lexis.common.ddi.nodes.RefreshTargetTokens
+      type: org.lexis.common.dynamic.orchestration.nodes.RefreshTargetTokens
       requirements:
         - target:
             type_requirement: target
@@ -508,7 +518,7 @@ topology_template:
       properties:
         adms_type: { get_input: postprocessing_adms_type }
         token: { get_input: token }
-        dataset_title_adms_result: { get_input: postprocessing_dataset_title_adms_result }
+        dataset_title_adms_result: { get_input: postprocessing_title_dataset_adms_result }
         dataset_title_ncl_result: { get_input: postprocessing_MET_results_title }
         dataset_id_adms_urban_app: { get_input: postprocessing_dataset_id_adms_urban_app }
         dataset_id_adms_urban_static_data: { get_input: postprocessing_dataset_id_adms_urban_static_data }

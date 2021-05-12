@@ -368,7 +368,7 @@ Here for this application, these are result datasets paths in DDI.
     computation_dataset_wrf_result_path:
       description: DDI path to RISICO WRF results
       value: { get_attribute: [ CloudToDDIWRFJob, destination_path ] }
-    postprocessing_dataset_result_path:
+    postprocessing_ddi_project_path:
       description: DDI path to RISICO post-processing results
       value: { get_attribute: [ CloudToDDIJob, destination_path ] }
 ```

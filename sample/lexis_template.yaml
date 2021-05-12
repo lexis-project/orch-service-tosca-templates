@@ -32,17 +32,31 @@ topology_template:
   # - input parameters uded in the HOC computation phase start with computation_
   # - input parameters used in the postprocessing phase start with postprocessing_
   # - Paths of DDI dataset are expect to follow the experession <phase>_dataset_*
-  #   for example: preprocessing_dataset_path_input_data
+  #   for example: preprocessing_dataset_input_path
   #
   inputs:
     token:
       type: string
       description: "OpenID Connect token"
       required: true
-    preprocessing_dataset_path_input_data:
+    project_id:
+      type: string
+      description: "LEXIS project identifier"
+      required: true
+    preprocessing_dataset_input_path:
       type: string
       description: Dataset containing input data
-      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/7fc89bf4-1d13-11eb-ae7e-0050568fc9b5"
+      default: "project/proj6abfa10a181f20196814dd1cd6e62723/32e5dff4-9e7d-11eb-a9c7-0050568fcecc"
+      required: false
+    preprocessing_encrypted_input_dataset:
+      type: boolean
+      description: Is the input dataset encrypted
+      default: false
+      required: false
+    preprocessing_compressed_input_dataset:
+      type: boolean
+      description: Is the input dataset compressed
+      default: false
       required: false
     preprocessing_mount_point_input_dataset:
       type: string
@@ -72,7 +86,7 @@ topology_template:
         List of volumes to mount within the preprocessing container.
         Use docker CLI-style syntax: /host:/container[:mode]
       default:
-        - "/mnt/lexis_test/7fc89bf4-1d13-11eb-ae7e-0050568fc9b5:/input_dataset"
+        - "/mnt/lexis_test/32e5dff4-9e7d-11eb-a9c7-0050568fcecc:/input_dataset"
         - "/lexistest/output:/output"
       required: false
     preprocessing_output_directory:
@@ -108,7 +122,7 @@ topology_template:
       description: Name of the HEAppE job HPC task providing results to postprocess
       default: TestTemplate
       required: false
-    computation_result_dataset_metadata:
+    computation_metadtat_dataset_result:
       type: org.lexis.common.ddi.types.Metadata
       description: Metadata for the Computation results dataset to create in DDI
       default:
@@ -165,12 +179,12 @@ topology_template:
       description: Postprocessing output directory
       default: "/output_postprocessing"
       required: false
-    postprocessing_ddi_path:
+    postprocessing_ddi_project_path:
       type: string
       description: "Path where to transfer the post-processing results in DDI"
-      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c"
+      default: "project/proj6abfa10a181f20196814dd1cd6e62723"
       required: false
-    postprocessing_result_dataset_metadata:
+    postprocessing_metadata_dataset_result:
       type: org.lexis.common.ddi.types.Metadata
       description: Metadata for the postprocessing results dataset to create in DDI
       default:
@@ -182,6 +196,16 @@ topology_template:
           - "LEXIS Test worflow"
         resourceType: "Workflow result"
         title: "LEXIS Test workflow results"
+      required: false
+    postprocessing_encrypt_dataset_result:
+      type: boolean
+      description: Encrypt the result dataset
+      default: false
+      required: false
+    postprocessing_compress_dataset_result:
+      type: boolean
+      description: Compress the result dataset
+      default: false
       required: false
 
   #
@@ -208,14 +232,16 @@ topology_template:
       type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
       properties:
         token: {get_input: token}
-        dataset_path: {get_input: preprocessing_dataset_path_input_data}
+        dataset_path: {get_input: preprocessing_dataset_input_path}
 
     # DDI job managing the transfer of an input dataset from DDI to cloud staging area
     DDIToCloudInputDatasetJob:
       type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
         token: {get_input: token}
-        ddi_dataset_path: { get_input: preprocessing_dataset_path_input_data }
+        decrypt: {get_input: preprocessing_encrypted_input_dataset}
+        uncompress: {get_input: preprocessing_compressed_input_dataset}
+        ddi_dataset_path: { get_input: preprocessing_dataset_input_path }
         cloud_staging_area_directory_path: "lexis_test_preprocessing"
         timestamp_cloud_staging_area_directory: true
       requirements:
@@ -249,6 +275,8 @@ topology_template:
     # Find the best cloud location depending on the input dataset and needed cloud resources
     FindCloudLocation:
       type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
       properties:
         token: {get_input: token}
       requirements:
@@ -358,6 +386,8 @@ topology_template:
     # Find the best HPC location depending on the input dataset and needed HPC resources
     FindHPCLocationJob:
       type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
       properties:
         token: {get_input: token}
       requirements:
@@ -405,8 +435,10 @@ topology_template:
       type: org.lexis.common.ddi.nodes.HPCToDDIJob
       properties:
         token: {get_input: token}
-        metadata: { get_input: computation_result_dataset_metadata }
-        ddi_path: { get_input: postprocessing_ddi_path }
+        encrypt: {get_input: postprocessing_encrypt_dataset_result}
+        compress: {get_input: postprocessing_compress_dataset_result}
+        metadata: { get_input: computation_metadtat_dataset_result }
+        ddi_path: { get_input: postprocessing_ddi_project_path }
         task_name: { get_input: computation_heappe_task_name }
       requirements:
         - job:
@@ -506,9 +538,11 @@ topology_template:
     CloudToDDIJob:
       type: org.lexis.common.ddi.nodes.CloudToDDIJob
       properties:
-        metadata: { get_input: postprocessing_result_dataset_metadata }
+        metadata: { get_input: postprocessing_metadata_dataset_result }
         token: {get_input: token}
-        ddi_path: { get_input: postprocessing_ddi_path }
+        encrypt: {get_input: postprocessing_encrypt_dataset_result}
+        compress: {get_input: postprocessing_compress_dataset_result}
+        ddi_path: { get_input: postprocessing_ddi_project_path }
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
@@ -535,7 +569,7 @@ topology_template:
     computation_dataset_hpc_result_path:
       description: DDI path to HPC results
       value: { get_attribute: [ HPCToDDIJob, destination_path ] }
-    postprocessing_dataset_result_path:
+    postprocessing_ddi_project_path:
       description: DDI path to post-processing results
       value: { get_attribute: [ CloudToDDIJob, destination_path ] }
   

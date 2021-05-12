@@ -24,22 +24,46 @@ topology_template:
       type: string
       description: "OpenID Connect token"
       required: true
-    preprocessing_dataset_path_input_data:
+    project_id:
+      type: string
+      description: "LEXIS project identifier"
+      required: true
+    preprocessing_dataset_input_path:
       type: string
       description: Input dataset path in DDI
       required: true
-    postprocessing_title_dataset_result:
+    computation_title_dataset_result:
       type: string
       description: Title of the result dataset to create in DDI
       required: true
     visualization_walltime_minutes:
       type: integer
-      description: "Duration in minutes of the visualization task"
+      description: "Duration in minutes of the visualization session"
       required: true
-    postprocessing_ddi_path:
+    computation_ddi_project_path:
       type: string
-      description: "Path where to transfer the post-processing results in DDI: project/projxxx"
+      description: "Path of the project where to transfer the computation results in DDI: project/projxxx"
       required: true
+    preprocessing_encrypted_input_dataset:
+      type: boolean
+      description: Is the input dataset encrypted
+      default: false
+      required: false
+    preprocessing_compressed_input_dataset:
+      type: boolean
+      description: Is the input dataset compressed
+      default: false
+      required: false
+    computation_encrypt_result_dataset:
+      type: boolean
+      description: Encrypt the result dataset
+      default: false
+      required: false
+    computation_compress_result_dataset:
+      type: boolean
+      description: Compress the result dataset
+      default: false
+      required: false
     visualization_directory:
       type: string
       description: Directory where visualization data will be stored
@@ -47,10 +71,18 @@ topology_template:
       required: false
     visualization_port:
       type: integer
-      description: "Port to use"
+      description: "Port to use to expose the remote display (should be > 1024)"
       default: 8765
       required: false
   node_templates:
+    # Validation of the token provided in input
+    # Exchanging this token to have an access and refresh tokens
+    # for any component needing it in the workflow
+    ValidateExchangeToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.ValidateAndExchangeToken
+      properties:
+        token: {get_input: token}
+
     # Job gathering info on the input dataset:
     # - on which locations it is available
     # - size
@@ -60,10 +92,12 @@ topology_template:
       type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
       properties:
         token: {get_input: token}
-        dataset_path: {get_input: preprocessing_dataset_path_input_data}
+        dataset_path: {get_input: preprocessing_dataset_input_path}
     # Find the best HPC location depending on the input dataset and needed HPC resources
     FindHPCLocationJob:
       type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
       properties:
         token: {get_input: token}
       requirements:
@@ -114,7 +148,9 @@ topology_template:
         task: preprocessing
       properties:
         token: { get_input: token }
-        ddi_dataset_path: { get_input: preprocessing_dataset_path_input_data }
+        decrypt: {get_input: preprocessing_encrypted_input_dataset}
+        uncompress: {get_input: preprocessing_compressed_input_dataset}
+        ddi_dataset_path: { get_input: preprocessing_dataset_input_path }
         task_name: "OpenFoamParallel"
       requirements:
         - job:
@@ -129,8 +165,10 @@ topology_template:
         task: preprocessing
       properties:
         token: { get_input: token }
-        metadata: {concat: ["{\"creator\": [\"OpenFOAM workflow\"], \"contributor\": [\"OpenFOAM workflow\"], \"publisher\": [\"OpenFOAM workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"", get_input: postprocessing_title_dataset_result, "\"}"]}
-        ddi_path: { get_input: postprocessing_ddi_path }
+        encrypt: {get_input: computation_encrypt_result_dataset}
+        compress: {get_input: computation_compress_result_dataset}
+        metadata: {concat: ["{\"creator\": [\"OpenFOAM workflow\"], \"contributor\": [\"OpenFOAM workflow\"], \"publisher\": [\"OpenFOAM workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"", get_input: computation_title_dataset_result, "\"}"]}
+        ddi_path: { get_input: computation_ddi_project_path }
       requirements:
         - job:
             type_requirement: job
@@ -152,6 +190,8 @@ topology_template:
     # Find the best cloud location depending on the input dataset and needed cloud resources
     FindCloudLocationJob:
       type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
       properties:
         token: { get_input: token }
       requirements:
@@ -179,10 +219,12 @@ topology_template:
         host:
           properties:
             disk_size: "40 GB"
-            mem_size: "8 GB"
+            mem_size: "45 GB"
         os:
           properties:
             type: linux
+            # Using ubuntu for the paraview install
+            distribution: ubuntu
         scalable:
           properties:
             min_instances: 1
@@ -238,16 +280,24 @@ topology_template:
   outputs:
     visualization_url:
       value: { get_attribute: [ XpraJob, url ] }
-    postprocessing_dataset_result_path:
+    computation_ddi_project_path:
       description: DDI path to OpenFOAM results
       value: { get_attribute: [ HPCToDDIJob, destination_path ] }
   workflows:
+    # At deployment time, validating the input token and exchanging it
+    # to get an access/refresh token of all components needing it
     install:
       steps:
-        OpenFOAMJob_install:
-          target: OpenFOAMJob
+        ValidateExchangeToken_start:
+          target: ValidateExchangeToken
           activities:
-            - set_state: initial
+            - call_operation: Standard.start
+          on_success:
+            - ValidateExchangeToken_started
+        ValidateExchangeToken_started:
+          target: ValidateExchangeToken
+          activities:
+            - set_state: started
     Run:
       steps:
         # Submit DDI job to get info on dataset (DDI location where it is available, size...)
@@ -362,7 +412,7 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - GetPreprocessDatasetInfo_create
+            - GetHPCResultsDatasetInfo_start
             - HPCToDDIJob_create
         # Transfer HOC results to DDI
         HPCToDDIJob_create:
@@ -391,19 +441,13 @@ topology_template:
           activities:
             - set_state: executed
         #  Get info on HPC results dataset (size, number of files) 
-        GetPreprocessDatasetInfo_create:
-          target: GetHPCResultsDatasetInfo
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - GetPreprocessDatasetInfo_start
-        GetPreprocessDatasetInfo_start:
+        GetHPCResultsDatasetInfo_start:
           target: GetHPCResultsDatasetInfo
           activities:
             - call_operation: Standard.start
           on_success:
-            - GetPreprocessDatasetInfo_started
-        GetPreprocessDatasetInfo_started:
+            - GetHPCResultsDatasetInfo_started
+        GetHPCResultsDatasetInfo_started:
           target: GetHPCResultsDatasetInfo
           activities:
             - set_state: started

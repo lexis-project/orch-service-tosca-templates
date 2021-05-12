@@ -26,6 +26,10 @@ topology_template:
       type: string
       required: true
       description: "OpenID Connect token"
+    project_id:
+      type: string
+      description: "LEXIS project identifier"
+      required: true
     preprocessing_start_date:
       type: string
       description: Download GFS files from this date, format YYYYMMDDHH
@@ -69,6 +73,8 @@ topology_template:
     # Find the best cloud location depending on the input dataset and needed cloud resources
     FindCloudLocationJob:
       type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
       properties:
         token: { get_input: token }
       requirements:

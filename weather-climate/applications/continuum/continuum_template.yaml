@@ -28,6 +28,10 @@ topology_template:
       type: string
       required: true
       description: "OpenID Connect token"
+    project_id:
+      type: string
+      description: "LEXIS project identifier"
+      required: true
     preprocessing_start_date:
       type: string
       description: Download GFS files from this date, format YYYYMMDDHH
@@ -43,7 +47,7 @@ topology_template:
     preprocessing_image:
       type: string
       description: Pre-processing container repository path
-      default: "cimafoundation/wps-da.gfs:v2.0.2"
+      default: "cimafoundation/wps-da.gfs:v2.0.3"
     preprocessing_dataset_geographical_data:
       type: string
       description: Dataset containing geographical data
@@ -88,6 +92,8 @@ topology_template:
     # Find the best cloud location depending on the input dataset and needed cloud resources
     FindCloudLocationJob:
       type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
       properties:
         token: { get_input: token }
       requirements:
@@ -247,6 +253,8 @@ topology_template:
     # Find the best HPC location depending on the input dataset and needed HPC resources
     FindHPCLocationsJob:
       type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
       properties:
         token: { get_input: token }
       requirements:
@@ -1482,10 +1490,10 @@ topology_template:
             capability: org.lexis.common.ddi.capabilities.DataTransferCloud
             relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
   outputs:
-    postprocessing_dataset_result_path:
+    postprocessing_ddi_project_path:
       description: DDI path to Continuum post-processing results
       value: { get_attribute: [ CloudToDDIJob, destination_path ] }
-    computation_dataset_result_path:
+    computation_ddi_project_path:
       description: DDI path to Continuum WRF results
       value: { get_attribute: [ CloudToDDIWRFJob, destination_path ] }
   workflows:

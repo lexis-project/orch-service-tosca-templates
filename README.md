@@ -15,4 +15,4 @@ Repository of TOSCA components and Application Templates.
   * Computational Fluid Dynamics:
     * [OpenFOAM](computational-fluid-dynamics/applications/openfoam) workflow
   * Remote visualization:
-    * [Xpra](visualization/applications/xpra) Remove visualization on cloud compute instance with [Xpra](https://xpra.org/)
+    * [Xpra](visualization/applications/xpra) Remote visualization on cloud compute instance with [Xpra](https://xpra.org/)
