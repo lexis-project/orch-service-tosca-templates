@@ -37,7 +37,7 @@ The following output attributes are provided:
 
 Once the `XpraJob` job is running, the remote session URL is available in the Application outputs in Alien4Cloud.
 Click on it and you will get an access to the remote session with Paraview running.
-Select `File`> `Open` in Paraview, and select the data to visualize in the home directory `visualization` (by default).
+Select `File`> `Open` in Paraview, and select the data to visualize in the home directory `openfoam` (by default).
 Click on `Apply` in the `Properties` pane on the left hand side to visualize you data:
 
 ![Paraview](../../../visualization/applications/xpra/images/Paraview.png)
