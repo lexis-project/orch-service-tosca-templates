@@ -1,0 +1,46 @@
+- name: Install ECMWD dependencies
+  hosts: all
+  strategy: free
+  become: true
+  become_method: sudo
+  tasks:
+    - name: Get python version
+      python_requirements_info:
+      register: pri
+      failed_when: pri == None or pri.python_version == None or pri.python_version == ''
+    - name: Get python major version
+      set_fact:
+        python_major_version: "{{pri.python_version | replace('\n', '') | regex_replace('^(\\d+).*', '\\1') }}"
+    - name: Check python3 requirement
+      fail:
+         msg: This component requires python3
+      when: python_major_version == "2"
+    - name: RedHat -  install requirements
+      dnf:
+        name:
+          - python3-pip
+          - git
+        state: present
+      when: ansible_os_family == 'RedHat'
+    - name: Debian - install requirements
+      apt:
+        name:
+          - python3-pip
+          - git
+        state: present
+        update_cache: yes
+      when: ansible_os_family == 'Debian'
+    - name: Install latest Pip version
+      pip:
+        name: "pip"
+        state: latest
+    - name: Install polytope client
+      pip:
+        name: git+https://git.ecmwf.int/scm/lex/polytope-client.git@master
+        state: latest
+    - name: Create output directory
+      file:
+        path: "{{ OUTPUT_DIRECTORY }}"
+        state: directory
+        recurse: yes
+        mode: 0777

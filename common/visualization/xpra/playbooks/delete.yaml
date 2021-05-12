@@ -1,0 +1,11 @@
+- name: Install Xpra
+  hosts: all
+  strategy: free
+  become: true
+  become_method: sudo
+  tasks:
+    - name: RedHat -  uninstall Xpra
+      dnf:
+        name: xpra
+        state: absent
+      when: ansible_os_family == 'RedHat'

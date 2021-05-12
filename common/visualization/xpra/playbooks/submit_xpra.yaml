@@ -1,0 +1,40 @@
+- name: Submit Xpra
+  hosts: all
+  strategy: free
+  tasks:
+    - name: Create password file
+      copy:
+        content: "{{ RAND_PASS }}"
+        dest: "{{ansible_env.HOME}}/.password.txt"
+    - name: Get xpra certificate
+      copy:
+        src: /etc/xpra/ssl-cert.pem
+        dest: "{{ansible_env.HOME}}/.ssl-cert-xpra.pem"
+        owner: "{{ ansible_env.USER }}"
+        remote_src: yes
+      become: yes
+      become_method: sudo
+    - name: Start Xpra
+      command: "xpra start --bind-wss=0.0.0.0:{{ PORT }} --exit-with-children --start-child=\"paraview\" --html=on --pidfile=/tmp/xprapid --wss-auth=file:filename={{ansible_env.HOME}}/.password.txt --ssl-cert {{ansible_env.HOME}}/.ssl-cert-xpra.pem"
+    - name: Expose endpoint as operation output
+      set_fact:
+        ENDPOINT: "/index.html?password={{ RAND_PASS }}"
+    - name: Wait for Xpra PID file
+      wait_for:
+        timeout: 60
+        delay: 5
+        sleep: 5
+        path: /tmp/xprapid
+    - name: Get Xpra pid file content
+      slurp:
+          src: "/tmp/xprapid"
+      register: xprapid_file
+    - name: Set Job ID
+      set_fact:
+        TOSCA_JOB_ID: "{{ xprapid_file.content | b64decode }}"
+    - name: Set Job status
+      set_fact:
+        TOSCA_JOB_STATUS: "SUBMITTED"
+    - name: Set XPRA_SUBMIT_DATE_EPOCH
+      set_fact:
+        XPRA_SUBMIT_DATE_EPOCH: "{{ ansible_date_time.epoch }}"

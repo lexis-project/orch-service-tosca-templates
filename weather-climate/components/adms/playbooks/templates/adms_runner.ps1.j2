@@ -5,7 +5,7 @@
 # Template values:
 #
 # ADMS_TYPE:                      Type of ADMS simulation executed, urban or industrial
-# TOKEN:                          Access token
+# ACCESS_TOKEN:                   OpenID Connect access token
 # METEO_DATASET_NAME:             Title of the dataset containing NCL results
 # ADMS_RESULT_DATASET_NAME:       Which will be the title of the dataset containing ADMS results
 # ADMS_URBAN_APP_DATASET:         ID of the dataset containing the ADMSUrban.exe and corresponding files.
@@ -20,7 +20,7 @@
 # ADMS_SFTP_PASSWORD:             SFTP account password (can be empty)
 # ADMS_SFTP_INDUSTRIAL_DIR:       SFTP destination directory for the industrial case
 # ADMS_SFTP_URBAN_DIR:            SFTP destination directory for the urban case
-# DDI_ENDPOINT:                   REST Endpoint of the DDI
+# DATASET_URL:                    REST Endpoint of the DDI dataset API
 
 
 #industrial
@@ -45,7 +45,7 @@ $global:result_dataset_id = ""
 ####
 
 # Call DDI and pull the dataset to dataset.zip in current directory
-function PullDatasetDDI( $dataset, $token ,$ddi_endpoint)
+function PullDatasetDDI( $dataset, $token ,$dataset_url)
 {
 
 $header_auth = @{Authorization="Bearer $token"}
@@ -53,7 +53,7 @@ $body = @{push_method="directupload";internalID="$dataset";access="project";proj
 
 try
 {
-$response = Invoke-RestMethod -ContentType "application/json" -Method Post -Uri "$ddi_endpoint/demo/dataset/download" -Headers $header_auth -Body $body -OutFile "dataset_$dataset.zip"
+$response = Invoke-RestMethod -ContentType "application/json" -Method Post -Uri "$dataset_url/download" -Headers $header_auth -Body $body -OutFile "dataset_$dataset.zip"
 }
 catch [System.Net.WebException]
 {
@@ -66,14 +66,14 @@ Expand-Archive  "dataset_$dataset.zip"
 }
 
 # Find dataset ID by supplied name
-function FindDatasetByName( $name, $token, $ddi_endpoint)
+function FindDatasetByName( $name, $token, $dataset_url)
 {
 $header_auth = @{Authorization="Bearer $token"}
 $body = @{title="$name"} | ConvertTo-Json
 
 try
 {
-$response = Invoke-RestMethod -ContentType "application/json" -Method Post -Uri "$ddi_endpoint/demo/dataset/search/metadata" -Headers $header_auth -Body $body
+$response = Invoke-RestMethod -ContentType "application/json" -Method Post -Uri "$dataset_url/search/metadata" -Headers $header_auth -Body $body
 }
 catch [System.Net.WebException]
 {
@@ -98,7 +98,7 @@ Get-ChildItem -Directory $path
 }
 
 # Upload results to the DDI
-function UploadResults($file, $name, $token, $ddi_endpoint)
+function UploadResults($file, $name, $token, $dataset_url)
 {
 # Encode file
 $header_auth = @{Authorization="Bearer $token"}
@@ -111,7 +111,7 @@ $body = @{push_method="directupload";name="adms_run_result.zip";access="project"
 # Upload
 try
 {
-    $response = Invoke-RestMethod -ContentType "application/json" -Method Post -Uri "$ddi_endpoint/demo/dataset" -Headers $header_auth -Body $body
+    $response = Invoke-RestMethod -ContentType "application/json" -Method Post -Uri "$dataset_url" -Headers $header_auth -Body $body
 }
 catch [System.Net.WebException]
 {
@@ -157,7 +157,7 @@ Set-Location C:\adms
 
 #Download app
 echo "Pulling ADMS app dataset"
-$app_dataset_path = PullDatasetDDI $app_dataset {{TOKEN}} {{DDI_ENDPOINT}}
+$app_dataset_path = PullDatasetDDI $app_dataset {{ACCESS_TOKEN}} {{DATASET_URL}}
 $app_path = $(ExpandZipsInPlace $app_dataset_path)[0].FullName
 
 echo "Copying licence files"
@@ -167,15 +167,15 @@ Copy-Item "$app_path\systme" C:\Windows
 
 # Download the static dataset
 echo "Pulling static dataset"
-$static_dataset = PullDatasetDDI $app_static_dataset "{{TOKEN}}" "{{DDI_ENDPOINT}}"
+$static_dataset = PullDatasetDDI $app_static_dataset "{{ACCESS_TOKEN}}" "{{DATASET_URL}}"
 $static_data_path = $(ExpandZipsInPlace $static_dataset)[0].FullName
 
 
 # Download the meteo data
 echo "Looking for dataset by name: {{METEO_DATASET_NAME}}"
-$meteo_dataset_id = FindDatasetByName "{{METEO_DATASET_NAME}}" "{{TOKEN}}" "{{DDI_ENDPOINT}}"
+$meteo_dataset_id = FindDatasetByName "{{METEO_DATASET_NAME}}" "{{ACCESS_TOKEN}}" "{{DATASET_URL}}"
 echo "Pulling meteo data set: $meteo_dataset_id"
-$meteo_data_path = PullDatasetDDI $meteo_dataset_id "{{TOKEN}}" "{{DDI_ENDPOINT}}"
+$meteo_data_path = PullDatasetDDI $meteo_dataset_id "{{ACCESS_TOKEN}}" "{{DATASET_URL}}"
 $met_files = Get-ChildItem -Filter "*.met" $meteo_data_path\met
 
 if ($met_files.Length -eq 0)
@@ -202,7 +202,7 @@ Start-Process -Wait -FilePath "$app_path/$app_bin" -ArgumentList "/E2",$_.FullNa
 Compress-Archive -Path $static_data_path -DestinationPath C:\adms\results.zip
 
 # Upload them
-UploadResults C:\adms\results.zip "{{ADMS_RESULT_DATASET_NAME}}" "{{TOKEN}}" "{{DDI_ENDPOINT}}"
+UploadResults C:\adms\results.zip "{{ADMS_RESULT_DATASET_NAME}}" "{{ACCESS_TOKEN}}" "{{DATASET_URL}}"
 
 {% if ADMS_SFTP_SERVER_IP != "" %}
 # Rename result file before storing it to the SFTP server

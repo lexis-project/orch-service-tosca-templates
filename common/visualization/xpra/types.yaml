@@ -1,0 +1,78 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: org.lexis.common.visualization.xpra
+  template_version: 0.1.0
+  template_author: lexis
+
+description: Xpra types - remote display server and client
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - yorc-types:1.1.0
+node_types:
+  #
+  # Xpra visualization service
+  #
+  org.lexis.common.visualization.xpra.nodes.Xpra:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      port:
+        type: integer
+        description: Port to use
+        required: true
+    attributes:
+      rand_pass: {get_operation_output: [SELF, Standard, create, RAND_PASS]}
+      endpoint: {get_operation_output: [SELF, Standard, start, ENDPOINT]}
+      url: { concat: ["https://", get_attribute: [HOST, public_ip_address], ":", get_property: [SELF, port], get_attribute: [SELF, endpoint] ] }
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/create.yaml
+        start:
+          inputs:
+            PORT: { get_property: [SELF, port] }
+            RAND_PASS: { get_attribute: [SELF, rand_pass] }
+          implementation: playbooks/start.yaml
+        stop:
+          implementation: playbooks/stop.yaml
+        delete:
+          implementation: playbooks/delete.yaml
+  #
+  # Xpra visualization job - terminates after the specifed walltime
+  #
+  org.lexis.common.visualization.xpra.nodes.XpraCloudJob:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      port:
+        type: integer
+        description: Port to use
+        required: true
+      walltime_minutes:
+        type: integer
+        description: Duration in minutes of the job execution
+        required: true
+    attributes:
+      rand_pass: {get_operation_output: [SELF, Standard, create, RAND_PASS]}
+      submit_date_epoch: { get_operation_output: [SELF, tosca.interfaces.node.lifecycle.Runnable, submit, XPRA_SUBMIT_DATE_EPOCH] }
+      endpoint: {get_operation_output: [SELF, tosca.interfaces.node.lifecycle.Runnable, submit, ENDPOINT]}
+      url: { concat: ["https://", get_attribute: [HOST, public_ip_address], ":", get_property: [SELF, port], get_attribute: [SELF, endpoint] ] }
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/create.yaml
+        delete:
+          implementation: playbooks/delete.yaml
+      tosca.interfaces.node.lifecycle.Runnable:
+        submit:
+          inputs:
+            PORT: { get_property: [SELF, port] }
+            RAND_PASS: { get_attribute: [SELF, rand_pass] }
+          implementation: playbooks/submit_xpra.yaml
+        run:
+          inputs:
+            SUBMIT_DATE_EPOCH: {get_attribute: [SELF, submit_date_epoch] }
+            WALLTIME: {get_property: [SELF, walltime_minutes] }
+          implementation: playbooks/run_xpra.yaml
+        cancel:
+          implementation: playbooks/cancel_xpra.yaml

@@ -9,11 +9,13 @@ description: ADMS template
 
 imports:
   - yorc-types:1.1.0
+  - yorc-openstack-types:3.0.0
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
-  - org.lexis.common.ddi-types:0.1.3
-  - org.lexis.common.heappe-types:1.0.3
+  - org.lexis.common.ddi-types:0.1.4
+  - org.lexis.common.heappe-types:1.0.6
+  - org.lexis.common.dynamic-orchestration-types:0.1.0
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
@@ -25,7 +27,15 @@ topology_template:
     token:
       type: string
       required: true
-      description: "Access token"
+      description: "OpenID Connect token"
+    project_id:
+      type: string
+      description: "LEXIS project identifier"
+      required: true
+    project_short_name:
+      type: string
+      description: "DDI project short name"
+      required: true
     preprocessing_start_date:
       type: string
       description: Download GFS files from this date, format YYYYMMDDHH
@@ -49,7 +59,7 @@ topology_template:
     preprocessing_docker_image:
       type: string
       description: Pre-processing container repository path
-      default: "laurentg/wps.gfs:0.4.2"
+      default: "cimafoundation/wps-da.gfs:v2.0.3"
       required: false
     preprocessing_dataset_geographical_data:
       type: string
@@ -100,7 +110,7 @@ topology_template:
       description: Path where to transfer the post-processing results in DDI
       default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c"
       required: false
-    postprocessing_dataset_title_adms_result:
+    postprocessing_title_dataset_adms_result:
       type: string
       description: Which will be the title of the dataset containing ADMS results
       default: ADMS tests results
@@ -126,16 +136,48 @@ topology_template:
       default: "b6e09a96-25ac-11eb-bbae-0050568fcecc"
       required: false
   node_templates:
-    PublicNet:
-      type: tosca.nodes.Network
+    # Job gathering info on the input dataset:
+    # - on which locations it is available
+    # - size
+    # - number of files
+    # to take placement decisions on computing resources using this dataset
+    InputDatasetInfoJob:
+      type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
       properties:
-        ip_version: 4
+        token: {get_input: token}
+        dataset_path: {get_input: preprocessing_dataset_geographical_data}
+    # Find the best cloud location depending on the input dataset and needed cloud resources
+    FindCloudLocationJob:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
+      properties:
+        token: { get_input: token }
+      requirements:
+        - InputDataset:
+            type_requirement: input_dataset
+            node: InputDatasetInfoJob
+            capability: org.lexis.common.ddi.capabilities.DatasetInfo
+            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
+        - CloudResourceVM:
+            type_requirement: cloud_instance
+            node: ADMS_VM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.dynamic.orchestration.relationships.CloudResource
+        - CloudResourceWinVM:
+            type_requirement: cloud_instance
+            node: ADMS_WIN_VM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.dynamic.orchestration.relationships.CloudResource
+    # Floating IP address network
+    PublicNetADMSVM:
+      type: yorc.nodes.openstack.FloatingIP
     ADMS_VM:
       type: tosca.nodes.Compute
       requirements:
         - networkPublicNetConnection:
             type_requirement: network
-            node: PublicNet
+            node: PublicNetADMSVM
             capability: tosca.capabilities.Connectivity
             relationship: tosca.relationships.Network
       capabilities:
@@ -168,8 +210,14 @@ topology_template:
         ddi_dataset_path: { get_input: preprocessing_dataset_geographical_data }
         cloud_staging_area_directory_path: "adms_preprocessing_geog"
         timestamp_cloud_staging_area_directory: true
+      requirements:
+        - sameSite:
+            type_requirement: os
+            node: ADMS_VM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
     MountGEOGDataset:
-      type: org.lexis.common.datatransfer.nodes.SSHMountStagingAreaDataset
+      type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
       properties:
         token: { get_input: token }
         mount_point_directory: "/mnt/cloud_staging_area/adms"
@@ -237,7 +285,7 @@ topology_template:
         keep_volumes: true
         restart_policy: no
         cpu_share: 1.0
-        shm_size: "1024 MB"
+        shm_size: "64 GB"
         volumes: {get_input: preprocessing_volumes}
         docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_end_date, "\", \"WPS_MODE\": \"WRF\"}"]}
       requirements:
@@ -252,6 +300,35 @@ topology_template:
             min_instances: 1
             max_instances: 1
             default_instances: 1
+    # Get pre-processing results details (size, number of files)
+    GetPreprocessDatasetInfo:
+      type: org.lexis.common.ddi.nodes.GetComputeInstanceDatasetInfo
+      properties:
+        dataset_path: "/wps_data/output"
+      requirements:
+        - host:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    # Find the best HPC location depending on the input dataset and needed HPC resources
+    FindHPCLocationsJob:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
+      properties:
+        token: { get_input: token }
+      requirements:
+        - InputDataset:
+            type_requirement: input_dataset
+            node: GetPreprocessDatasetInfo
+            capability: org.lexis.common.ddi.capabilities.DatasetInfo
+            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
+        - HPCResourceWRFJob:
+            type_requirement: heappe_job
+            node: WRF
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.dynamic.orchestration.relationships.HeappeJob
     WRF:
       type: org.lexis.common.heappe.nodes.Job
       metadata:
@@ -346,7 +423,7 @@ topology_template:
         - mountedCloudStagingArea:
             type_requirement: mounted_staging_area
             node: MountGEOGDataset
-            capability: org.lexis.common.datatransfer.capabilities.MountedStagingAreaAccess
+            capability: org.lexis.common.ddi.capabilities.MountedStagingAreaAccess
             relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
         - hostedOnComputeHost:
             type_requirement: host
@@ -376,8 +453,14 @@ topology_template:
         ddi_dataset_path: { get_input: postprocessing_dataset_docker_image_path }
         cloud_staging_area_directory_path: "adms_postprocessing_image"
         timestamp_cloud_staging_area_directory: true
+      requirements:
+        - sameSite:
+            type_requirement: os
+            node: ADMS_VM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
     MountDockerImageDataset:
-      type: org.lexis.common.datatransfer.nodes.SSHMountStagingAreaDataset
+      type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
       properties:
         token: { get_input: token }
         mount_point_directory: "/mnt/cloud_staging_area/docker_image"
@@ -435,8 +518,14 @@ topology_template:
         ddi_dataset_path: { get_input: postprocessing_dataset_ncl_script }
         cloud_staging_area_directory_path: "adms_postprocessing_ncl"
         timestamp_cloud_staging_area_directory: true
+      requirements:
+        - sameSite:
+            type_requirement: os
+            node: ADMS_VM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
     MountNCLScriptDataset:
-      type: org.lexis.common.datatransfer.nodes.SSHMountStagingAreaDataset
+      type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
       properties:
         token: { get_input: token }
         mount_point_directory: "/mnt/cloud_staging_area/ncl_script"
@@ -498,7 +587,6 @@ topology_template:
         keep_volumes: true
         restart_policy: no
         cpu_share: 1.0
-        mem_share: "128 MB"
         volumes: ["/mnt/cloud_staging_area/adms/adms_data/:/wrfdata"]
       requirements:
         - hostedOnContainerRuntimeDockerHost:
@@ -521,7 +609,7 @@ topology_template:
         - mountedCloudStagingArea:
             type_requirement: mounted_staging_area
             node: MountGEOGDataset
-            capability: org.lexis.common.datatransfer.capabilities.MountedStagingAreaAccess
+            capability: org.lexis.common.ddi.capabilities.MountedStagingAreaAccess
             relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
         - hostedOnComputeHost:
             type_requirement: host
@@ -600,12 +688,14 @@ topology_template:
             node: DDIToCloudGEOGDatasetJob
             capability: org.lexis.common.ddi.capabilities.DataTransferCloud
             relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
+    PublicNetADMSWinVM:
+      type: yorc.nodes.openstack.FloatingIP
     ADMS_WIN_VM:
       type: tosca.nodes.Compute
       requirements:
         - networkNetworkConnection:
             type_requirement: network
-            node: PublicNet
+            node: PublicNetADMSWinVM
             capability: tosca.capabilities.Connectivity
             relationship: tosca.relationships.Network
       capabilities:
@@ -618,12 +708,28 @@ topology_template:
         os:
           properties:
             type: "windows"
+    GetDDIAccessWinVM:
+      type: org.lexis.common.ddi.nodes.DDIAccess
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: os
+            node: ADMS_WIN_VM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
+    RefreshTargetTokens:
+      type: org.lexis.common.dynamic.orchestration.nodes.RefreshTargetTokens
+      requirements:
+        - target:
+            type_requirement: target
+            node: ADMS
+            capability: tosca.capabilities.Node
+            relationship: tosca.relationships.DependsOn
     ADMS:
       type: org.lexis.wp7.nodes.ADMS
       properties:
         adms_type: { get_input: postprocessing_adms_type }
         token: { get_input: token }
-        dataset_title_adms_result: { get_input: postprocessing_dataset_title_adms_result }
+        dataset_title_adms_result: { get_input: postprocessing_title_dataset_adms_result }
         dataset_title_ncl_result: { get_input: postprocessing_MET_results_title }
         dataset_id_adms_urban_app: { get_input: postprocessing_dataset_id_adms_urban_app }
         dataset_id_adms_urban_static_data: { get_input: postprocessing_dataset_id_adms_urban_static_data }
@@ -634,6 +740,11 @@ topology_template:
         adms_sftp_industrial_dir: { get_input: postprocessing_adms_sftp_industrial_dir }
         adms_sftp_urban_dir: { get_input: postprocessing_adms_sftp_urban_dir }
       requirements:
+        - ddi_access:
+            type_requirement: ddi_access
+            node: GetDDIAccessWinVM
+            capability: org.lexis.common.ddi.capabilities.DDIAccess
+            relationship: org.lexis.common.ddi.relationships.DDIAccessProvider
         - hostedOnAdmsVmHost:
             type_requirement: host
             node: ADMS_WIN_VM
@@ -650,12 +761,16 @@ topology_template:
       description: ID of the dataset where ADMS post-process results are stored
       value: { get_attribute: [ ADMS, dataset_id_result ] }
   workflows:
+    # Nothing to do at deployment time
+    # In LEXIS, overriding the default workflow that would be generated by
+    # Alien4Could, as it would allocate all infrastructure resources at
+    # deployment time
     install:
       steps:
-        Network_install:
-          target: PublicNet
+        Compute_initial:
+          target: ADMS_VM
           activities:
-            - delegate: install
+            - set_state: initial
     uninstall:
       steps:
         Compute_uninstall:
@@ -663,15 +778,67 @@ topology_template:
           activities:
             - delegate: uninstall
         Network_uninstall:
-          target: PublicNet
+          target: PublicNetADMSVM
           activities:
             - delegate: uninstall
-        WinwdowsCompute_uninstall:
+        WindowsCompute_uninstall:
           target: ADMS_WIN_VM
+          activities:
+            - delegate: uninstall
+        WindowsNetwork_uninstall:
+          target: PublicNetADMSWinVM
           activities:
             - delegate: uninstall
     Run:
       steps:
+        # Submit DDI job to get info on dataset (DDI location where it is availablr, size...)
+        InputDatasetInfoJob_submit:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - InputDatasetInfoJob_run
+        InputDatasetInfoJob_run:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - InputDatasetInfoJob_executed
+        InputDatasetInfoJob_executed:
+          target: InputDatasetInfoJob
+          activities:
+            - set_state: executed
+          on_success:
+            - FindCloudLocationJob_submit
+        # Submit the computation to find the best location from these inputs
+        FindCloudLocationJob_submit:
+          target: FindCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindCloudLocationJob_run
+        FindCloudLocationJob_run:
+          target: FindCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindCloudLocationJob_executed
+        FindCloudLocationJob_executed:
+          target: FindCloudLocationJob
+          activities:
+            - set_state: executed
+          on_success:
+            - DDIToCloudGEOGDatasetJob_create
+            - Network_install
+        # Get a floating IP address for the Cloud Compute instance
+        Network_install:
+          target: PublicNetADMSVM
+          activities:
+            - delegate: install
+          on_success:
+            - Compute_install
         Compute_install:
           target: ADMS_VM
           activities:
@@ -690,7 +857,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - DDIToCloudGEOGDatasetJob_create
+            - MountGEOGDataset_create
         DDIToCloudGEOGDatasetJob_create:
           target: DDIToCloudGEOGDatasetJob
           operation_host: ORCHESTRATOR
@@ -734,6 +901,12 @@ topology_template:
           target: MountGEOGDataset
           activities:
             - set_state: created
+          on_success:
+            - MountGEOGDataset_refresh_token
+        MountGEOGDataset_refresh_token:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: custom.refresh_token
           on_success:
             - MountGEOGDataset_start
         MountGEOGDataset_start:
@@ -813,7 +986,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - WRF_create
+            - GetPreprocessDatasetInfo_create
             - WPS_GFS_delete
         WPS_GFS_delete:
           target: WPS_GFS
@@ -825,6 +998,42 @@ topology_template:
           target: WPS_GFS
           activities:
             - set_state: deleted
+        GetPreprocessDatasetInfo_create:
+          target: GetPreprocessDatasetInfo
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - GetPreprocessDatasetInfo_start
+        GetPreprocessDatasetInfo_start:
+          target: GetPreprocessDatasetInfo
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetPreprocessDatasetInfo_started
+        GetPreprocessDatasetInfo_started:
+          target: GetPreprocessDatasetInfo
+          activities:
+            - set_state: started
+          on_success:
+            - FindHPCLocationsJob_submit
+        FindHPCLocationsJob_submit:
+          target: FindHPCLocationsJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindHPCLocationsJob_run
+        FindHPCLocationsJob_run:
+          target: FindHPCLocationsJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindHPCLocationsJob_executed
+        FindHPCLocationsJob_executed:
+          target: FindHPCLocationsJob
+          activities:
+            - set_state: executed
+          on_success:
+            - WRF_create
         WRF_create:
           target: WRF
           operation_host: ORCHESTRATOR
@@ -1009,6 +1218,12 @@ topology_template:
           activities:
             - set_state: created
           on_success:
+            - MountDockerImageDataset_refresh_token
+        MountDockerImageDataset_refresh_token:
+          target: MountDockerImageDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
             - MountDockerImageDataset_start
         MountDockerImageDataset_start:
           target: MountDockerImageDataset
@@ -1101,6 +1316,12 @@ topology_template:
           target: MountNCLScriptDataset
           activities:
             - set_state: created
+          on_success:
+            - MountNCLScriptDataset_refresh_token
+        MountNCLScriptDataset_refresh_token:
+          target: MountNCLScriptDataset
+          activities:
+            - call_operation: custom.refresh_token
           on_success:
             - MountNCLScriptDataset_start
         MountNCLScriptDataset_start:
@@ -1207,11 +1428,41 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - WinwdowsCompute_install
-        WinwdowsCompute_install:
+            - WindowsNetwork_install
+        WindowsNetwork_install:
+          target: PublicNetADMSWinVM
+          activities:
+            - delegate: install
+          on_success:
+            - WindowsCompute_install
+        WindowsCompute_install:
           target: ADMS_WIN_VM
           activities:
             - delegate: install
+          on_success:
+            - GetDDIAccessWinVM_start
+        GetDDIAccessWinVM_start:
+          target: GetDDIAccessWinVM
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetDDIAccessWinVM_started
+        GetDDIAccess_started:
+          target: GetDDIAccessWinVM
+          activities:
+            - set_state: started
+          on_success:
+            - RefreshTargetTokens_start
+        RefreshTargetTokens_start:
+          target: RefreshTargetTokens
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshTargetTokens_started
+        RefreshTargetTokens_started:
+          target: RefreshTargetTokens
+          activities:
+            - set_state: started
           on_success:
             - ADMS_start
         ADMS_start:
@@ -1225,16 +1476,28 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - WinwdowsCompute_uninstall
-            - MountGEOGDataset_stop
-            - MountDockerImageDataset_stop
-            - MountNCLScriptDataset_stop
-        WinwdowsCompute_uninstall:
+            - WindowsCompute_uninstall
+            - MountGEOGDataset_refresh_token_for_stop
+            - MountDockerImageDataset_refresh_token_for_stop
+            - MountNCLScriptDataset_refresh_token_for_stop
+        WindowsCompute_uninstall:
           target: ADMS_WIN_VM
           activities:
             - delegate: uninstall
           on_success:
+            - WindowsNetwork_uninstall
+        WindowsNetwork_uninstall:
+          target: PublicNetADMSWinVM
+          activities:
+            - delegate: uninstall
+          on_success:
             - Compute_uninstall
+        MountGEOGDataset_refresh_token_for_stop:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountGEOGDataset_stop
         MountGEOGDataset_stop:
           target: MountGEOGDataset
           activities:
@@ -1247,6 +1510,12 @@ topology_template:
             - set_state: stopped
           on_success:
             - DeleteCloudDataGEOGJob_create
+        MountDockerImageDataset_refresh_token_for_stop:
+          target: MountDockerImageDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountDockerImageDataset_stop
         MountDockerImageDataset_stop:
           target: MountDockerImageDataset
           activities:
@@ -1259,6 +1528,13 @@ topology_template:
             - set_state: stopped
           on_success:
             - DeleteCloudDataImageJob_create
+            - MountNCLScriptDataset_refresh_token
+        MountNCLScriptDataset_refresh_token_for_stop:
+          target: MountNCLScriptDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountNCLScriptDataset_stop
         MountNCLScriptDataset_stop:
           target: MountNCLScriptDataset
           activities:
@@ -1387,7 +1663,11 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - Compute_uninstall
+            - Network_uninstall
+        Network_uninstall:
+          target: PublicNetADMSVM
+          activities:
+            - delegate: uninstall
         Compute_uninstall:
           target: ADMS_VM
           activities:
@@ -1578,6 +1858,12 @@ topology_template:
           activities:
             - set_state: created
           on_success:
+            - MountDockerImageDataset_refresh_token
+        MountDockerImageDataset_refresh_token:
+          target: MountDockerImageDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
             - MountDockerImageDataset_start
         MountDockerImageDataset_start:
           target: MountDockerImageDataset
@@ -1670,6 +1956,12 @@ topology_template:
           target: MountNCLScriptDataset
           activities:
             - set_state: created
+          on_success:
+            - MountNCLScriptDataset_refresh_token
+        MountNCLScriptDataset_refresh_token:
+          target: MountNCLScriptDataset
+          activities:
+            - call_operation: custom.refresh_token
           on_success:
             - MountNCLScriptDataset_start
         MountNCLScriptDataset_start:
@@ -1776,11 +2068,41 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - WinwdowsCompute_install
-        WinwdowsCompute_install:
+            - WindowsNetwork_install
+        WindowsNetwork_install:
+          target: PublicNetADMSWinVM
+          activities:
+            - delegate: install
+          on_success:
+            - WindowsCompute_install
+        WindowsCompute_install:
           target: ADMS_WIN_VM
           activities:
             - delegate: install
+          on_success:
+            - GetDDIAccessWinVM_start
+        GetDDIAccessWinVM_start:
+          target: GetDDIAccessWinVM
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetDDIAccessWinVM_started
+        GetDDIAccess_started:
+          target: GetDDIAccessWinVM
+          activities:
+            - set_state: started
+          on_success:
+            - RefreshTargetTokens_start
+        RefreshTargetTokens_start:
+          target: RefreshTargetTokens
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshTargetTokens_started
+        RefreshTargetTokens_started:
+          target: RefreshTargetTokens
+          activities:
+            - set_state: started
           on_success:
             - ADMS_start
         ADMS_start:
@@ -1794,16 +2116,28 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - WinwdowsCompute_uninstall
-            - MountGEOGDataset_stop
-            - MountDockerImageDataset_stop
-            - MountNCLScriptDataset_stop
-        WinwdowsCompute_uninstall:
+            - WindowsCompute_uninstall
+            - MountGEOGDataset_refresh_token_for_stop
+            - MountDockerImageDataset_refresh_token_for_stop
+            - MountNCLScriptDataset_refresh_token_for_stop
+        WindowsCompute_uninstall:
           target: ADMS_WIN_VM
           activities:
             - delegate: uninstall
           on_success:
+            - WindowsNetwork_uninstall
+        WindowsNetwork_uninstall:
+          target: PublicNetADMSWinVM
+          activities:
+            - delegate: uninstall
+          on_success:
             - Compute_uninstall
+        MountGEOGDataset_refresh_token_for_stop:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountGEOGDataset_stop
         MountGEOGDataset_stop:
           target: MountGEOGDataset
           activities:
@@ -1816,6 +2150,12 @@ topology_template:
             - set_state: stopped
           on_success:
             - DeleteCloudDataGEOGJob_create
+        MountDockerImageDataset_refresh_token_for_stop:
+          target: MountDockerImageDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountDockerImageDataset_stop
         MountDockerImageDataset_stop:
           target: MountDockerImageDataset
           activities:
@@ -1828,6 +2168,12 @@ topology_template:
             - set_state: stopped
           on_success:
             - DeleteCloudDataImageJob_create
+        MountNCLScriptDataset_refresh_token_for_stop:
+          target: MountNCLScriptDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountNCLScriptDataset_stop
         MountNCLScriptDataset_stop:
           target: MountNCLScriptDataset
           activities:
@@ -1956,26 +2302,12 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - Compute_uninstall
+            - Network_uninstall
+        Network_uninstall:
+          target: PublicNetADMSVM
+          activities:
+            - delegate: uninstall
         Compute_uninstall:
           target: ADMS_VM
           activities:
             - delegate: uninstall
-    start:
-      steps:
-        start_step:
-          target: PublicNet
-          activities:
-            - set_state: started
-    stop:
-      steps:
-        stop_step:
-          target: PublicNet
-          activities:
-            - set_state: stopped
-    cancel:
-      steps:
-        start_step:
-          target: PublicNet
-          activities:
-            - set_state: canceled

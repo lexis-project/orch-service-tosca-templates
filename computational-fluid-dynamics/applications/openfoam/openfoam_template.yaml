@@ -1,0 +1,887 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: org.lexis.common.OpenFOAMTemplate
+  template_version: 0.1.0-SNAPSHOT
+  template_author: lexis
+
+description: "OpenFOAM template"
+
+imports:
+  - yorc-types:1.1.0
+  - yorc-openstack-types:3.0.0
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien-base-types:3.0.0
+  - org.lexis.common.heappe-types:1.0.6
+  - org.lexis.common.ddi-types:0.1.4
+  - org.lexis.common.dynamic-orchestration-types:0.1.0
+  - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
+  - org.lexis.common.visualization.xpra:0.1.0
+
+topology_template:
+  inputs:
+    token:
+      type: string
+      description: "OpenID Connect token"
+      required: true
+    project_id:
+      type: string
+      description: "LEXIS project identifier"
+      required: true
+    preprocessing_dataset_input_path:
+      type: string
+      description: Input dataset path in DDI
+      required: true
+    computation_title_dataset_result:
+      type: string
+      description: Title of the result dataset to create in DDI
+      required: true
+    visualization_walltime_minutes:
+      type: integer
+      description: "Duration in minutes of the visualization session"
+      required: true
+    computation_ddi_project_path:
+      type: string
+      description: "Path of the project where to transfer the computation results in DDI: project/projxxx"
+      required: true
+    preprocessing_encrypted_input_dataset:
+      type: boolean
+      description: Is the input dataset encrypted
+      default: false
+      required: false
+    preprocessing_compressed_input_dataset:
+      type: boolean
+      description: Is the input dataset compressed
+      default: false
+      required: false
+    computation_encrypt_result_dataset:
+      type: boolean
+      description: Encrypt the result dataset
+      default: false
+      required: false
+    computation_compress_result_dataset:
+      type: boolean
+      description: Compress the result dataset
+      default: false
+      required: false
+    visualization_directory:
+      type: string
+      description: Directory where visualization data will be stored
+      default: "openfoam"
+      required: false
+    visualization_port:
+      type: integer
+      description: "Port to use to expose the remote display (should be > 1024)"
+      default: 8765
+      required: false
+  node_templates:
+    # Validation of the token provided in input
+    # Exchanging this token to have an access and refresh tokens
+    # for any component needing it in the workflow
+    ValidateExchangeToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.ValidateAndExchangeToken
+      properties:
+        token: {get_input: token}
+
+    # Job gathering info on the input dataset:
+    # - on which locations it is available
+    # - size
+    # - number of files
+    # to take placement decisions on computing resources using this dataset
+    InputDatasetInfoJob:
+      type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
+      properties:
+        token: {get_input: token}
+        dataset_path: {get_input: preprocessing_dataset_input_path}
+    # Find the best HPC location depending on the input dataset and needed HPC resources
+    FindHPCLocationJob:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
+      properties:
+        token: {get_input: token}
+      requirements:
+        - InputDataset:
+            type_requirement: input_dataset
+            node: InputDatasetInfoJob
+            capability: org.lexis.common.ddi.capabilities.DatasetInfo
+            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
+        - HPCResourceHPCJob:
+            type_requirement: heappe_job
+            node: OpenFOAMJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.dynamic.orchestration.relationships.HeappeJob
+    # HEAppE job performing the OpenFOAM computation
+    OpenFOAMJob:
+      type: org.lexis.common.heappe.nodes.Job
+      metadata:
+        task: computation
+      properties:
+        token: { get_input: token }
+        listChangedFilesWhileRunning: true
+        JobSpecification:
+          Name: "OpenFoam"
+          Project: "OPEN-16-24"
+          ClusterId: 1
+          Tasks:
+            - Name: "OpenFoamParallel"
+              ClusterNodeTypeId: 1
+              CommandTemplateId: 6
+              WalltimeLimit: 3600
+              MinCores: 36
+              MaxCores: 36
+              Priority: 4
+              TaskParalizationParameters:
+                - MPIProcesses: 36
+                  MaxCores: 36
+              TemplateParameterValues:
+                - CommandParameterIdentifier: MPI_PROCESSES
+                  ParameterValue: "36"
+              StandardOutputFile: "stdout"
+              StandardErrorFile: "stderr"
+              ProgressFile: "stdprog"
+              LogFile: "stdlog"
+    # Transfer the input dataset to the job task input directory
+    DDIToHPCTaskJob:
+      type: org.lexis.common.ddi.nodes.DDIToHPCTaskJob
+      metadata:
+        task: preprocessing
+      properties:
+        token: { get_input: token }
+        decrypt: {get_input: preprocessing_encrypted_input_dataset}
+        uncompress: {get_input: preprocessing_compressed_input_dataset}
+        ddi_dataset_path: { get_input: preprocessing_dataset_input_path }
+        task_name: "OpenFoamParallel"
+      requirements:
+        - job:
+            type_requirement: job
+            node: OpenFOAMJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.heappe.relationships.SendInputsToJob
+    # Transfer HEAppE OpenFOAM job results to DDI
+    HPCToDDIJob:
+      type: org.lexis.common.ddi.nodes.HPCToDDIJob
+      metadata:
+        task: preprocessing
+      properties:
+        token: { get_input: token }
+        encrypt: {get_input: computation_encrypt_result_dataset}
+        compress: {get_input: computation_compress_result_dataset}
+        metadata: {concat: ["{\"creator\": [\"OpenFOAM workflow\"], \"contributor\": [\"OpenFOAM workflow\"], \"publisher\": [\"OpenFOAM workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"", get_input: computation_title_dataset_result, "\"}"]}
+        ddi_path: { get_input: computation_ddi_project_path }
+      requirements:
+        - job:
+            type_requirement: job
+            node: OpenFOAMJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.ddi.relationships.SendJobOutputsToDDI
+    # Get HPC computation results details (size, number of files)
+    GetHPCResultsDatasetInfo:
+      type: org.lexis.common.ddi.nodes.GetHPCJobTaskDatasetInfo
+      properties:
+        task_name: "OpenFoamParallel"
+        needed_files_patterns: [ ".*/q.*.dat", ".*/turbo.*", ".*/xy.*.dat" ]
+      requirements:
+        - job:
+            type_requirement: job
+            node: OpenFOAMJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.ddi.relationships.SendJobOutputsToDDI
+    # Find the best cloud location depending on the input dataset and needed cloud resources
+    FindCloudLocationJob:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
+      properties:
+        token: { get_input: token }
+      requirements:
+        - InputDataset:
+            type_requirement: input_dataset
+            node: GetHPCResultsDatasetInfo
+            capability: org.lexis.common.ddi.capabilities.DatasetInfo
+            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
+        - CloudResourceVM:
+            type_requirement: cloud_instance
+            node: OpenFOAMVM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.dynamic.orchestration.relationships.CloudResource    # Floating IP address network
+    PublicNet:
+      type: yorc.nodes.openstack.FloatingIP
+    OpenFOAMVM:
+      type: tosca.nodes.Compute
+      requirements:
+        - networkPublicNetConnection:
+            type_requirement: network
+            node: PublicNet
+            capability: yorc.capabilities.openstack.FIPConnectivity
+            relationship: tosca.relationships.Network
+      capabilities:
+        host:
+          properties:
+            disk_size: "40 GB"
+            mem_size: "45 GB"
+        os:
+          properties:
+            type: linux
+            # Using ubuntu for the paraview install
+            distribution: ubuntu
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        endpoint:
+          properties:
+            secure: true
+            protocol: tcp
+            network_name: PRIVATE
+            initiator: source
+    XpraJob:
+      metadata:
+        task: visualization
+      type: org.lexis.common.visualization.xpra.nodes.XpraCloudJob
+      properties:
+        port: { get_input: visualization_port }
+        walltime_minutes: { get_input: visualization_walltime_minutes }
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: OpenFOAMVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    CreateVisualizationDir:
+      type: org.lexis.common.datatransfer.nodes.CreateDirectories
+      properties:
+        directories: {concat: ["[\"", get_input: visualization_directory, "\"]"]}
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: OpenFOAMVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    CopyFromJobTask:
+      type: org.lexis.common.datatransfer.nodes.CopyFromJobTask
+      properties:
+        task_name: "OpenFoamParallel"
+        # source_files: [ "/Run447x2/q*.dat", "/Run447x2/turbo*.*", "/Run447x2/xy*.dat" ]
+        source_files: [ "EnSight" ]
+        destination_directory:  { get_input: visualization_directory }
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: OpenFOAMVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - job:
+            type_requirement: job
+            node: OpenFOAMJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.heappe.relationships.GetResultsFromJob
+  outputs:
+    visualization_url:
+      value: { get_attribute: [ XpraJob, url ] }
+    computation_ddi_project_path:
+      description: DDI path to OpenFOAM results
+      value: { get_attribute: [ HPCToDDIJob, destination_path ] }
+  workflows:
+    # At deployment time, validating the input token and exchanging it
+    # to get an access/refresh token of all components needing it
+    install:
+      steps:
+        ValidateExchangeToken_start:
+          target: ValidateExchangeToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ValidateExchangeToken_started
+        ValidateExchangeToken_started:
+          target: ValidateExchangeToken
+          activities:
+            - set_state: started
+    Run:
+      steps:
+        # Submit DDI job to get info on dataset (DDI location where it is available, size...)
+        InputDatasetInfoJob_submit:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - InputDatasetInfoJob_run
+        InputDatasetInfoJob_run:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - InputDatasetInfoJob_executed
+        InputDatasetInfoJob_executed:
+          target: InputDatasetInfoJob
+          activities:
+            - set_state: executed
+          on_success:
+            - FindHPCLocationJob_submit
+        # Submit the computation to find the best location from these inputs
+        FindHPCLocationJob_submit:
+          target: FindHPCLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindHPCLocationJob_run
+        FindHPCLocationJob_run:
+          target: FindHPCLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindHPCLocationJob_executed
+        FindHPCLocationJob_executed:
+          target: FindHPCLocationJob
+          activities:
+            - set_state: executed
+          on_success:
+            - OpenFOAMJob_create
+        OpenFOAMJob_create:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - OpenFOAMJob_enable_file_transfer
+        OpenFOAMJob_enable_file_transfer:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - DDIToHPCTaskJob_create
+        DDIToHPCTaskJob_create:
+          target: DDIToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToHPCTaskJob_submit
+        DDIToHPCTaskJob_submit:
+          target: DDIToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToHPCTaskJob_submitted
+        DDIToHPCTaskJob_submitted:
+          target: DDIToHPCTaskJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToHPCTaskJob_run
+        DDIToHPCTaskJob_run:
+          target: DDIToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToHPCTaskJob_executed
+        DDIToHPCTaskJob_executed:
+          target: DDIToHPCTaskJob
+          activities:
+            - set_state: executed
+          on_success:
+            - OpenFOAMJob_submit
+        OpenFOAMJob_submit:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - OpenFOAMJob_submitted
+        OpenFOAMJob_submitted:
+          target: OpenFOAMJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - OpenFOAMJob_run
+        OpenFOAMJob_run:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - OpenFOAMJob_executed
+        OpenFOAMJob_executed:
+          target: OpenFOAMJob
+          activities:
+            - set_state: executed
+          on_success:
+            - GetHPCResultsDatasetInfo_start
+            - HPCToDDIJob_create
+        # Transfer HOC results to DDI
+        HPCToDDIJob_create:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - HPCToDDIJob_submit
+        HPCToDDIJob_submit:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - HPCToDDIJob_run
+        HPCToDDIJob_run:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - HPCToDDIJob_executed
+        HPCToDDIJob_executed:
+          target: HPCToDDIJob
+          activities:
+            - set_state: executed
+        #  Get info on HPC results dataset (size, number of files) 
+        GetHPCResultsDatasetInfo_start:
+          target: GetHPCResultsDatasetInfo
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetHPCResultsDatasetInfo_started
+        GetHPCResultsDatasetInfo_started:
+          target: GetHPCResultsDatasetInfo
+          activities:
+            - set_state: started
+          on_success:
+            - FindCloudLocationJob_submit
+        # Submit the computation to find the best location from these inputs
+        FindCloudLocationJob_submit:
+          target: FindCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindCloudLocationJob_run
+        FindCloudLocationJob_run:
+          target: FindCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindCloudLocationJob_executed
+        FindCloudLocationJob_executed:
+          target: FindCloudLocationJob
+          activities:
+            - set_state: executed
+          on_success:
+            - PublicNet_install
+        # Get a floating IP address for the Cloud Compute instance
+        PublicNet_install:
+          target: PublicNet
+          activities:
+            - delegate: install
+          on_success:
+            - OpenFOAMVM_install
+        # Create the compute instance
+        OpenFOAMVM_install:
+          target: OpenFOAMVM
+          activities:
+            - delegate: install
+          on_success:
+            - CreateVisualizationDir_start
+        CreateVisualizationDir_start:
+          target: CreateVisualizationDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateVisualizationDir_started
+        CreateVisualizationDir_started:
+          target: CreateVisualizationDir
+          activities:
+            - set_state: started
+          on_success:
+            - CopyFromJobTask_start
+        CopyFromJobTask_start:
+          target: CopyFromJobTask
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyFromJobTask_started
+        CopyFromJobTask_started:
+          target: CopyFromJobTask
+          activities:
+            - set_state: started
+          on_success:
+            - OpenFOAMJob_disable_file_transfer
+            - XpraJob_create
+        OpenFOAMJob_disable_file_transfer:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - OpenFOAMJob_delete
+        OpenFOAMJob_delete:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+        XpraJob_create:
+          target: XpraJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - XpraJob_submit
+        XpraJob_submit:
+          target: XpraJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - XpraJob_run
+        XpraJob_run:
+          target: XpraJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - XpraJob_executed
+        XpraJob_executed:
+          target: XpraJob
+          activities:
+            - set_state: executed
+          on_success:
+            - Compute_uninstall
+        Compute_uninstall:
+          target: OpenFOAMVM
+          activities:
+            - delegate: uninstall
+          on_success:
+            - PublicNet_uninstall
+        PublicNet_uninstall:
+          target: PublicNet
+          activities:
+            - delegate: uninstall
+    RunCreateVMTransferResults:
+      steps:
+        PublicNet_install:
+          target: PublicNet
+          activities:
+            - delegate: install
+          on_success:
+            - OpenFOAMVM_install
+        OpenFOAMVM_install:
+          target: OpenFOAMVM
+          activities:
+            - delegate: install
+          on_success:
+            - CreateVisualizationDir_start
+        CreateVisualizationDir_start:
+          target: CreateVisualizationDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateVisualizationDir_started
+        CreateVisualizationDir_started:
+          target: CreateVisualizationDir
+          activities:
+            - set_state: started
+          on_success:
+            - CopyFromJobTask_start
+        CopyFromJobTask_start:
+          target: CopyFromJobTask
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyFromJobTask_started
+        CopyFromJobTask_started:
+          target: CopyFromJobTask
+          activities:
+            - set_state: started
+          on_success:
+            - OpenFOAMJob_disable_file_transfer
+        OpenFOAMJob_disable_file_transfer:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - OpenFOAMJob_delete
+        OpenFOAMJob_delete:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+    RunVisualization:
+      steps:
+        XpraJob_create:
+          target: XpraJob
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - XpraJob_submit
+        XpraJob_submit:
+          target: XpraJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - XpraJob_submitted
+        XpraJob_submitted:
+          target: XpraJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - XpraJob_run
+        XpraJob_run:
+          target: XpraJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - XpraJob_executed
+        XpraJob_executed:
+          target: XpraJob
+          activities:
+            - set_state: executed
+    RunComputationAfterInputTransfer:
+      steps:
+        OpenFOAMJob_submit:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - OpenFOAMJob_submitted
+        OpenFOAMJob_submitted:
+          target: OpenFOAMJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - OpenFOAMJob_run
+        OpenFOAMJob_run:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - OpenFOAMJob_executed
+        OpenFOAMJob_executed:
+          target: OpenFOAMJob
+          activities:
+            - set_state: executed
+    testJobNoDataset:
+      steps:
+        OpenFOAMJob_create:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - OpenFOAMJob_enable_file_transfer
+        OpenFOAMJob_enable_file_transfer:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - OpenFOAMJob_submit
+        OpenFOAMJob_submit:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - OpenFOAMJob_submitted
+        OpenFOAMJob_submitted:
+          target: OpenFOAMJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - OpenFOAMJob_run
+        OpenFOAMJob_run:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - OpenFOAMJob_executed
+        OpenFOAMJob_executed:
+          target: OpenFOAMJob
+          activities:
+            - set_state: executed
+    testEnableFT:
+      steps:
+        OpenFOAMJob_enable_file_transfer:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+    testDisableFT:
+      steps:
+        OpenFOAMJob_disable_file_transfer:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+    testDeleteJob:
+      steps:
+        OpenFOAMJob_delete:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+    testDeleteVM:
+      steps:
+        Compute_uninstall:
+          target: OpenFOAMVM
+          activities:
+            - delegate: uninstall
+    uninstall:
+      steps:
+        Compute_uninstall:
+          target: OpenFOAMVM
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: PublicNet
+          activities:
+            - delegate: uninstall
+    testDDItoHPC:
+      steps:
+        OpenFOAMJob_create:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - OpenFOAMJob_enable_file_transfer
+        OpenFOAMJob_enable_file_transfer:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - DDIToHPCTaskJob_create
+        DDIToHPCTaskJob_create:
+          target: DDIToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToHPCTaskJob_submit
+        DDIToHPCTaskJob_submit:
+          target: DDIToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToHPCTaskJob_submitted
+        DDIToHPCTaskJob_submitted:
+          target: DDIToHPCTaskJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToHPCTaskJob_run
+        DDIToHPCTaskJob_run:
+          target: DDIToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToHPCTaskJob_executed
+        DDIToHPCTaskJob_executed:
+          target: DDIToHPCTaskJob
+          activities:
+            - set_state: executed
+          on_success:
+            - OpenFOAMJob_submit
+        OpenFOAMJob_submit:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - OpenFOAMJob_submitted
+        OpenFOAMJob_submitted:
+          target: OpenFOAMJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - OpenFOAMJob_run
+        OpenFOAMJob_run:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - OpenFOAMJob_executed
+        OpenFOAMJob_executed:
+          target: OpenFOAMJob
+          activities:
+            - set_state: executed
+          on_success:
+            - HPCToDDIJob_create
+        HPCToDDIJob_create:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - HPCToDDIJob_submit
+        HPCToDDIJob_submit:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - HPCToDDIJob_submitted
+        HPCToDDIJob_submitted:
+          target: HPCToDDIJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - HPCToDDIJob_run
+        HPCToDDIJob_run:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - HPCToDDIJob_executed
+        HPCToDDIJob_executed:
+          target: HPCToDDIJob
+          activities:
+            - set_state: executed
+    testHPCToDDI:
+      steps:
+        HPCToDDIJob_create:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - HPCToDDIJob_submit
+        HPCToDDIJob_submit:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - HPCToDDIJob_submitted
+        HPCToDDIJob_submitted:
+          target: HPCToDDIJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - HPCToDDIJob_run
+        HPCToDDIJob_run:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - HPCToDDIJob_executed
+        HPCToDDIJob_executed:
+          target: HPCToDDIJob
+          activities:
+            - set_state: executed
+

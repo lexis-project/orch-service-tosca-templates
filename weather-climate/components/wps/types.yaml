@@ -5,6 +5,8 @@ metadata:
   template_version: 0.1.1-SNAPSHOT
   template_author: lexis
 
+description: WPS types - WRF pre-processing
+
 imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - yorc-types:1.1.0
@@ -12,6 +14,7 @@ imports:
 node_types:
   org.lexis.wp7.nodes.GFSData:
     derived_from: tosca.nodes.SoftwareComponent
+    description: Download GFS data
     properties:
       start_date:
         type: string
@@ -22,7 +25,7 @@ node_types:
         description: Download GFS files up to this date, format YYYYMMDDHH
         required: true
       number_of_past_days:
-        type: string
+        type: integer
         description: Download additional warmup data for this given number of days before the start date
         required: true
       output_directory:
@@ -116,3 +119,44 @@ node_types:
       Standard:
         create:
           implementation: playbooks/install_drops2.yaml
+  org.lexis.wp7.nodes.ECMWFData:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: Download ECMWF data
+    properties:
+      start_date:
+        type: string
+        description: Start date, format YYYYMMDDHH
+        required: true
+      wps_mode:
+        type: string
+        description: WPS mode - can WRF or WARMUP, or for data assimiliation WRFDA or WARMUPDA
+        required: true
+      output_directory:
+        type: string
+        description: Absolute path to directory where to store donwloaded data
+        required: true
+      number_of_hours:
+        type: integer
+        description: number of hours of data to get
+        required: false
+        default: 48
+      past_day:
+        type: integer
+        description: Download warmup data for this nth day before the start_date
+        required: false
+        default: 0
+    interfaces:
+      Standard:
+        inputs:
+          OUTPUT_DIRECTORY: {get_property: [SELF, output_directory]}
+        create:
+          implementation: playbooks/install_ecmwf_dependencies.yaml
+        start:
+          inputs:
+            START_DATE: {get_property: [SELF, start_date]}
+            PAST_DAY: {get_property: [SELF, past_day]}
+            NUMBER_OF_HOURS: {get_property: [SELF, number_of_hours]}
+            WPS_MODE: {get_property: [SELF, wps_mode]}
+            EMAIL_ADDRESS: { get_secret: ["/secret/wp7/ecmwf/creds", "data=email"]}
+            KEY: { get_secret: ["/secret/wp7/ecmwf/creds", "data=key"]}
+          implementation: scripts/download_ecmwf.py

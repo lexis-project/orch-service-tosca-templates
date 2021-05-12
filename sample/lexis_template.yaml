@@ -16,32 +16,47 @@ imports:
   - docker-types:3.0.0
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
-  - org.lexis.common.heappe-types:1.0.3
-  - org.lexis.common.ddi-types:0.1.3
+  - org.lexis.common.heappe-types:1.0.6
+  - org.lexis.common.ddi-types:0.1.4
+  - org.lexis.common.dynamic-orchestration-types:0.1.0
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
 
 topology_template:
   #
   # Input parameters.
   # The only required parameter is the OpenID Connect token.
-  # Other paramters have default values.
+  # Other parameters have default values.
   #
   # Naming convention expected by LEXIS Portal:
   # - input parameters used in the pre-processing phase start with preprocessing_
   # - input parameters uded in the HOC computation phase start with computation_
   # - input parameters used in the postprocessing phase start with postprocessing_
   # - Paths of DDI dataset are expect to follow the experession <phase>_dataset_*
-  #   for example: preprocessing_dataset_path_input_data
+  #   for example: preprocessing_dataset_input_path
   #
   inputs:
     token:
       type: string
-      description: "Access token"
+      description: "OpenID Connect token"
       required: true
-    preprocessing_dataset_path_input_data:
+    project_id:
+      type: string
+      description: "LEXIS project identifier"
+      required: true
+    preprocessing_dataset_input_path:
       type: string
       description: Dataset containing input data
-      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/7fc89bf4-1d13-11eb-ae7e-0050568fc9b5"
+      default: "project/proj6abfa10a181f20196814dd1cd6e62723/32e5dff4-9e7d-11eb-a9c7-0050568fcecc"
+      required: false
+    preprocessing_encrypted_input_dataset:
+      type: boolean
+      description: Is the input dataset encrypted
+      default: false
+      required: false
+    preprocessing_compressed_input_dataset:
+      type: boolean
+      description: Is the input dataset compressed
+      default: false
       required: false
     preprocessing_mount_point_input_dataset:
       type: string
@@ -71,7 +86,7 @@ topology_template:
         List of volumes to mount within the preprocessing container.
         Use docker CLI-style syntax: /host:/container[:mode]
       default:
-        - "/mnt/lexis_test/7fc89bf4-1d13-11eb-ae7e-0050568fc9b5:/input_dataset"
+        - "/mnt/lexis_test/32e5dff4-9e7d-11eb-a9c7-0050568fcecc:/input_dataset"
         - "/lexistest/output:/output"
       required: false
     preprocessing_output_directory:
@@ -107,7 +122,7 @@ topology_template:
       description: Name of the HEAppE job HPC task providing results to postprocess
       default: TestTemplate
       required: false
-    computation_result_dataset_metadata:
+    computation_metadtat_dataset_result:
       type: org.lexis.common.ddi.types.Metadata
       description: Metadata for the Computation results dataset to create in DDI
       default:
@@ -164,12 +179,12 @@ topology_template:
       description: Postprocessing output directory
       default: "/output_postprocessing"
       required: false
-    postprocessing_ddi_path:
+    postprocessing_ddi_project_path:
       type: string
       description: "Path where to transfer the post-processing results in DDI"
-      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c"
+      default: "project/proj6abfa10a181f20196814dd1cd6e62723"
       required: false
-    postprocessing_result_dataset_metadata:
+    postprocessing_metadata_dataset_result:
       type: org.lexis.common.ddi.types.Metadata
       description: Metadata for the postprocessing results dataset to create in DDI
       default:
@@ -182,6 +197,16 @@ topology_template:
         resourceType: "Workflow result"
         title: "LEXIS Test workflow results"
       required: false
+    postprocessing_encrypt_dataset_result:
+      type: boolean
+      description: Encrypt the result dataset
+      default: false
+      required: false
+    postprocessing_compress_dataset_result:
+      type: boolean
+      description: Compress the result dataset
+      default: false
+      required: false
 
   #
   # Components instantiating the types imported, and using the input values above
@@ -190,15 +215,42 @@ topology_template:
   # is fulfilled by which capability of another component
   #
   node_templates:
+    # Validation of the token provided in input
+    # Exchanging this token to have an access and refresh tokens
+    # for any component needing it in the workflow
+    ValidateExchangeToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.ValidateAndExchangeToken
+      properties:
+        token: {get_input: token}
+
+    # Job gathering info on the input dataset:
+    # - on which locations it is available
+    # - size
+    # - number of files
+    # to take placement decisions on computing resources using this dataset
+    InputDatasetInfoJob:
+      type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
+      properties:
+        token: {get_input: token}
+        dataset_path: {get_input: preprocessing_dataset_input_path}
+
     # DDI job managing the transfer of an input dataset from DDI to cloud staging area
     DDIToCloudInputDatasetJob:
       type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
-        token: { get_input: token }
-        ddi_dataset_path: { get_input: preprocessing_dataset_path_input_data }
+        token: {get_input: token}
+        decrypt: {get_input: preprocessing_encrypted_input_dataset}
+        uncompress: {get_input: preprocessing_compressed_input_dataset}
+        ddi_dataset_path: { get_input: preprocessing_dataset_input_path }
         cloud_staging_area_directory_path: "lexis_test_preprocessing"
         timestamp_cloud_staging_area_directory: true
-    
+      requirements:
+        - sameSite:
+            type_requirement: os
+            node: ComputeInstance
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
+
     # Floating IP address network
     Network:
       type: yorc.nodes.openstack.FloatingIP
@@ -220,6 +272,25 @@ topology_template:
           properties:
             type: linux
 
+    # Find the best cloud location depending on the input dataset and needed cloud resources
+    FindCloudLocation:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
+      properties:
+        token: {get_input: token}
+      requirements:
+        - InputDataset:
+            type_requirement: input_dataset
+            node: InputDatasetInfoJob
+            capability: org.lexis.common.ddi.capabilities.DatasetInfo
+            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
+        - CloudResourceVM:
+            type_requirement: cloud_instance
+            node: ComputeInstance
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.dynamic.orchestration.relationships.CloudResource
+
     # Component retrieving access details to the DDI REST APIs from the compute
     # instance where it running
     # Needed by component MountInputDataset below
@@ -235,9 +306,9 @@ topology_template:
     # Component managing the SSH-mount of the input dataset in cloud staging area
     # on the compute instance
     MountInputDataset:
-      type: org.lexis.common.datatransfer.nodes.SSHMountStagingAreaDataset
+      type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
       properties:
-        token: { get_input: token }
+        token: {get_input: token}
         mount_point_directory: { get_input: preprocessing_mount_point_input_dataset }
       requirements:
         - ddi_access:
@@ -291,7 +362,6 @@ topology_template:
         keep_volumes: true
         restart_policy: no
         cpu_share: 1.0
-        mem_share: "128 MB"
         volumes: {get_input: preprocessing_container_volumes}
         docker_env_vars: {get_input: preprocessing_container_env_vars}
       requirements:
@@ -300,6 +370,37 @@ topology_template:
             node: Docker
             capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    
+    # Get pre-processing results details (size, number of files)
+    GetPreprocessDatasetInfo:
+      type: org.lexis.common.ddi.nodes.GetComputeInstanceDatasetInfo
+      properties:
+        dataset_path: { get_input: preprocessing_output_directory }
+      requirements:
+        - host:
+            type_requirement: host
+            node: ComputeInstance
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn  
+
+    # Find the best HPC location depending on the input dataset and needed HPC resources
+    FindHPCLocationJob:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
+      properties:
+        token: {get_input: token}
+      requirements:
+        - InputDataset:
+            type_requirement: input_dataset
+            node: GetPreprocessDatasetInfo
+            capability: org.lexis.common.ddi.capabilities.DatasetInfo
+            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
+        - HPCResourceHPCJob:
+            type_requirement: heappe_job
+            node: HPCJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.dynamic.orchestration.relationships.HeappeJob
 
     # HPC computation job
     HPCJob:
@@ -307,7 +408,7 @@ topology_template:
       metadata:
         task: computation
       properties:
-        token: { get_input: token }
+        token: {get_input: token}
         JobSpecification: { get_input: computation_heappe_job }
 
     # Component managing the transfer of data from the cloud staging area to the
@@ -333,9 +434,11 @@ topology_template:
     HPCToDDIJob:
       type: org.lexis.common.ddi.nodes.HPCToDDIJob
       properties:
-        token: { get_input: token }
-        metadata: { get_input: computation_result_dataset_metadata }
-        ddi_path: { get_input: postprocessing_ddi_path }
+        token: {get_input: token}
+        encrypt: {get_input: postprocessing_encrypt_dataset_result}
+        compress: {get_input: postprocessing_compress_dataset_result}
+        metadata: { get_input: computation_metadtat_dataset_result }
+        ddi_path: { get_input: postprocessing_ddi_project_path }
         task_name: { get_input: computation_heappe_task_name }
       requirements:
         - job:
@@ -388,7 +491,6 @@ topology_template:
         keep_volumes: true
         restart_policy: no
         cpu_share: 1.0
-        mem_share: "128 MB"
         volumes: {get_input: postprocessing_container_volumes}
         docker_env_vars: {get_input: postprocessing_container_env_vars}
       requirements:
@@ -407,7 +509,7 @@ topology_template:
         - mountedCloudStagingArea:
             type_requirement: mounted_staging_area
             node: MountInputDataset
-            capability: org.lexis.common.datatransfer.capabilities.MountedStagingAreaAccess
+            capability: org.lexis.common.ddi.capabilities.MountedStagingAreaAccess
             relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
         - hostedOnComputeHost:
             type_requirement: host
@@ -436,9 +538,11 @@ topology_template:
     CloudToDDIJob:
       type: org.lexis.common.ddi.nodes.CloudToDDIJob
       properties:
-        metadata: { get_input: postprocessing_result_dataset_metadata }
-        token: { get_input: token }
-        ddi_path: { get_input: postprocessing_ddi_path }
+        metadata: { get_input: postprocessing_metadata_dataset_result }
+        token: {get_input: token}
+        encrypt: {get_input: postprocessing_encrypt_dataset_result}
+        compress: {get_input: postprocessing_compress_dataset_result}
+        ddi_path: { get_input: postprocessing_ddi_project_path }
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
@@ -450,7 +554,7 @@ topology_template:
     CleanupCloudStagingAreaJob:
       type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
       properties:
-        token: { get_input: token }
+        token: {get_input: token}
       requirements:
         - cloud_area_dataset_provider:
             type_requirement: cloud_area_dataset_provider
@@ -465,7 +569,7 @@ topology_template:
     computation_dataset_hpc_result_path:
       description: DDI path to HPC results
       value: { get_attribute: [ HPCToDDIJob, destination_path ] }
-    postprocessing_dataset_result_path:
+    postprocessing_ddi_project_path:
       description: DDI path to post-processing results
       value: { get_attribute: [ CloudToDDIJob, destination_path ] }
   
@@ -473,21 +577,67 @@ topology_template:
   # Sequences of operations on components
   #
   workflows:
-    # Nothing to do at deployment time
-    # In LEXIS, overriding the default workflow that would be generated by
-    # Alien4Could, as it would allocate all infrastructure resources at
-    # deployment time
+    # At deployment time, validating the input token and exchanging it
+    # to get an access/refresh token of all components needing it
     install:
       steps:
-        ComputeInstance_initial:
-          target: ComputeInstance
+        ValidateExchangeToken_start:
+          target: ValidateExchangeToken
           activities:
-            - set_state: initial
+            - call_operation: Standard.start
+          on_success:
+            - ValidateExchangeToken_started
+        ValidateExchangeToken_started:
+          target: ValidateExchangeToken
+          activities:
+            - set_state: started
     #
     # Workflow executed by LEXIS Portal
     #
     Run:
       steps:
+        # Submit DDI job to get info on dataset (DDI location where it is availablr, size...)
+        InputDatasetInfoJob_submit:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - InputDatasetInfoJob_run
+        InputDatasetInfoJob_run:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - InputDatasetInfoJob_executed
+        InputDatasetInfoJob_executed:
+          target: InputDatasetInfoJob
+          activities:
+            - set_state: executed
+          on_success:
+            - FindCloudLocation_submit
+        # Submit the computation to find the best location from these inputs
+        FindCloudLocation_submit:
+          target: FindCloudLocation
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindCloudLocation_run
+        FindCloudLocation_run:
+          target: FindCloudLocation
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindCloudLocation_executed
+        FindCloudLocation_executed:
+          target: FindCloudLocation
+          activities:
+            - set_state: executed
+          on_success:
+            - DDIToCloudInputDatasetJob_create
+            - Network_install
+        # Transfer the input dataset to cloud staging area
         DDIToCloudInputDatasetJob_create:
           target: DDIToCloudInputDatasetJob
           operation_host: ORCHESTRATOR
@@ -521,12 +671,14 @@ topology_template:
             - set_state: executed
           on_success:
             - MountInputDataset_create
+        # Get a floating IP address for the Cloud Compute instance
         Network_install:
           target: Network
           activities:
             - delegate: install
           on_success:
             - ComputeInstance_install
+        # Create the compute instance
         ComputeInstance_install:
           target: ComputeInstance
           activities:
@@ -534,6 +686,8 @@ topology_template:
           on_success:
             - GetDDIAccess_start
             - CreatePreProcessDirs_start
+        # Get details on DDI needed to mount cloud staging area filesystems on
+        # the Compute instance
         GetDDIAccess_start:
           target: GetDDIAccess
           activities:
@@ -546,6 +700,7 @@ topology_template:
             - set_state: started
           on_success:
             - MountInputDataset_create
+        # Create directories needed by the pre-processing container
         CreatePreProcessDirs_start:
           target: CreatePreProcessDirs
           activities:
@@ -558,6 +713,7 @@ topology_template:
             - set_state: started
           on_success:
             - MountInputDataset_create
+        # Mount the cloud staging are on the Cloud compute instance
         MountInputDataset_create:
           target: MountInputDataset
           activities:
@@ -568,6 +724,12 @@ topology_template:
           target: MountInputDataset
           activities:
             - set_state: created
+          on_success:
+            - MountInputDataset_refresh_token
+        MountInputDataset_refresh_token:
+          target: MountInputDataset
+          activities:
+            - call_operation: custom.refresh_token
           on_success:
             - MountInputDataset_start
         MountInputDataset_start:
@@ -582,6 +744,7 @@ topology_template:
             - set_state: started
           on_success:
             - Docker_create
+        # Install Docker
         Docker_create:
           target: Docker
           activities:
@@ -606,6 +769,7 @@ topology_template:
             - set_state: started
           on_success:
             - PreprocessingContainer_create
+        # Create and run the pre-processing container
         PreprocessingContainer_create:
           target: PreprocessingContainer
           activities:
@@ -623,7 +787,45 @@ topology_template:
           activities:
             - set_state: started
           on_success:
+            - GetPreprocessDatasetInfo_create
+        GetPreprocessDatasetInfo_create:
+          target: GetPreprocessDatasetInfo
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - GetPreprocessDatasetInfo_start
+        GetPreprocessDatasetInfo_start:
+          target: GetPreprocessDatasetInfo
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetPreprocessDatasetInfo_started
+        GetPreprocessDatasetInfo_started:
+          target: GetPreprocessDatasetInfo
+          activities:
+            - set_state: started
+          on_success:
+            - FindHPCLocationJob_submit
+        # Submit the computation to find the best location from these inputs
+        FindHPCLocationJob_submit:
+          target: FindHPCLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindHPCLocationJob_run
+        FindHPCLocationJob_run:
+          target: FindHPCLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindHPCLocationJob_executed
+        FindHPCLocationJob_executed:
+          target: FindHPCLocationJob
+          activities:
+            - set_state: executed
+          on_success:
             - HPCJob_create
+        # Create the HPC job
         HPCJob_create:
           target: HPCJob
           operation_host: ORCHESTRATOR
@@ -631,6 +833,7 @@ topology_template:
             - call_operation: Standard.create
           on_success:
             - HPCJob_enable_file_transfer
+        # Enable file transfers on this job to provide input files
         HPCJob_enable_file_transfer:
           target: HPCJob
           operation_host: ORCHESTRATOR
@@ -638,6 +841,7 @@ topology_template:
             - call_operation: custom.enable_file_transfer
           on_success:
             - CopyToJobTask_start
+        # Copy input files to this job
         CopyToJobTask_start:
           target: CopyToJobTask
           activities:
@@ -650,6 +854,7 @@ topology_template:
             - set_state: started
           on_success:
             - HPCJob_submit
+        # Submit and run the job
         HPCJob_submit:
           target: HPCJob
           operation_host: ORCHESTRATOR
@@ -677,6 +882,7 @@ topology_template:
           on_success:
             - HPCToDDIJob_create
             - CreatePostProcessDirs_start
+        # Create directories needed by the post-processing
         CreatePostProcessDirs_start:
           target: CreatePostProcessDirs
           activities:
@@ -689,6 +895,7 @@ topology_template:
             - set_state: started
           on_success:
             - CopyFromJobTask_start
+        # Copy files from the HPC job on the Cloud Compute Instance
         CopyFromJobTask_start:
           target: CopyFromJobTask
           activities:
@@ -702,6 +909,7 @@ topology_template:
           on_success:
             - PostprocessingContainer_create
             - HPCJob_disable_file_transfer
+        # Transfer HPC job results to DDI
         HPCToDDIJob_create:
           target: HPCToDDIJob
           operation_host: ORCHESTRATOR
@@ -753,6 +961,7 @@ topology_template:
           target: HPCJob
           activities:
             - set_state: deleted
+        # Create and run the post-processing container
         PostprocessingContainer_create:
           target: PostprocessingContainer
           activities:
@@ -771,6 +980,8 @@ topology_template:
             - set_state: started
           on_success:
             - CreateStagingAreaResultDir_start
+        # Create a directory in cloud staging area and copy post-processing
+        # results there
         CreateStagingAreaResultDir_start:
           target: CreateStagingAreaResultDir
           activities:
@@ -795,6 +1006,7 @@ topology_template:
             - set_state: started
           on_success:
             - CloudToDDIJob_create
+        # Transfer post-processing results from Cloud staging area to DDI
         CloudToDDIJob_create:
           target: CloudToDDIJob
           operation_host: ORCHESTRATOR
@@ -827,7 +1039,14 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - MountInputDataset_refresh_token_before_stop
+        MountInputDataset_refresh_token_before_stop:
+          target: MountInputDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
             - MountInputDataset_stop
+        # Cleanup of ssh access to cloud staging area
         MountInputDataset_stop:
           target: MountInputDataset
           activities:
@@ -840,6 +1059,7 @@ topology_template:
             - set_state: stopped
           on_success:
             - CleanupCloudStagingAreaJob_create
+        # Cleanup of cloud staging area files created by this workflow
         CleanupCloudStagingAreaJob_create:
           target: CleanupCloudStagingAreaJob
           operation_host: ORCHESTRATOR
@@ -879,12 +1099,14 @@ topology_template:
             - set_state: executed
           on_success:
             - ComputeInstance_uninstall
+        # Delete Cloud Compute Instance
         ComputeInstance_uninstall:
           target: ComputeInstance
           activities:
             - delegate: uninstall
           on_success:
             - Network_uninstall
+        # Release Cloud floating IP address
         Network_uninstall:
           target: Network
           activities:
@@ -937,6 +1159,12 @@ topology_template:
     #
     cleanupMountPoint:
       steps:
+        MountInputDataset_refresh_token:
+          target: MountInputDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountInputDataset_stop
         MountInputDataset_stop:
           target: MountInputDataset
           activities:
@@ -1017,6 +1245,48 @@ topology_template:
     #
     testPreprocessing:
       steps:
+        # Submit DDI job to get info on dataset (DDI location where it is availablr, size...)
+        InputDatasetInfoJob_submit:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - InputDatasetInfoJob_run
+        InputDatasetInfoJob_run:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - InputDatasetInfoJob_executed
+        InputDatasetInfoJob_executed:
+          target: InputDatasetInfoJob
+          activities:
+            - set_state: executed
+          on_success:
+            - FindCloudLocation_submit
+        # Submit the computation to find the best location from these inputs
+        FindCloudLocation_submit:
+          target: FindCloudLocation
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindCloudLocation_run
+        FindCloudLocation_run:
+          target: FindCloudLocation
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindCloudLocation_executed
+        FindCloudLocation_executed:
+          target: FindCloudLocation
+          activities:
+            - set_state: executed
+          on_success:
+            - DDIToCloudInputDatasetJob_create
+            - Network_install
+        # Transfer the input dataset to cloud staging area
         DDIToCloudInputDatasetJob_create:
           target: DDIToCloudInputDatasetJob
           operation_host: ORCHESTRATOR
@@ -1050,12 +1320,14 @@ topology_template:
             - set_state: executed
           on_success:
             - MountInputDataset_create
+        # Get a floating IP address for the Cloud Compute instance
         Network_install:
           target: Network
           activities:
             - delegate: install
           on_success:
             - ComputeInstance_install
+        # Create the compute instance
         ComputeInstance_install:
           target: ComputeInstance
           activities:
@@ -1063,6 +1335,8 @@ topology_template:
           on_success:
             - GetDDIAccess_start
             - CreatePreProcessDirs_start
+        # Get details on DDI needed to mount cloud staging area filesystems on
+        # the Compute instance
         GetDDIAccess_start:
           target: GetDDIAccess
           activities:
@@ -1075,6 +1349,7 @@ topology_template:
             - set_state: started
           on_success:
             - MountInputDataset_create
+        # Create directories needed by the pre-processing container
         CreatePreProcessDirs_start:
           target: CreatePreProcessDirs
           activities:
@@ -1087,6 +1362,7 @@ topology_template:
             - set_state: started
           on_success:
             - MountInputDataset_create
+        # Mount the cloud staging are on the Cloud compute instance
         MountInputDataset_create:
           target: MountInputDataset
           activities:
@@ -1097,6 +1373,12 @@ topology_template:
           target: MountInputDataset
           activities:
             - set_state: created
+          on_success:
+            - MountInputDataset_refresh_token
+        MountInputDataset_refresh_token:
+          target: MountInputDataset
+          activities:
+            - call_operation: custom.refresh_token
           on_success:
             - MountInputDataset_start
         MountInputDataset_start:
@@ -1111,6 +1393,7 @@ topology_template:
             - set_state: started
           on_success:
             - Docker_create
+        # Install Docker
         Docker_create:
           target: Docker
           activities:
@@ -1135,6 +1418,7 @@ topology_template:
             - set_state: started
           on_success:
             - PreprocessingContainer_create
+        # Create and run the pre-processing container
         PreprocessingContainer_create:
           target: PreprocessingContainer
           activities:
@@ -1365,6 +1649,12 @@ topology_template:
     #
     testPostprocessCleanup:
       steps:
+        MountInputDataset_refresh_token:
+          target: MountInputDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountInputDataset_stop
         MountInputDataset_stop:
           target: MountInputDataset
           activities:

@@ -9,11 +9,13 @@ description: RISICO template
 
 imports:
   - yorc-types:1.1.0
+  - yorc-openstack-types:3.0.0
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
-  - org.lexis.common.heappe-types:1.0.3
-  - org.lexis.common.ddi-types:0.1.3
+  - org.lexis.common.heappe-types:1.0.6
+  - org.lexis.common.ddi-types:0.1.4
+  - org.lexis.common.dynamic-orchestration-types:0.1.0
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
@@ -24,8 +26,12 @@ topology_template:
   inputs:
     token:
       type: string
+      description: "OpenID Connect token"
       required: true
-      description: "Access token"
+    project_id:
+      type: string
+      description: "LEXIS project identifier"
+      required: true
     preprocessing_start_date:
       type: string
       description: Download GFS files from this date, format YYYYMMDDHH
@@ -41,12 +47,22 @@ topology_template:
     preprocessing_image:
       type: string
       description: Pre-processing container repository path
-      default: "laurentg/wps.gfs:0.4.2"
+      default: "cimafoundation/wps-da.gfs:v2.0.3"
       required: false
-    preprocessing_dataset_geographical_data:
+    preprocessing_dataset_geographical_data_path:
       type: string
       description: Dataset containing geographical data
       default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/69c0f740-33f0-11eb-8f85-0050568fcecc"
+      required: false
+    preprocessing_dataset_geographical_data_encrypted:
+      type: boolean
+      description: Is the input dataset encrypted
+      default: false
+      required: false
+    preprocessing_dataset_geographical_data_compressed:
+      type: boolean
+      description: Is the input dataset compressed
+      default: false
       required: false
     preprocessing_volumes:
       type: list
@@ -61,16 +77,53 @@ topology_template:
       description: Post-processing container repository path
       default: "laurentg/risico:0.3.1"
       required: false
-    postprocessing_ddi_path:
+    postprocessing_ddi_project_path:
       type: string
       description: "Path where to transfer the post-processing results in DDI"
       default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c"
       required: false
+    postprocessing_encrypt_dataset_result:
+      type: boolean
+      description: Encrypt the result dataset
+      default: false
+      required: false
+    postprocessing_compress_dataset_result:
+      type: boolean
+      description: Compress the result dataset
+      default: false
+      required: false
   node_templates:
-    PublicNet:
-      type: tosca.nodes.Network
+    # Job gathering info on the input dataset:
+    # - on which locations it is available
+    # - size
+    # - number of files
+    # to take placement decisions on computing resources using this dataset
+    InputDatasetInfoJob:
+      type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
       properties:
-        ip_version: 4
+        token: {get_input: token}
+        dataset_path: {get_input: preprocessing_dataset_geographical_data_path}
+    # Find the best cloud location depending on the input dataset and needed cloud resources
+    FindCloudLocationJob:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
+      properties:
+        token: { get_input: token }
+      requirements:
+        - InputDataset:
+            type_requirement: input_dataset
+            node: InputDatasetInfoJob
+            capability: org.lexis.common.ddi.capabilities.DatasetInfo
+            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
+        - CloudResourceVM:
+            type_requirement: cloud_instance
+            node: RisicoVM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.dynamic.orchestration.relationships.CloudResource
+    # Floating IP address network
+    PublicNet:
+      type: yorc.nodes.openstack.FloatingIP
     RisicoVM:
       type: tosca.nodes.Compute
       requirements:
@@ -106,11 +159,19 @@ topology_template:
       type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
         token: { get_input: token }
-        ddi_dataset_path: { get_input: preprocessing_dataset_geographical_data }
+        decrypt: {get_input: preprocessing_dataset_geographical_data_encrypted}
+        uncompress: {get_input: preprocessing_dataset_geographical_data_compressed}
+        ddi_dataset_path: { get_input: preprocessing_dataset_geographical_data_path }
         cloud_staging_area_directory_path: "risico_preprocessing_geog"
         timestamp_cloud_staging_area_directory: true
+      requirements:
+        - sameSite:
+            type_requirement: os
+            node: RisicoVM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
     MountGEOGDataset:
-      type: org.lexis.common.datatransfer.nodes.SSHMountStagingAreaDataset
+      type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
       properties:
         token: { get_input: token }
         mount_point_directory: "/mnt/cloud_staging_area/risico"
@@ -172,9 +233,9 @@ topology_template:
         keep_volumes: true
         restart_policy: no
         cpu_share: 1.0
-        mem_share: "128 MB"
+        shm_size: "64 GB"
         volumes: {get_input: preprocessing_volumes}
-        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_end_date, "\", \"WPS_MODE\": \"WARMUP\"}"]}
+        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_end_date, "\", \"WPS_MODE\": \"WARMUPDA\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
@@ -193,7 +254,7 @@ topology_template:
         start_date: {get_input: preprocessing_start_date}
         end_date: {get_input: preprocessing_end_date}
         number_of_past_days: 2
-        with_data_assimilation: false
+        with_data_assimilation: true
         left_longitude: "-19.0"
         right_longitude: "48.0"
         top_latitude: "64.0"
@@ -205,6 +266,45 @@ topology_template:
             node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
+    # Get pre-processing results details (size, number of files)
+    GetPreprocessDatasetInfo:
+      type: org.lexis.common.ddi.nodes.GetComputeInstanceDatasetInfo
+      properties:
+        dataset_path: "/wps_data/output"
+      requirements:
+        - host:
+            type_requirement: host
+            node: RisicoVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    # Find the best HPC location depending on the input dataset and needed HPC resources
+    FindHPCLocationsJob:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
+      properties:
+        token: { get_input: token }
+      requirements:
+        - InputDataset:
+            type_requirement: input_dataset
+            node: GetPreprocessDatasetInfo
+            capability: org.lexis.common.ddi.capabilities.DatasetInfo
+            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
+        - HPCResourceWRFJob1:
+            type_requirement: heappe_job
+            node: WRF_DAY_1
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.dynamic.orchestration.relationships.HeappeJob
+        - HPCResourceWRFJob2:
+            type_requirement: heappe_job
+            node: WRF_DAY_2
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.dynamic.orchestration.relationships.HeappeJob
+        - HPCResourceWRFJob3:
+            type_requirement: heappe_job
+            node: WRF_DAY_3
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.dynamic.orchestration.relationships.HeappeJob
     WRF_DAY_3:
       type: org.lexis.common.heappe.nodes.Job
       metadata:
@@ -483,7 +583,6 @@ topology_template:
         keep_volumes: true
         restart_policy: no
         cpu_share: 1.0
-        mem_share: "128 MB"
         volumes: ["/risico_data/:/home/risico/data"]
         docker_env_vars:  {concat: ["{\"RISICO_RUN_DATE\": \"", get_input: postprocessing_risico_run_date, "0000\"}"]}
       requirements:
@@ -506,7 +605,7 @@ topology_template:
         - mountedCloudStagingArea:
             type_requirement: mounted_staging_area
             node: MountGEOGDataset
-            capability: org.lexis.common.datatransfer.capabilities.MountedStagingAreaAccess
+            capability: org.lexis.common.ddi.capabilities.MountedStagingAreaAccess
             relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
         - hostedOnComputeHost:
             type_requirement: host
@@ -533,7 +632,9 @@ topology_template:
       properties:
         metadata: {concat: ["{\"creator\": [\"RISICO workflow\"], \"contributor\": [\"RISICO workflow\"], \"publisher\": [\"RISICO workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"RISICO Workflow WRF result - ", get_input: postprocessing_risico_run_date, "\"}"]}
         token: { get_input: token }
-        ddi_path: { get_input: postprocessing_ddi_path }
+        encrypt: {get_input: postprocessing_encrypt_dataset_result}
+        compress: {get_input: postprocessing_compress_dataset_result}
+        ddi_path: { get_input: postprocessing_ddi_project_path }
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
@@ -548,7 +649,7 @@ topology_template:
         - mountedCloudStagingArea:
             type_requirement: mounted_staging_area
             node: MountGEOGDataset
-            capability: org.lexis.common.datatransfer.capabilities.MountedStagingAreaAccess
+            capability: org.lexis.common.ddi.capabilities.MountedStagingAreaAccess
             relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
         - hostedOnComputeHost:
             type_requirement: host
@@ -575,7 +676,9 @@ topology_template:
       properties:
         metadata: {concat: ["{\"creator\": [\"RISICO workflow\"], \"contributor\": [\"RISICO workflow\"], \"publisher\": [\"RISICO workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"RISICO Workflow result - ", get_input: postprocessing_risico_run_date, "\"}"]}
         token: { get_input: token }
-        ddi_path: { get_input: postprocessing_ddi_path }
+        encrypt: {get_input: postprocessing_encrypt_dataset_result}
+        compress: {get_input: postprocessing_compress_dataset_result}
+        ddi_path: { get_input: postprocessing_ddi_project_path }
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
@@ -596,16 +699,20 @@ topology_template:
     computation_dataset_wrf_result_path:
       description: DDI path to RISICO WRF results
       value: { get_attribute: [ CloudToDDIWRFJob, destination_path ] }
-    postprocessing_dataset_result_path:
+    postprocessing_ddi_project_path:
       description: DDI path to RISICO post-processing results
       value: { get_attribute: [ CloudToDDIJob, destination_path ] }
   workflows:
+    # Nothing to do at deployment time
+    # In LEXIS, overriding the default workflow that would be generated by
+    # Alien4Could, as it would allocate all infrastructure resources at
+    # deployment time
     install:
       steps:
-        Network_install:
-          target: PublicNet
+        Compute_initial:
+          target: RisicoVM
           activities:
-            - delegate: install
+            - set_state: initial
     uninstall:
       steps:
         Compute_uninstall:
@@ -620,6 +727,54 @@ topology_template:
             - delegate: uninstall
     Run:
       steps:
+        # Submit DDI job to get info on dataset (DDI location where it is availablr, size...)
+        InputDatasetInfoJob_submit:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - InputDatasetInfoJob_run
+        InputDatasetInfoJob_run:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - InputDatasetInfoJob_executed
+        InputDatasetInfoJob_executed:
+          target: InputDatasetInfoJob
+          activities:
+            - set_state: executed
+          on_success:
+            - FindCloudLocationJob_submit
+        # Submit the computation to find the best location from these inputs
+        FindCloudLocationJob_submit:
+          target: FindCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindCloudLocationJob_run
+        FindCloudLocationJob_run:
+          target: FindCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindCloudLocationJob_executed
+        FindCloudLocationJob_executed:
+          target: FindCloudLocationJob
+          activities:
+            - set_state: executed
+          on_success:
+            - DDIToCloudGEOGDatasetJob_create
+            - Network_install
+        # Get a floating IP address for the Cloud Compute instance
+        Network_install:
+          target: PublicNet
+          activities:
+            - delegate: install
+          on_success:
+            - Compute_install
         Compute_install:
           target: RisicoVM
           activities:
@@ -638,7 +793,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - DDIToCloudGEOGDatasetJob_create
+            - MountGEOGDataset_create
         DDIToCloudGEOGDatasetJob_create:
           target: DDIToCloudGEOGDatasetJob
           operation_host: ORCHESTRATOR
@@ -682,6 +837,12 @@ topology_template:
           target: MountGEOGDataset
           activities:
             - set_state: created
+          on_success:
+            - MountGEOGDataset_refresh_token
+        MountGEOGDataset_refresh_token:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: custom.refresh_token
           on_success:
             - MountGEOGDataset_start
         MountGEOGDataset_start:
@@ -761,9 +922,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - WRF_DAY_1_create
-            - WRF_DAY_2_create
-            - WRF_DAY_3_create
+            - GetPreprocessDatasetInfo_create
             - WPS_GFS_delete
         WPS_GFS_delete:
           target: WPS_GFS
@@ -775,6 +934,44 @@ topology_template:
           target: WPS_GFS
           activities:
             - set_state: deleted
+        GetPreprocessDatasetInfo_create:
+          target: GetPreprocessDatasetInfo
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - GetPreprocessDatasetInfo_start
+        GetPreprocessDatasetInfo_start:
+          target: GetPreprocessDatasetInfo
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetPreprocessDatasetInfo_started
+        GetPreprocessDatasetInfo_started:
+          target: GetPreprocessDatasetInfo
+          activities:
+            - set_state: started
+          on_success:
+            - FindHPCLocationsJob_submit
+        FindHPCLocationsJob_submit:
+          target: FindHPCLocationsJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindHPCLocationsJob_run
+        FindHPCLocationsJob_run:
+          target: FindHPCLocationsJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindHPCLocationsJob_executed
+        FindHPCLocationsJob_executed:
+          target: FindHPCLocationsJob
+          activities:
+            - set_state: executed
+          on_success:
+            - WRF_DAY_1_create
+            - WRF_DAY_2_create
+            - WRF_DAY_3_create
         WRF_DAY_1_create:
           target: WRF_DAY_1
           operation_host: ORCHESTRATOR
@@ -1189,6 +1386,12 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - MountGEOGDataset_refresh_token_for_stop
+        MountGEOGDataset_refresh_token_for_stop:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
             - MountGEOGDataset_stop
         MountGEOGDataset_stop:
           target: MountGEOGDataset
@@ -1247,6 +1450,12 @@ topology_template:
             - delegate: uninstall
     cleanupRun:
       steps:
+        MountGEOGDataset_refresh_token:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountGEOGDataset_stop
         MountGEOGDataset_stop:
           target: MountGEOGDataset
           activities:
@@ -1713,6 +1922,12 @@ topology_template:
           target: CloudToDDIJob
           activities:
             - set_state: executed
+          on_success:
+            - MountGEOGDataset_refresh_token_for_stop
+        MountGEOGDataset_refresh_token_for_stop:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: custom.refresh_token
           on_success:
             - MountGEOGDataset_stop
         MountGEOGDataset_stop:

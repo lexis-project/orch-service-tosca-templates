@@ -9,8 +9,8 @@ description: ""
 
 imports:
   - yorc-types:1.1.0
-  - org.lexis.common.heappe-types:1.0.3
-  - org.lexis.common.ddi-types:0.1.3
+  - org.lexis.common.heappe-types:1.0.6
+  - org.lexis.common.ddi-types:0.1.4
   - tosca-normative-types:1.0.0-ALIEN20
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
 
@@ -18,7 +18,7 @@ topology_template:
   inputs:
     token:
       type: string
-      description: "Access token"
+      description: "OpenID Connect token"
       required: true
     metadata:
       type: org.lexis.common.ddi.types.Metadata
@@ -98,7 +98,7 @@ topology_template:
             capability: tosca.capabilities.OperatingSystem
             relationship: org.lexis.common.ddi.relationships.SameSite
     MountTransferredDataset:
-      type: org.lexis.common.datatransfer.nodes.SSHMountStagingAreaDataset
+      type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
       properties:
         token: { get_input: token }
         mount_point_directory: "/mnt/cloud_staging_area/test_lexis"
@@ -247,6 +247,12 @@ topology_template:
           activities:
             - set_state: created
           on_success:
+            - MountTransferredDataset_refresh_token
+        MountTransferredDataset_refresh_token:
+          target: MountTransferredDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
             - MountTransferredDataset_start
         MountTransferredDataset_start:
           target: MountTransferredDataset
@@ -337,6 +343,12 @@ topology_template:
           activities:
             - set_state: created
           on_success:
+            - MountTransferredDataset_refresh_token
+        MountTransferredDataset_refresh_token:
+          target: MountTransferredDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
             - MountTransferredDataset_start
         MountTransferredDataset_start:
           target: MountTransferredDataset
@@ -350,6 +362,12 @@ topology_template:
             - set_state: started
     testUnmount:
       steps:
+        MountTransferredDataset_refresh_token:
+          target: MountTransferredDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountTransferredDataset_stop
         MountTransferredDataset_stop:
           target: MountTransferredDataset
           activities:
@@ -362,6 +380,12 @@ topology_template:
             - set_state: stopped
     cleanup:
       steps:
+        MountTransferredDataset_refresh_token:
+          target: MountTransferredDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountTransferredDataset_stop
         MountTransferredDataset_stop:
           target: MountTransferredDataset
           activities:

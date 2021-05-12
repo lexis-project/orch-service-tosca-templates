@@ -15,8 +15,9 @@ See TOSCA code in [lexis_template.yaml](lexis_template.yaml).
 A graphical view of the template topology shows:
 * a Compute Instance hosting software that will perform the pre-processing and
   post-processing computation
-* a HPC Job that will perform the computation on the HPC infrastructure 
 * DDI jobs that will perform the necessary data transfers between the infrastructures
+* a HPC Job that will perform the computation on the HPC infrastructure 
+* Dynamic orchestration components computing the best infrastructure to use
 
 ![App template](images/apptemplate.png)
 
@@ -27,8 +28,20 @@ A graphical view of this workflow shows:
 
 ![Run workflow](images/runworkflow.png)
 
-Zooming on each sequence of this workflow, it first starts by creating a cloud
-compute instance, and transferring an input dataset from DDI to make it available to this cloud compute instance:
+Zooming on each sequence of this workflow, it first starts by gathering info on the
+input dataset available in DDI: its size, in which locations it is available (LRZ, IT4I, or both locations),
+needed to evaluate the cost of a data transfer.
+Then, submits the job `FindCloudLocationJob` seen above in the template topology,
+that will compute the best Cloud location taking into account:
+* info on this input dataset to transfer to a Cloud staging area
+* the requirements of the Cloud Compute instance associated to the component FindCloudLocationJob
+* the availability of Computing resources on the different LEXIS Cloud locations.
+
+![Run workflow](images/find_cloud_location.png)
+
+
+Then, the workflow creates a Cloud compute instance on the selected location, and transfers
+the input dataset from DDI to make it available to this cloud compute instance:
 
 ![Run workflow](images/workflow1_mount_input_dataset.png)
 
@@ -36,9 +49,18 @@ Then the docker service is installed and started, and the pre-processing contain
 
 ![Docker and container](images/workflow2_preprocessing.png)
 
-Once the container has run and produced results, a HEAppE job is first created
-and File transfers are then enabled on it, so that the next step can copy
-pre-processing results to the HEAppE job task.
+Once the container has run and produced results, a component `GetPreprocessDatasetInfo` is
+started to provide details on these pre-processing results (size, number of files...),
+needed to evaluate the cost of a data transfer.
+And the job `FindHPCLocationJob` is submitted to find the best HPC location where to
+run next HPC computation job:
+
+![Find HPC location](images/find_hpc_location.png)
+
+
+Then, a HEAppE job is first created on the selected HPC location, and File transfers
+are then enabled on it, so that the next step can copy pre-processing results to
+the HEAppE job task.
 The orchestrator submits then the HEAppE job and waits for its end.
 
 ![HEAppE job](images/workflow3_computation.png)
@@ -58,7 +80,7 @@ The computation is now done, the final phase is a cleanup phase where infrastruc
 resources that were allocated for the computation are now released.
 Two branches run in parallel on the workflow:
 * the branch excuted after the transfer of HPC job results, taking care of deleting the job
-* the branch executed after the post-processing, taking care of cleaning up the Cloud Staging are
+* the branch executed after the post-processing, taking care of cleaning up the Cloud Staging area
   and deleting Cloud compute resources.
 
 ![cleanup](images/workflow6_cleanup.png)

@@ -1,0 +1,6 @@
+- name: Stop Xpra
+  hosts: all
+  strategy: free
+  tasks:
+    - name: Stop Xpra
+      command: "/bin/xpra stop"

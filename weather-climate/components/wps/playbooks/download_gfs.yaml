@@ -4,11 +4,11 @@
   vars:
     gfsdates: []
   tasks:
-    - name: Compute date in seconds
+    - name: Compute date in seconds (end data - start date + 48 hours)
       set_fact:
         gfsDay: "{{START_DATE[:8]}}"
         gfsStartHour: "{{START_DATE[8:]}}"
-        nbHours: "{{ (((END_DATE|to_datetime('%Y%m%d%H')) - (START_DATE|to_datetime('%Y%m%d%H'))).total_seconds() / 3600) | int }}"
+        nbHours: "{{ ((((END_DATE|to_datetime('%Y%m%d%H')) - (START_DATE|to_datetime('%Y%m%d%H'))).total_seconds() / 3600) + 48) | int }}"
         dateSeconds: "{{ (START_DATE|to_datetime('%Y%m%d%H')).strftime('%s') }}"
     - name: Check if data assimilation is requested
       set_fact:
@@ -22,13 +22,19 @@
         gfsDay: "{{assimilationDate[:8]}}"
         gfsStartHour: "{{assimilationDate[8:]}}"
         nbHours: "{{ nbHours|int + 6}}"
+        mbHoursPastDays: "30"
+        dateSeconds: "{{ (assimilationDate|to_datetime('%Y%m%d%H')).strftime('%s') }}"
       when: with_data_assimilation
+    - name: Define number of hours to get for past days without data assimilation
+      set_fact:
+        mbHoursPastDays: "24"
+      when: not with_data_assimilation
     - name: Compute number of days since current data
       set_fact:
         nbDays: "{{ (((ansible_date_time.iso8601_basic_short[:8] | to_datetime ('%Y%m%d')) - (gfsDay|to_datetime('%Y%m%d'))).total_seconds() / 3600 / 24) | int }}"
-    - name: Check if these are historical data
+    - name: Check if these are historical data, including requested number of past days
       set_fact:
-        historical_data: "{{ (nbDays|int > 9) | bool}}" 
+        historical_data: "{{ ( (nbDays|int + NUMBER_OF_PAST_DAYS|int) > 9) | bool}}"
     - name: Add dates to collect
       set_fact:
         gfsdates: "{{ gfsdates + [ '%Y%m%d' | strftime( (dateSeconds | int)) ] }}"
@@ -38,7 +44,7 @@
       become: true
       become_method: sudo
       file:
-        path: "{{ OUTPUT_DIRECTORY }}/{{ item }}{{gfsStartHour}}"
+        path: "{{ OUTPUT_DIRECTORY }}/{{ item[:4] }}/{{ item[4:6] }}/{{ item[6:8] }}/{{gfsStartHour}}00"
         state: directory
         recurse: yes
         mode: 0777
@@ -48,47 +54,47 @@
       become: true
       become_method: sudo
       file:
-        path: "{{ OUTPUT_DIRECTORY }}/{{ START_DATE }}"
+        path: "{{ OUTPUT_DIRECTORY }}//{{ gfsDay[:4] }}/{{ gfsDay[4:6] }}/{{ gfsDay[6:8] }}/{{gfsStartHour}}00"
         state: directory
         recurse: yes
         mode: 0777
       when: NUMBER_OF_PAST_DAYS|int == 0
     - name: Download GFS analysis of initial atmospheric conditions file for each day
       get_url:
-        url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=gfs.t{{ gfsStartHour }}z.pgrb2.0p25.anl&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ item }}%2F{{gfsStartHour}}"
-        dest: "{{ OUTPUT_DIRECTORY }}/{{ item }}{{gfsStartHour}}"
+        url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=gfs.t{{ gfsStartHour }}z.pgrb2.0p25.anl&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ item }}%2F{{gfsStartHour}}%2Fatmos"
+        dest: "{{ OUTPUT_DIRECTORY }}/{{ item[:4] }}/{{ item[4:6] }}/{{ item[6:8] }}/{{gfsStartHour}}00"
         mode: 0755
       loop: "{{ gfsdates|flatten(levels=1) }}"
       when: NUMBER_OF_PAST_DAYS|int > 0 and not historical_data
     - name: Download GFS analysis of initial atmospheric conditions file
       get_url:
-        url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=gfs.t{{ gfsStartHour }}z.pgrb2.0p25.anl&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ gfsDay }}%2F{{ gfsStartHour }}"
-        dest: "{{ OUTPUT_DIRECTORY }}/{{ START_DATE }}"
+        url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=gfs.t{{ gfsStartHour }}z.pgrb2.0p25.anl&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ gfsDay }}%2F{{ gfsStartHour }}%2Fatmos"
+        dest: "{{ OUTPUT_DIRECTORY }}//{{ gfsDay[:4] }}/{{ gfsDay[4:6] }}/{{ gfsDay[6:8] }}/{{gfsStartHour}}00"
         mode: 0755
       when: NUMBER_OF_PAST_DAYS|int == 0 and not historical_data
     - name: Download GFS data files from previous days to warmup the computation
       get_url:
-        url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=gfs.t{{ gfsStartHour }}z.pgrb2.0p25.{{ 'f0%02d' | format(item[1]) }}&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ item[0] }}%2F{{ gfsStartHour }}"
-        dest: "{{ OUTPUT_DIRECTORY }}/{{ item[0] }}{{gfsStartHour}}/gfs.t{{ gfsStartHour }}z.pgrb2.0p25.{{ 'f0%02d' | format(item[1]) }}.grb"
+        url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=gfs.t{{ gfsStartHour }}z.pgrb2.0p25.{{ 'f0%02d' | format(item[1]) }}&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ item[0] }}%2F{{ gfsStartHour }}%2Fatmos"
+        dest: "{{ OUTPUT_DIRECTORY }}/{{ item[0][:4] }}/{{ item[0][4:6] }}/{{ item[0][6:8] }}/{{gfsStartHour}}00/gfs.t{{ gfsStartHour }}z.pgrb2.0p25.{{ 'f0%02d' | format(item[1]) }}.grb"
         mode: 0755
-      loop: "{{ gfsdates[1:]|product(range(0, 25, 1))|list }}"
+      loop: "{{ gfsdates[1:]|product(range(0, mbHoursPastDays|int + 1, 1))|list }}"
       when: not historical_data
     - name: Download GFS data files for the specifed start and end date
       get_url:
-        url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=gfs.t{{ gfsStartHour }}z.pgrb2.0p25.{{ 'f0%02d' | format(item[1]) }}&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ item[0] }}%2F{{ gfsStartHour }}"
-        dest: "{{ OUTPUT_DIRECTORY }}/{{ item[0] }}{{gfsStartHour}}/gfs.t{{ gfsStartHour }}z.pgrb2.0p25.{{ 'f0%02d' | format(item[1]) }}.grb"
+        url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=gfs.t{{ gfsStartHour }}z.pgrb2.0p25.{{ 'f0%02d' | format(item[1]) }}&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ item[0] }}%2F{{ gfsStartHour }}%2Fatmos"
+        dest: "{{ OUTPUT_DIRECTORY }}/{{ item[0][:4] }}/{{ item[0][4:6] }}/{{ item[0][6:8] }}/{{gfsStartHour}}00/gfs.t{{ gfsStartHour }}z.pgrb2.0p25.{{ 'f0%02d' | format(item[1]) }}.grb"
         mode: 0755
       loop: "{{ gfsdates[:1]|product(range(0, nbHours|int + 1, 1))|list }}"
       when: NUMBER_OF_PAST_DAYS|int > 0 and not historical_data
     - name: Download GFS data files for the specifed start and end date
       get_url:
-        url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=gfs.t{{ gfsStartHour }}z.pgrb2.0p25.{{ 'f0%02d' | format(item) }}&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ gfsDay }}%2F{{ gfsStartHour }}"
-        dest: "{{ OUTPUT_DIRECTORY }}/{{ START_DATE }}/gfs.t{{ gfsStartHour }}z.pgrb2.0p25.{{ 'f0%02d' | format(item) }}.grb"
+        url: "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=gfs.t{{ gfsStartHour }}z.pgrb2.0p25.{{ 'f0%02d' | format(item) }}&subregion=&leftlon={{ LEFT_LONGITUDE }}&rightlon={{ RIGHT_LONGITUDE }}&toplat={{ TOP_LATITUDE }}&bottomlat={{ BOTTOM_LATITUDE }}&dir=%2Fgfs.{{ gfsDay }}%2F{{ gfsStartHour }}%2Fatmos"
+        dest: "{{ OUTPUT_DIRECTORY }}//{{ gfsDay[:4] }}/{{ gfsDay[4:6] }}/{{ gfsDay[6:8] }}/{{gfsStartHour}}00/gfs.t{{ gfsStartHour }}z.pgrb2.0p25.{{ 'f0%02d' | format(item) }}.grb"
         mode: 0755
       loop: "{{ range(0, nbHours|int + 1, 1)|list }}"
       when: NUMBER_OF_PAST_DAYS|int == 0 and not historical_data
 
-    # Plyabook is done if the start data is less than 10 days ago (not historical data)
+    # Playbook is done if the start data is less than 10 days ago (not historical data)
     - meta: end_play
       when: not historical_data
 
@@ -109,15 +115,15 @@
     - name: Download GFS historical data files from previous days to warmup the computation
       get_url:
         url: "https://rda.ucar.edu/data/ds084.1/{{ item[0][:4] }}/{{ item[0] }}/gfs.0p25.{{ item[0] }}{{gfsStartHour}}.{{ 'f0%02d' | format(item[1]) }}.grib2"
-        dest: "{{ OUTPUT_DIRECTORY }}/{{ item[0] }}{{gfsStartHour}}"
+        dest: "{{ OUTPUT_DIRECTORY }}/{{ item[0][:4] }}/{{ item[0][4:6] }}/{{ item[0][6:8] }}/{{gfsStartHour}}00"
         mode: 0755
         headers:
           Cookie: "{{ login.set_cookie }}"
-      loop: "{{ gfsdates[1:]|product(range(0, 25, 3))|list }}"
+      loop: "{{ gfsdates[1:]|product(range(0, mbHoursPastDays|int + 1, 3))|list }}"
     - name: Download GFS historical data files for the specifed start and end date
       get_url:
         url: "https://rda.ucar.edu/data/ds084.1/{{ item[0][:4] }}/{{ item[0] }}/gfs.0p25.{{ item[0] }}{{gfsStartHour}}.{{ 'f0%02d' | format(item[1]) }}.grib2"
-        dest: "{{ OUTPUT_DIRECTORY }}/{{ item[0] }}{{gfsStartHour}}"
+        dest: "{{ OUTPUT_DIRECTORY }}/{{ item[0][:4] }}/{{ item[0][4:6] }}/{{ item[0][6:8] }}/{{gfsStartHour}}00"
         mode: 0755
         headers:
           Cookie: "{{ login.set_cookie }}"
@@ -126,7 +132,7 @@
     - name: Download GFS data files for the specifed start and end date
       get_url:
         url: "https://rda.ucar.edu/data/ds084.1/{{ gfsDay[:4] }}/{{ gfsDay }}/gfs.0p25.{{ gfsDay }}{{gfsStartHour}}.{{ 'f0%02d' | format(item) }}.grib2"
-        dest: "{{ OUTPUT_DIRECTORY }}/{{ START_DATE }}"
+        dest: "{{ OUTPUT_DIRECTORY }}//{{ gfsDay[:4] }}/{{ gfsDay[4:6] }}/{{ gfsDay[6:8] }}/{{gfsStartHour}}00"
         mode: 0755
         headers:
           Cookie: "{{ login.set_cookie }}"

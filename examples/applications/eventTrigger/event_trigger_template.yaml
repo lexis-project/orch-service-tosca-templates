@@ -9,7 +9,7 @@ description: ""
 
 imports:
   - tosca-normative-types:1.0.0-ALIEN20
-  - org.lexis.common.heappe-types:1.0.3
+  - org.lexis.common.heappe-types:1.0.6
   - org.lexis.common.noscheduler.job:0.1.0
   - org.lexis.common.examples.events:0.1.0
 topology_template:
@@ -17,7 +17,7 @@ topology_template:
     token:
       type: string
       required: true
-      description: "Access token"
+      description: "OpenID Connect token"
     preprocessing_event_file_url:
       type: string
       description: "URL of the file"
