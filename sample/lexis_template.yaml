@@ -48,12 +48,12 @@ topology_template:
       description: Dataset containing input data
       default: "project/proj6abfa10a181f20196814dd1cd6e62723/32e5dff4-9e7d-11eb-a9c7-0050568fcecc"
       required: false
-    preprocessing_encrypted_input_dataset:
+    preprocessing_decrypt_input_dataset:
       type: boolean
       description: Is the input dataset encrypted
       default: false
       required: false
-    preprocessing_compressed_input_dataset:
+    preprocessing_uncompress_input_dataset:
       type: boolean
       description: Is the input dataset compressed
       default: false
@@ -239,8 +239,8 @@ topology_template:
       type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
         token: {get_input: token}
-        decrypt: {get_input: preprocessing_encrypted_input_dataset}
-        uncompress: {get_input: preprocessing_compressed_input_dataset}
+        decrypt: {get_input: preprocessing_decrypt_input_dataset}
+        uncompress: {get_input: preprocessing_uncompress_input_dataset}
         ddi_dataset_path: { get_input: preprocessing_dataset_input_path }
         cloud_staging_area_directory_path: "lexis_test_preprocessing"
         timestamp_cloud_staging_area_directory: true

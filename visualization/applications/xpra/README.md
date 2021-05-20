@@ -18,8 +18,8 @@ The template expects the following input properties (mandatory inputs in **bold*
 * **project_id**: LEXIS project identifier
 * **visualization_dataset_input_path**: Dataset path in DDI containing visualization data
 * **visualization_walltime_minutes**: Duration in minutes of the visualization session
-* visualization_encrypted_input_dataset: Is the input dataset encrypted (default: false)
-* visualization_compressed_input_dataset: Is the input dataset compressed (default: false)
+* visualization_decrypt_input_dataset: Is the input dataset encrypted (default: false)
+* visualization_uncompress_input_dataset: Is the input dataset compressed (default: false)
 * visualization_directory: Directory where visualization data will be accesible on a cloud instance (default: visualization)
 * mount_point: Directory where visualization data will be mounted from Cloud staging area (default: /mnt/visualization)
 * visualization_port: Port to use to expose the remote display, should be > 1024 (default: 8765)

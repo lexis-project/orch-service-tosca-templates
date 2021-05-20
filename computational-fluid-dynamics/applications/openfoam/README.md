@@ -20,8 +20,8 @@ The template expects the following input properties (mandatory inputs in **bold*
 * **computation_title_dataset_result**: Title of the result dataset to create in DDI
 * **computation_ddi_project_path**: Path of the project where to transfer the computation results in DDI: project/projxxx
 * **visualization_walltime_minutes**: Duration in minutes of the visualization session
-* preprocessing_encrypted_input_dataset: Is the input dataset encrypted (default: false)
-* preprocessing_compressed_input_dataset: Is the input dataset compressed (default: false)
+* preprocessing_decrypt_input_dataset: Should the input dataset be decrypted (default: false)
+* preprocessing_uncompress_input_dataset: Should the input dataset be uncompressed (default: false)
 * computation_encrypt_result_dataset: Should the result dataset be encrypted (default: false)
 * computation_compress_result_dataset: Should the result dataset be compressed (default: false)
 * visualization_directory: Directory where visualization data will be accesible on a cloud instance (default: openfoam)
@@ -37,8 +37,9 @@ The following output attributes are provided:
 
 Once the `XpraJob` job is running, the remote session URL is available in the Application outputs in Alien4Cloud.
 Click on it and you will get an access to the remote session with Paraview running.
-Select `File`> `Open` in Paraview, and select the data to visualize in the home directory `openfoam` (by default).
-Click on `Apply` in the `Properties` pane on the left hand side to visualize you data:
+Select `File`> `Open` in Paraview, and select the data to visualize in the home directory `openfoam` (by default),
+sub-directory `EnSight`, and select file `*.case`.
+Once the file is loaded, click on `Apply` in the `Properties` pane on the left hand side to visualize you data:
 
 ![Paraview](../../../visualization/applications/xpra/images/Paraview.png)
 
