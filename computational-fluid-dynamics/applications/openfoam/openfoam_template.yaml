@@ -44,12 +44,12 @@ topology_template:
       type: string
       description: "Path of the project where to transfer the computation results in DDI: project/projxxx"
       required: true
-    preprocessing_encrypted_input_dataset:
+    preprocessing_decrypt_input_dataset:
       type: boolean
       description: Is the input dataset encrypted
       default: false
       required: false
-    preprocessing_compressed_input_dataset:
+    preprocessing_uncompress_input_dataset:
       type: boolean
       description: Is the input dataset compressed
       default: false
@@ -118,7 +118,8 @@ topology_template:
         task: computation
       properties:
         token: { get_input: token }
-        listChangedFilesWhileRunning: true
+        # TODO: set listChangedFilesWhileRunning to ture for checkpointing
+        listChangedFilesWhileRunning: false
         JobSpecification:
           Name: "OpenFoam"
           Project: "OPEN-16-24"
@@ -148,8 +149,8 @@ topology_template:
         task: preprocessing
       properties:
         token: { get_input: token }
-        decrypt: {get_input: preprocessing_encrypted_input_dataset}
-        uncompress: {get_input: preprocessing_compressed_input_dataset}
+        decrypt: {get_input: preprocessing_decrypt_input_dataset}
+        uncompress: {get_input: preprocessing_uncompress_input_dataset}
         ddi_dataset_path: { get_input: preprocessing_dataset_input_path }
         task_name: "OpenFoamParallel"
       requirements:
@@ -219,7 +220,7 @@ topology_template:
         host:
           properties:
             disk_size: "40 GB"
-            mem_size: "45 GB"
+            mem_size: "8 GB"
         os:
           properties:
             type: linux
@@ -440,6 +441,8 @@ topology_template:
           target: HPCToDDIJob
           activities:
             - set_state: executed
+          on_success:
+            - OpenFOAMJob_disable_file_transfer
         #  Get info on HPC results dataset (size, number of files) 
         GetHPCResultsDatasetInfo_start:
           target: GetHPCResultsDatasetInfo
@@ -525,21 +528,18 @@ topology_template:
             - call_operation: Standard.delete
         XpraJob_create:
           target: XpraJob
-          operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
           on_success:
             - XpraJob_submit
         XpraJob_submit:
           target: XpraJob
-          operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
             - XpraJob_run
         XpraJob_run:
           target: XpraJob
-          operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
           on_success:
@@ -562,6 +562,24 @@ topology_template:
             - delegate: uninstall
     RunCreateVMTransferResults:
       steps:
+        FindCloudLocationJob_submit:
+          target: FindCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindCloudLocationJob_run
+        FindCloudLocationJob_run:
+          target: FindCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindCloudLocationJob_executed
+        FindCloudLocationJob_executed:
+          target: FindCloudLocationJob
+          activities:
+            - set_state: executed
+          on_success:
+            - PublicNet_install
         PublicNet_install:
           target: PublicNet
           activities:
@@ -745,22 +763,15 @@ topology_template:
           target: PublicNet
           activities:
             - delegate: uninstall
+          on_success:
+            - OpenFOAMJob_delete
+        OpenFOAMJob_delete:
+          target: OpenFOAMJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
     testDDItoHPC:
       steps:
-        OpenFOAMJob_create:
-          target: OpenFOAMJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - OpenFOAMJob_enable_file_transfer
-        OpenFOAMJob_enable_file_transfer:
-          target: OpenFOAMJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: custom.enable_file_transfer
-          on_success:
-            - DDIToHPCTaskJob_create
         DDIToHPCTaskJob_create:
           target: DDIToHPCTaskJob
           operation_host: ORCHESTRATOR
