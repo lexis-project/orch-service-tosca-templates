@@ -21,8 +21,19 @@ node_types:
         type: integer
         description: Port to use
         required: true
+      ca_pem:
+        description: "PEM-encoded certificate authority content, will be generated if not provided"
+        type: string
+        required: false
+      ca_key:
+        description: "Certificate authority private key content, will be generated if not provided"
+        type: string
+        required: false
+      ca_passphrase:
+        description: "Certificate authority private key passphrase"
+        type: string
+        required: false
     attributes:
-      rand_pass: {get_operation_output: [SELF, Standard, create, RAND_PASS]}
       endpoint: {get_operation_output: [SELF, Standard, start, ENDPOINT]}
       url: { concat: ["https://", get_attribute: [HOST, public_ip_address], ":", get_property: [SELF, port], get_attribute: [SELF, endpoint] ] }
     interfaces:
@@ -32,7 +43,11 @@ node_types:
         start:
           inputs:
             PORT: { get_property: [SELF, port] }
-            RAND_PASS: { get_attribute: [SELF, rand_pass] }
+            CA_PEM: { get_property: [SELF, ca_pem] }
+            CA_KEY: { get_property: [SELF, ca_key] }
+            CA_PASS: { get_property: [SELF, ca_passphrase] }
+            IP_ADDRESS: { get_attribute: [HOST, ip_address] }
+            PUBLIC_ADDRESS: { get_attribute: [HOST, public_address] }
           implementation: playbooks/start.yaml
         stop:
           implementation: playbooks/stop.yaml
@@ -52,8 +67,19 @@ node_types:
         type: integer
         description: Duration in minutes of the job execution
         required: true
+      ca_pem:
+        description: "PEM-encoded certificate authority content, will be generated if not provided"
+        type: string
+        required: false
+      ca_key:
+        description: "Certificate authority private key content, will be generated if not provided"
+        type: string
+        required: false
+      ca_passphrase:
+        description: "Certificate authority private key passphrase"
+        type: string
+        required: false
     attributes:
-      rand_pass: {get_operation_output: [SELF, Standard, create, RAND_PASS]}
       submit_date_epoch: { get_operation_output: [SELF, tosca.interfaces.node.lifecycle.Runnable, submit, XPRA_SUBMIT_DATE_EPOCH] }
       endpoint: {get_operation_output: [SELF, tosca.interfaces.node.lifecycle.Runnable, submit, ENDPOINT]}
       url: { concat: ["https://", get_attribute: [HOST, public_ip_address], ":", get_property: [SELF, port], get_attribute: [SELF, endpoint] ] }
@@ -67,7 +93,11 @@ node_types:
         submit:
           inputs:
             PORT: { get_property: [SELF, port] }
-            RAND_PASS: { get_attribute: [SELF, rand_pass] }
+            CA_PEM: { get_property: [SELF, ca_pem] }
+            CA_KEY: { get_property: [SELF, ca_key] }
+            CA_PASS: { get_property: [SELF, ca_passphrase] }
+            IP_ADDRESS: { get_attribute: [HOST, ip_address] }
+            PUBLIC_ADDRESS: { get_attribute: [HOST, public_address] }
           implementation: playbooks/submit_xpra.yaml
         run:
           inputs:

@@ -74,16 +74,3 @@
         state: present
         update_cache: yes
       when: ansible_os_family == 'Debian'
-    - name: Generate a random password
-      shell: openssl rand -hex 10 | tr -d '\n' > /tmp/randpassxpra.txt
-    - name: Get file content
-      slurp:
-        src: /tmp/randpassxpra.txt
-      register: pass_slurp
-    - name: Decode file content and expose it as operation output
-      set_fact:
-        RAND_PASS: "{{ pass_slurp['content'] | b64decode }}"
-    - name: cleanup
-      file:
-        path: /tmp/randpassxpra.txt
-        state: absent

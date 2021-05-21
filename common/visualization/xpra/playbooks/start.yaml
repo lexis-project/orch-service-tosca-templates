@@ -2,10 +2,93 @@
   hosts: all
   strategy: free
   tasks:
-    - name: Create password file
+    - name: "Copy certificate authority"
       copy:
-        content: "{{ RAND_PASS }}"
-        dest: "{{ansible_env.HOME}}/.password.txt"
+        content: "{{ CA_PEM }}"
+        dest: "{{ ansible_env.HOME }}/.xpra-ca.pem"
+        owner: "{{ ansible_env.USER }}"
+        group: "{{ ansible_env.USER }}"
+        mode: 0400
+      when: CA_PEM != ""
+
+    - name: "Copy certificate authority private key"
+      copy:
+        content: "{{ CA_KEY }}"
+        dest: "{{ ansible_env.HOME }}/.xpra-ca.key"
+        owner: "{{ ansible_env.USER }}"
+        group: "{{ ansible_env.USER }}"
+        mode: 0400
+      when: CA_PEM != ""
+
+    - name: Create certificate authority key
+      openssl_privatekey:
+        path: "{{ ansible_env.HOME }}/.xpra-ca.key"
+      when: CA_PEM == ""
+    - name: create the certificate authority CSR
+      openssl_csr:
+        path: "{{ ansible_env.HOME }}/.xpra-ca.csr"
+        privatekey_path: "{{ ansible_env.HOME }}/.xpra-ca.key"
+        common_name: "LEXISxpra"
+      when: CA_PEM == ""
+    - name: sign the CA CSR
+      openssl_certificate:
+        path: "{{ ansible_env.HOME }}/.xpra-ca.pem"
+        csr_path: "{{ ansible_env.HOME }}/.xpra-ca.csr"
+        privatekey_path: "{{ ansible_env.HOME }}/.xpra-ca.key"
+        provider: selfsigned
+      when: CA_PEM == ""
+    - name: create host CSR signing key
+      openssl_privatekey:
+        path: "{{ ansible_env.HOME }}/.xpra-host-key.pem"
+    - name: Get Host private IP address which TLS connections are accepted
+      set_fact:
+        subjectAltName: "IP:{{ IP_ADDRESS }},IP:127.0.0.1,DNS:localhost"
+    - name: Add Host public IP address to subjectAltName
+      set_fact:
+        subjectAltName: "IP:{{ PUBLIC_ADDRESS }},{{ subjectAltName }}"
+      when: PUBLIC_ADDRESS is defined and PUBLIC_ADDRESS != ''
+    - name: create the CSR for the Xpra server
+      openssl_csr:
+        path: "{{ ansible_env.HOME }}/.xpra-host.csr"
+        privatekey_path: "{{ ansible_env.HOME }}/.xpra-host-key.pem"
+        common_name: "LEXISxpra"
+        subjectAltName: "{{ subjectAltName }}"
+        key_usage:
+          - digitalSignature
+          - keyAgreement
+          - nonRepudiation
+          - keyEncipherment
+        extended_key_usage:
+          - clientAuth
+          - serverAuth
+    - name: sign the CSR for the Xpra server with passphrase
+      openssl_certificate:
+        path: "{{ansible_env.HOME}}/.xpra-ssl-cert-xpra.pem"
+        csr_path: "{{ ansible_env.HOME }}/.xpra-host.csr"
+        provider: ownca
+        ownca_path: "{{ ansible_env.HOME }}/.xpra-ca.pem"
+        ownca_privatekey_path: "{{ ansible_env.HOME }}/.xpra-ca.key"
+        ownca_privatekey_passphrase: "{{ CA_PASS }}"
+      when: CA_PASS != ""
+    - name: sign the CSR for the Xpra server
+      openssl_certificate:
+        path: "{{ansible_env.HOME}}/.xpra-ssl-cert-xpra.pem"
+        csr_path: "{{ ansible_env.HOME }}/.xpra-host.csr"
+        provider: ownca
+        ownca_path: "{{ ansible_env.HOME }}/.xpra-ca.pem"
+        ownca_privatekey_path: "{{ ansible_env.HOME }}/.xpra-ca.key"
+      when: CA_PASS == ""
+
+    - name: Generate a random password
+      shell: openssl rand -hex 10 | tr -d '\n' > {{ansible_env.HOME}}/.xpra-password.txt
+    - name: Get file content
+      slurp:
+        src: "{{ansible_env.HOME}}/.xpra-password.txt"
+      register: pass_slurp
+    - name: Decode file content
+      set_fact:
+        RAND_PASS: "{{ pass_slurp['content'] | b64decode }}"
+
     - name: Get xpra certificate
       copy:
         src: /etc/xpra/ssl-cert.pem
@@ -15,7 +98,7 @@
       become: yes
       become_method: sudo
     - name: Start Xpra
-      command: "xpra start --bind-wss=0.0.0.0:{{ PORT }} --exit-with-children --start-child=\"paraview\" --html=on --pidfile=/tmp/xprapid --wss-auth=file:filename={{ansible_env.HOME}}/.password.txt --ssl-cert {{ansible_env.HOME}}/.ssl-cert-xpra.pem"
+      command: "xpra start --bind-wss=0.0.0.0:{{ PORT }} --exit-with-children --start-child=\"paraview\" --html=on --pidfile=/tmp/xprapid --wss-auth=file:filename={{ansible_env.HOME}}/.xpra-password.txt --ssl-cert {{ansible_env.HOME}}/.xpra-ssl-cert-xpra.pem --ssl-key {{ansible_env.HOME}}/.xpra-host-key.pem"
     - name: Expose endpoint as operation output
       set_fact:
         ENDPOINT: "/index.html?password={{ RAND_PASS }}"

@@ -69,6 +69,18 @@ topology_template:
       description: Directory where visualization data will be stored
       default: "openfoam"
       required: false
+    visualization_ca_pem:
+      description: "PEM-encoded certificate authority content, will be generated if not provided"
+      type: string
+      required: false
+    visualization_ca_key:
+      description: "Certificate authority private key content, will be generated if not provided"
+      type: string
+      required: false
+    visualization_ca_passphrase:
+      description: "Certificate authority private key passphrase"
+      type: string
+      required: false
     visualization_port:
       type: integer
       description: "Port to use to expose the remote display (should be > 1024)"
@@ -244,6 +256,9 @@ topology_template:
       properties:
         port: { get_input: visualization_port }
         walltime_minutes: { get_input: visualization_walltime_minutes }
+        ca_pem: { get_input: visualization_ca_pem }
+        ca_key: { get_input: visualization_ca_key }
+        ca_passphrase: { get_input: visualization_ca_passphrase }
       requirements:
         - hostedOnComputeHost:
             type_requirement: host
