@@ -24,10 +24,11 @@ node_types:
         type: string
         description: Download GFS files up to this date, format YYYYMMDDHH
         required: true
-      number_of_past_days:
+      past_day_number:
         type: integer
-        description: Download additional warmup data for this given number of days before the start date
-        required: true
+        description: Past day number before start date for which to download data (needed for warmup data)
+        required: false
+        default: 0
       output_directory:
         type: string
         description: Absolute path to directory where to store donwloaded data
@@ -60,7 +61,7 @@ node_types:
           inputs:
             START_DATE: {get_property: [SELF, start_date]}
             END_DATE: {get_property: [SELF, end_date]}
-            NUMBER_OF_PAST_DAYS: {get_property: [SELF, number_of_past_days]}
+            PAST_DAY_NUMBER: {get_property: [SELF, past_day_number]}
             WITH_DATA_ASSIMILATION:  {get_property: [SELF, with_data_assimilation]}
             LEFT_LONGITUDE: {get_property: [SELF, left_longitude]}
             RIGHT_LONGITUDE: {get_property: [SELF, right_longitude]}
