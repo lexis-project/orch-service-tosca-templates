@@ -50,12 +50,12 @@ topology_template:
       required: false
     preprocessing_decrypt_input_dataset:
       type: boolean
-      description: Is the input dataset encrypted
+      description: Should the input dataset be decrypted
       default: false
       required: false
     preprocessing_uncompress_input_dataset:
       type: boolean
-      description: Is the input dataset compressed
+      description: Should the input dataset be uncompressed
       default: false
       required: false
     preprocessing_mount_point_input_dataset:
