@@ -1,4 +1,4 @@
-tosca_definitions_version: alien_dsl_2_0_0
+tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
   template_name: org.lexis.wp7.ContinuumPostProcessTemplate
@@ -1407,7 +1407,7 @@ topology_template:
           on_success:
             - DDIToCloudWRFJob_create
             - DDIToCloudContinuumStaticDataJob_create
-            - Webdrops_start
+            - Webdrops_create
         GetDDIAccess_start:
           target: GetDDIAccess
           activities:
@@ -1598,6 +1598,12 @@ topology_template:
             - set_state: started
           on_success:
             - Continuum_Hyde_marche_create
+        Webdrops_create:
+          target: Webdrops
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Webdrops_start
         Webdrops_start:
           target: Webdrops
           activities:

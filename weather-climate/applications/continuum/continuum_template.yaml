@@ -1,4 +1,4 @@
-tosca_definitions_version: alien_dsl_2_0_0
+tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
   template_name: org.lexis.wp7.ContinuumTemplate
@@ -287,7 +287,7 @@ topology_template:
           Project: "OPEN-20-47"
           ClusterId: 2
           Tasks:
-            - Name: WRFTask
+            - Name: "WRF Generic"
               ClusterNodeTypeId: 7
               CommandTemplateId: 9
               TemplateParameterValues:
@@ -329,7 +329,7 @@ topology_template:
     CopyToJobTask:
       type: org.lexis.common.datatransfer.nodes.CopySubDirToJobTask
       properties:
-        task_name: WRFTask
+        task_name: "WRF Generic"
         parent_directory: /wps_data/output
         subdirectory_index: 0
       requirements:
@@ -436,7 +436,7 @@ topology_template:
     CopyFromJobTask:
       type: org.lexis.common.datatransfer.nodes.CopyFromJobTask
       properties:
-        task_name: WRFTask
+        task_name: "WRF Generic"
         source_files: [ "auxhist*" ]
         destination_directory:  "/continuum/datasets_hyde/dynamic_data/"
         as_user: root
@@ -1854,7 +1854,7 @@ topology_template:
             - set_state: started
           on_success:
             - DDIToCloudContinuumStaticDataJob_create
-            - Webdrops_start
+            - Webdrops_create
         CopyFromJobTask_start:
           target: CopyFromJobTask
           activities:
@@ -2019,6 +2019,12 @@ topology_template:
             - set_state: started
           on_success:
             - Continuum_Hyde_marche_create
+        Webdrops_create:
+          target: Webdrops
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Webdrops_start
         Webdrops_start:
           target: Webdrops
           activities:
@@ -3022,7 +3028,7 @@ topology_template:
             - set_state: started
           on_success:
             - DDIToCloudContinuumStaticDataJob_create
-            - Webdrops_start
+            - Webdrops_create
         CopyFromJobTask_start:
           target: CopyFromJobTask
           activities:
@@ -3187,6 +3193,12 @@ topology_template:
             - set_state: started
           on_success:
             - Continuum_Hyde_marche_create
+        Webdrops_create:
+          target: Webdrops
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Webdrops_start
         Webdrops_start:
           target: Webdrops
           activities:

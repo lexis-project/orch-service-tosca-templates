@@ -1,4 +1,4 @@
-tosca_definitions_version: alien_dsl_2_0_0
+tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
   template_name: org.lexis.common.VisualizationTemplate
@@ -99,6 +99,7 @@ topology_template:
         task: dynamic_orchestration
       properties:
         token: { get_input: token }
+        project_id: { get_input: project_id }
       requirements:
         - InputDataset:
             type_requirement: input_dataset

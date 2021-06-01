@@ -1,4 +1,4 @@
-tosca_definitions_version: alien_dsl_2_0_0
+tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
   template_name: org.lexis.common.OpenFOAMTemplate
@@ -111,7 +111,8 @@ topology_template:
       metadata:
         task: dynamic_orchestration
       properties:
-        token: {get_input: token}
+        token: { get_input: token}
+        project_id: { get_input: project_id }
       requirements:
         - InputDataset:
             type_requirement: input_dataset
@@ -193,7 +194,7 @@ topology_template:
       type: org.lexis.common.ddi.nodes.GetHPCJobTaskDatasetInfo
       properties:
         task_name: "OpenFoamParallel"
-        needed_files_patterns: [ ".*/q.*.dat", ".*/turbo.*", ".*/xy.*.dat" ]
+        needed_files_patterns: [ "EnSight/.*" ]
       requirements:
         - job:
             type_requirement: job
@@ -207,6 +208,7 @@ topology_template:
         task: dynamic_orchestration
       properties:
         token: { get_input: token }
+        project_id: { get_input: project_id }
       requirements:
         - InputDataset:
             type_requirement: input_dataset
@@ -279,7 +281,6 @@ topology_template:
       type: org.lexis.common.datatransfer.nodes.CopyFromJobTask
       properties:
         task_name: "OpenFoamParallel"
-        # source_files: [ "/Run447x2/q*.dat", "/Run447x2/turbo*.*", "/Run447x2/xy*.dat" ]
         source_files: [ "EnSight" ]
         destination_directory:  { get_input: visualization_directory }
       requirements:

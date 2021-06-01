@@ -267,7 +267,7 @@ Here the description of a HEappE job:
         JobSpecification:
           Name: WRFJob
           Tasks:
-            - Name: WRFTask
+            - Name: "WRF Generic"
               TemplateParameterValues:
                 - CommandParameterIdentifier: MPICores
                   ParameterValue: "48"
@@ -286,7 +286,7 @@ Here we see the component requires to be:
     CopyDay1DataToJobTask:
       type: org.lexis.common.datatransfer.nodes.CopySubDirToJobTask
       properties:
-        task_name: WRFTask
+        task_name: "WRF Generic"
         parent_directory: /wps_data/output
         subdirectory_index: 0
       requirements:

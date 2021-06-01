@@ -1,4 +1,4 @@
-tosca_definitions_version: alien_dsl_2_0_0
+tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
   template_name: org.lexis.wp7.wps
@@ -128,24 +128,15 @@ node_types:
         type: string
         description: Start date, format YYYYMMDDHH
         required: true
-      wps_mode:
-        type: string
-        description: WPS mode - can WRF or WARMUP, or for data assimiliation WRFDA or WARMUPDA
-        required: true
       output_directory:
         type: string
         description: Absolute path to directory where to store donwloaded data
         required: true
-      number_of_hours:
-        type: integer
-        description: number of hours of data to get
-        required: false
-        default: 48
       past_day:
         type: integer
-        description: Download warmup data for this nth day before the start_date
+        description: Download data for this nth day before the start_date
         required: false
-        default: 0
+        default: 1
     interfaces:
       Standard:
         inputs:
@@ -156,8 +147,6 @@ node_types:
           inputs:
             START_DATE: {get_property: [SELF, start_date]}
             PAST_DAY: {get_property: [SELF, past_day]}
-            NUMBER_OF_HOURS: {get_property: [SELF, number_of_hours]}
-            WPS_MODE: {get_property: [SELF, wps_mode]}
             EMAIL_ADDRESS: { get_secret: ["/secret/wp7/ecmwf/creds", "data=email"]}
             KEY: { get_secret: ["/secret/wp7/ecmwf/creds", "data=key"]}
           implementation: scripts/download_ecmwf.py

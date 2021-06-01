@@ -24,11 +24,19 @@
         state: directory
         recurse: yes
         mode: 0777
+    - name: Set download directory
+      set_fact:
+        DOWNLOAD_DIR: "{{ DOWNLOAD_TYPE }}/SENSORS"
+      when: DOWNLOAD_TYPE == "RISICO" or DOWNLOAD_TYPE == "CONTINUUM"
+    - name: Set download directory
+      set_fact:
+        DOWNLOAD_DIR: "WRFDA"
+      when: DOWNLOAD_TYPE == "WRFDAIT" or DOWNLOAD_TYPE == "WRFDAFR"
     - name: "Moving files to destination directory as default user"
-      shell: "mv  {{ DOWNLOAD_TYPE }}/SENSORS/* {{ DESTINATION_DIRECTORY }}"
+      shell: "mv  {{ DOWNLOAD_DIR }}/* {{ DESTINATION_DIRECTORY }}"
       when: AS_USER == ""
     - name: "Moving files to destination directory"
-      shell: "mv  {{ DOWNLOAD_TYPE }}/SENSORS/* {{ DESTINATION_DIRECTORY }}"
+      shell: "mv  {{ DOWNLOAD_DIR }}/* {{ DESTINATION_DIRECTORY }}"
       become_user: "{{ AS_USER }}"
       become: true
       become_method: sudo

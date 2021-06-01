@@ -1,4 +1,4 @@
-tosca_definitions_version: alien_dsl_2_0_0
+tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
   template_name: org.lexis.wp7.RisicoTemplate
@@ -49,6 +49,11 @@ topology_template:
       description: Pre-processing container repository path
       default: "cimafoundation/wps-da.gfs:v2.0.3"
       required: false
+    preprocessing_observation_data_image:
+      type: string
+      description: Repository path of container downloading observation data
+      default: "laurentg/lexisdn:1.0.0"
+      required: false
     preprocessing_dataset_geographical_data_path:
       type: string
       description: Dataset containing geographical data
@@ -72,7 +77,15 @@ topology_template:
       description: |
         List of volumes to mount within the pre-processing container.
         Use docker CLI-style syntax: /host:/container[:mode]
-      default: ["/wps_data/gfs:/input", "/wps_data/output:/output", "/mnt/cloud_staging_area/risico:/geogrid"]
+      default: ["/wps_data/gfs:/input", "/wps_data/output/inputs:/output", "/mnt/cloud_staging_area/risico:/geogrid"]
+    preprocessing_observation_data_volumes:
+      type: list
+      entry_schema:
+        type: string
+      description: |
+        List of volumes to mount within the post-processing container downloading observation data.
+        Use docker CLI-style syntax: /host:/container[:mode]
+      default: ["/wps_data/observations:/output"]
     postprocessing_image:
       type: string
       description: Post-processing container repository path
@@ -101,6 +114,7 @@ topology_template:
       type: org.lexis.common.dynamic.orchestration.nodes.ValidateAndExchangeToken
       properties:
         token: {get_input: token}
+        project_id: { get_input: project_id }
 
     # Job gathering info on the input dataset:
     # - on which locations it is available
@@ -119,6 +133,7 @@ topology_template:
         task: dynamic_orchestration
       properties:
         token: { get_input: token }
+        project_id: { get_input: project_id }
       requirements:
         - InputDataset:
             type_requirement: input_dataset
@@ -203,7 +218,7 @@ topology_template:
     CreatePreProcessDirs:
       type: org.lexis.common.datatransfer.nodes.CreateDirectories
       properties:
-        directories: ["/wps_data/gfs", "/wps_data/output"]
+        directories: ["/wps_data/gfs", "/wps_data/output/inputs", "/wps_data/output/observations"]
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -224,6 +239,8 @@ topology_template:
         directories:
           - "/risico_data/wrf"
           - "/risico_data/output"
+          - "/risico_data/downloads"
+          - "/risico_data/observations"
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -312,6 +329,46 @@ topology_template:
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
 
+    # Download observation data needed by WRF 
+    ObservationsWRF:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: preprocessing_observation_data_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        shm_size: "64 GB"
+        volumes: {get_input: preprocessing_observation_data_volumes}
+        docker_env_vars:  {concat: ["{\"START_DATE\": \"", get_input: preprocessing_start_date, "\", \"DOWNLOAD_TYPE\": \"WRFDAIT\", \"WEBDROPS_USER\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=user"], "\", \"WEBDROPS_PWD\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=password"], "\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+    # Move results to match WRF inputs structure expectations
+    MoveObservationData:
+      type: org.lexis.common.datatransfer.nodes.MoveFile
+      properties:
+        source_file:  "/wps_data/observations/*/*"
+        destination: "/wps_data/output/observations"
+        as_user: "root"
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: RisicoVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
     # Get pre-processing results details (size, number of files)
     GetPreprocessDatasetInfo:
       type: org.lexis.common.ddi.nodes.GetComputeInstanceDatasetInfo
@@ -330,28 +387,19 @@ topology_template:
         task: dynamic_orchestration
       properties:
         token: { get_input: token }
+        project_id: { get_input: project_id }
       requirements:
         - InputDataset:
             type_requirement: input_dataset
             node: GetPreprocessDatasetInfo
             capability: org.lexis.common.ddi.capabilities.DatasetInfo
             relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
-        - HPCResourceWRFJob1:
+        - HPCResourceWRFJob:
             type_requirement: heappe_job
-            node: WRF_DAY_1
+            node: WRF
             capability: org.lexis.common.heappe.capabilities.HeappeJob
             relationship: org.lexis.common.dynamic.orchestration.relationships.HeappeJob
-        - HPCResourceWRFJob2:
-            type_requirement: heappe_job
-            node: WRF_DAY_2
-            capability: org.lexis.common.heappe.capabilities.HeappeJob
-            relationship: org.lexis.common.dynamic.orchestration.relationships.HeappeJob
-        - HPCResourceWRFJob3:
-            type_requirement: heappe_job
-            node: WRF_DAY_3
-            capability: org.lexis.common.heappe.capabilities.HeappeJob
-            relationship: org.lexis.common.dynamic.orchestration.relationships.HeappeJob
-    WRF_DAY_3:
+    WRF:
       type: org.lexis.common.heappe.nodes.Job
       metadata:
         task: computation
@@ -362,7 +410,7 @@ topology_template:
           Project: "OPEN-20-47"
           ClusterId: 2
           Tasks:
-            - Name: WRFTask
+            - Name: WRF Generic
               ClusterNodeTypeId: 7
               CommandTemplateId: 9
               TemplateParameterValues:
@@ -401,112 +449,12 @@ topology_template:
               StandardErrorFile: "stderr"
               ProgressFile: "stdprog"
               LogFile: "stdlog"
-    WRF_DAY_2:
-      type: org.lexis.common.heappe.nodes.Job
-      metadata:
-        task: computation
+    # copy the content of /wps_data/output: inputs and observations subdirs
+    CopyToJobTask:
+      type: org.lexis.common.datatransfer.nodes.CopyToJobTask
       properties:
-        token: { get_input: token }
-        JobSpecification:
-          Name: WRFJob
-          Project: "OPEN-20-47"
-          ClusterId: 2
-          Tasks:
-            - Name: WRFTask
-              ClusterNodeTypeId: 7
-              CommandTemplateId: 9
-              TemplateParameterValues:
-                - CommandParameterIdentifier: MPICores
-                  ParameterValue: "48"
-              WalltimeLimit: 36000
-              MinCores: 48
-              MaxCores: 48
-              Priority: 4
-              EnvironmentVariables:
-                - Name: HDF5
-                  Value: "./deps"
-                - Name: NETCDF
-                  Value: "./deps"
-                - Name: CPPFLAGS
-                  Value: "-I./deps/include"
-                - Name: CFLAGS
-                  Value: "-I./deps/include"
-                - Name: CXXFLAGS
-                  Value: "-I./deps/include"
-                - Name: FCFLAGS
-                  Value: "-I./deps/include"
-                - Name: FFLAGS
-                  Value: "-I./deps/include"
-                - Name: LDFLAGS
-                  Value: "-L./deps/lib"
-                - Name: WRFIO_NCD_LARGE_FILE_SUPPORT
-                  Value: "1"
-                - Name: LD_LIBRARY_PATH
-                  Value: "$LD_LIBRARY_PATH:./deps/lib"
-                - Name: JASPERLIB
-                  Value: "./deps/lib"
-                - Name: JASPERINC
-                  Value: "./deps/include"
-              StandardOutputFile: "stdout"
-              StandardErrorFile: "stderr"
-              ProgressFile: "stdprog"
-              LogFile: "stdlog"
-    WRF_DAY_1:
-      type: org.lexis.common.heappe.nodes.Job
-      metadata:
-        task: computation
-      properties:
-        token: { get_input: token }
-        JobSpecification:
-          Name: WRFJob
-          Project: "OPEN-20-47"
-          ClusterId: 2
-          Tasks:
-            - Name: WRFTask
-              ClusterNodeTypeId: 7
-              CommandTemplateId: 9
-              TemplateParameterValues:
-                - CommandParameterIdentifier: MPICores
-                  ParameterValue: "48"
-              WalltimeLimit: 36000
-              MinCores: 48
-              MaxCores: 48
-              Priority: 4
-              EnvironmentVariables:
-                - Name: HDF5
-                  Value: "./deps"
-                - Name: NETCDF
-                  Value: "./deps"
-                - Name: CPPFLAGS
-                  Value: "-I./deps/include"
-                - Name: CFLAGS
-                  Value: "-I./deps/include"
-                - Name: CXXFLAGS
-                  Value: "-I./deps/include"
-                - Name: FCFLAGS
-                  Value: "-I./deps/include"
-                - Name: FFLAGS
-                  Value: "-I./deps/include"
-                - Name: LDFLAGS
-                  Value: "-L./deps/lib"
-                - Name: WRFIO_NCD_LARGE_FILE_SUPPORT
-                  Value: "1"
-                - Name: LD_LIBRARY_PATH
-                  Value: "$LD_LIBRARY_PATH:./deps/lib"
-                - Name: JASPERLIB
-                  Value: "./deps/lib"
-                - Name: JASPERINC
-                  Value: "./deps/include"
-              StandardOutputFile: "stdout"
-              StandardErrorFile: "stderr"
-              ProgressFile: "stdprog"
-              LogFile: "stdlog"
-    CopyDay3DataToJobTask:
-      type: org.lexis.common.datatransfer.nodes.CopySubDirToJobTask
-      properties:
-        task_name: WRFTask
-        parent_directory: /wps_data/output
-        subdirectory_index: 2
+        task_name: "WRF Generic"
+        source_directory: /wps_data/output
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -515,49 +463,15 @@ topology_template:
             relationship: tosca.relationships.HostedOn
         - job:
             type_requirement: job
-            node: WRF_DAY_3
+            node: WRF
             capability: org.lexis.common.heappe.capabilities.HeappeJob
             relationship: org.lexis.common.heappe.relationships.SendInputsToJob
-    CopyDay2DataToJobTask:
-      type: org.lexis.common.datatransfer.nodes.CopySubDirToJobTask
-      properties:
-        task_name: WRFTask
-        parent_directory: /wps_data/output
-        subdirectory_index: 1
-      requirements:
-        - hostedOnVirtualMachineHost:
-            type_requirement: host
-            node: RisicoVM
-            capability: tosca.capabilities.Container
-            relationship: tosca.relationships.HostedOn
-        - job:
-            type_requirement: job
-            node: WRF_DAY_2
-            capability: org.lexis.common.heappe.capabilities.HeappeJob
-            relationship: org.lexis.common.heappe.relationships.SendInputsToJob
-    CopyDay1DataToJobTask:
-      type: org.lexis.common.datatransfer.nodes.CopySubDirToJobTask
-      properties:
-        task_name: WRFTask
-        parent_directory: /wps_data/output
-        subdirectory_index: 0
-      requirements:
-        - hostedOnVirtualMachineHost:
-            type_requirement: host
-            node: RisicoVM
-            capability: tosca.capabilities.Container
-            relationship: tosca.relationships.HostedOn
-        - job:
-            type_requirement: job
-            node: WRF_DAY_1
-            capability: org.lexis.common.heappe.capabilities.HeappeJob
-            relationship: org.lexis.common.heappe.relationships.SendInputsToJob
-    CopyWRFDay3FromJobTask:
+    CopyWRFResultsFromJobTask:
       type: org.lexis.common.datatransfer.nodes.CopyFromJobTask
       properties:
-        task_name: WRFTask
-        source_files: [ "auxhist*" ]
-        destination_directory: "/risico_data/wrf/3"
+        task_name: "WRF Generic"
+        source_files: [ "*/wrf00/auxhist*" ]
+        destination_directory: "/risico_data/wrf"
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -566,57 +480,49 @@ topology_template:
             relationship: tosca.relationships.HostedOn
         - job:
             type_requirement: job
-            node: WRF_DAY_3
+            node: WRF
             capability: org.lexis.common.heappe.capabilities.HeappeJob
             relationship: org.lexis.common.heappe.relationships.GetResultsFromJob
-    CopyWRFDay2FromJobTask:
-      type: org.lexis.common.datatransfer.nodes.CopyFromJobTask
+    # Download observation data needed by RISICO 
+    ObservationsRISICO:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
       properties:
-        task_name: WRFTask
-        source_files: [ "auxhist*" ]
-        destination_directory: "/risico_data/wrf/2"
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: preprocessing_observation_data_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        shm_size: "64 GB"
+        volumes: ["/risico_data/downloads:/output"]
+        docker_env_vars:  {concat: ["{\"START_DATE\": \"", get_input: preprocessing_start_date, "\", \"DOWNLOAD_TYPE\": \"RISICO\", \"WEBDROPS_USER\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=user"], "\", \"WEBDROPS_PWD\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=password"], "\"}"]}
       requirements:
-        - hostedOnVirtualMachineHost:
+        - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
-            node: RisicoVM
-            capability: tosca.capabilities.Container
-            relationship: tosca.relationships.HostedOn
-        - job:
-            type_requirement: job
-            node: WRF_DAY_2
-            capability: org.lexis.common.heappe.capabilities.HeappeJob
-            relationship: org.lexis.common.heappe.relationships.GetResultsFromJob
-    CopyWRFDay1FromJobTask:
-      type: org.lexis.common.datatransfer.nodes.CopyFromJobTask
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+    # Move results to match RISICO inputs structure expectations
+    MoveObservationRISICOData:
+      type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
-        task_name: WRFTask
-        source_files: [ "auxhist*" ]
-        destination_directory: "/risico_data/wrf/1"
-      requirements:
-        - hostedOnVirtualMachineHost:
-            type_requirement: host
-            node: RisicoVM
-            capability: tosca.capabilities.Container
-            relationship: tosca.relationships.HostedOn
-        - job:
-            type_requirement: job
-            node: WRF_DAY_1
-            capability: org.lexis.common.heappe.capabilities.HeappeJob
-            relationship: org.lexis.common.heappe.relationships.GetResultsFromJob
-    Webdrops:
-      type: org.lexis.wp7.nodes.Webdrops
-      properties:
-        start_date: { concat: [get_input: postprocessing_risico_run_date, "00"] }
-        download_type: "RISICO"
+        source_file:  "/risico_data/downloads/*/*/*"
         destination: "/risico_data/observations"
-        auth_url: "https://testauth.cimafoundation.org/auth/realms/webdrops/protocol/openid-connect/token"
-        url: "http://webdrops.cimafoundation.org/app/"
+        as_user: "root"
       requirements:
-        - hostedOnComputeHost:
+        - hostedOnVirtualMachineHost:
             type_requirement: host
             node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
+
     RISICO:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
       metadata:
@@ -832,6 +738,7 @@ topology_template:
           on_success:
             - GetDDIAccess_start
             - CreatePreProcessDirs_start
+            - Docker_create
         GetDDIAccess_start:
           target: GetDDIAccess
           activities:
@@ -918,7 +825,6 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - Docker_create
             - GFSData_D_day_start
             - GFSData_day_before_start
             - GFSData_2_days_before_start
@@ -988,6 +894,7 @@ topology_template:
             - call_operation: Standard.create
           on_success:
             - WPS_GFS_start
+            - ObservationsWRF_create
         WPS_GFS_start:
           target: WPS_GFS
           activities:
@@ -999,7 +906,6 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - GetPreprocessDatasetInfo_create
             - WPS_GFS_delete
         WPS_GFS_delete:
           target: WPS_GFS
@@ -1011,6 +917,50 @@ topology_template:
           target: WPS_GFS
           activities:
             - set_state: deleted
+          on_success:
+            - GetPreprocessDatasetInfo_create
+        ObservationsWRF_create:
+          target: ObservationsWRF
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ObservationsWRF_start
+        ObservationsWRF_start:
+          target: ObservationsWRF
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ObservationsWRF_started
+        ObservationsWRF_started:
+          target: ObservationsWRF
+          activities:
+            - set_state: started
+          on_success:
+            - ObservationsWRF_delete
+        ObservationsWRF_delete:
+          target: ObservationsWRF
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - ObservationsWRF_deleted
+        ObservationsWRF_deleted:
+          target: ObservationsWRF
+          activities:
+            - set_state: deleted
+          on_success:
+            - MoveObservationData_start
+        MoveObservationData_start:
+          target: MoveObservationData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveObservationData_started
+        MoveObservationData_started:
+          target: MoveObservationData
+          activities:
+            - set_state: started
+          on_success:
+            - GetPreprocessDatasetInfo_create
         GetPreprocessDatasetInfo_create:
           target: GetPreprocessDatasetInfo
           activities:
@@ -1046,161 +996,55 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - WRF_DAY_1_create
-            - WRF_DAY_2_create
-            - WRF_DAY_3_create
-        WRF_DAY_1_create:
-          target: WRF_DAY_1
+            - WRF_create
+        WRF_create:
+          target: WRF
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
           on_success:
-            - WRF_DAY_1_enable_file_transfer
-        WRF_DAY_2_create:
-          target: WRF_DAY_2
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - WRF_DAY_2_enable_file_transfer
-        WRF_DAY_3_create:
-          target: WRF_DAY_3
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - WRF_DAY_3_enable_file_transfer
-        WRF_DAY_1_enable_file_transfer:
-          target: WRF_DAY_1
+            - WRF_enable_file_transfer
+        WRF_enable_file_transfer:
+          target: WRF
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: custom.enable_file_transfer
           on_success:
-            - CopyDay1ToJobTask_start
-        WRF_DAY_2_enable_file_transfer:
-          target: WRF_DAY_2
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: custom.enable_file_transfer
-          on_success:
-            - CopyDay2ToJobTask_start
-        WRF_DAY_3_enable_file_transfer:
-          target: WRF_DAY_3
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: custom.enable_file_transfer
-          on_success:
-            - CopyDay3ToJobTask_start
-        CopyDay1ToJobTask_start:
-          target: CopyDay1DataToJobTask
+            - CopyToJobTask_start
+        CopyToJobTask_start:
+          target: CopyToJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyDay1ToJobTask_started
-        CopyDay1ToJobTask_started:
-          target: CopyDay1DataToJobTask
+            - CopyToJobTask_started
+        CopyToJobTask_started:
+          target: CopyToJobTask
           activities:
             - set_state: started
           on_success:
-            - WRF_DAY_1_submit
-        CopyDay2ToJobTask_start:
-          target: CopyDay2DataToJobTask
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CopyDay2ToJobTask_started
-        CopyDay2ToJobTask_started:
-          target: CopyDay2DataToJobTask
-          activities:
-            - set_state: started
-          on_success:
-            - WRF_DAY_2_submit
-        CopyDay3ToJobTask_start:
-          target: CopyDay3DataToJobTask
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CopyDay3ToJobTask_started
-        CopyDay3ToJobTask_started:
-          target: CopyDay3DataToJobTask
-          activities:
-            - set_state: started
-          on_success:
-            - WRF_DAY_3_submit
-        WRF_DAY_1_submit:
-          target: WRF_DAY_1
+            - WRF_submit
+        WRF_submit:
+          target: WRF
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
-            - WRF_DAY_1_submitted
-        WRF_DAY_1_submitted:
-          target: WRF_DAY_1
+            - WRF_submitted
+        WRF_submitted:
+          target: WRF
           activities:
             - set_state: submitted
           on_success:
-            - WRF_DAY_1_run
-        WRF_DAY_1_run:
-          target: WRF_DAY_1
+            - WRF_run
+        WRF_run:
+          target: WRF
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
           on_success:
-            - WRF_DAY_1_executed
-        WRF_DAY_1_executed:
-          target: WRF_DAY_1
-          activities:
-            - set_state: executed
-          on_success:
-            - CreatePostProcessDirs_start
-        WRF_DAY_2_submit:
-          target: WRF_DAY_2
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - WRF_DAY_2_submitted
-        WRF_DAY_2_submitted:
-          target: WRF_DAY_2
-          activities:
-            - set_state: submitted
-          on_success:
-            - WRF_DAY_2_run
-        WRF_DAY_2_run:
-          target: WRF_DAY_2
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - WRF_DAY_2_executed
-        WRF_DAY_2_executed:
-          target: WRF_DAY_2
-          activities:
-            - set_state: executed
-          on_success:
-            - CreatePostProcessDirs_start
-        WRF_DAY_3_submit:
-          target: WRF_DAY_3
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - WRF_DAY_3_submitted
-        WRF_DAY_3_submitted:
-          target: WRF_DAY_3
-          activities:
-            - set_state: submitted
-          on_success:
-            - WRF_DAY_3_run
-        WRF_DAY_3_run:
-          target: WRF_DAY_3
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - WRF_DAY_3_executed
-        WRF_DAY_3_executed:
-          target: WRF_DAY_3
+            - WRF_executed
+        WRF_executed:
+          target: WRF
           activities:
             - set_state: executed
           on_success:
@@ -1217,10 +1061,8 @@ topology_template:
             - set_state: started
           on_success:
             - CreateStagingAreaWRFResultDir_start
-            - CopyWRFDay1FromJobTask_start
-            - CopyWRFDay2FromJobTask_start
-            - CopyWRFDay3FromJobTask_start
-            - Webdrops_start
+            - CopyWRFResultsFromJobTask_start
+            - ObservationsRISICO_create
         CreateStagingAreaWRFResultDir_start:
           target: CreateStagingAreaWRFResultDir
           activities:
@@ -1233,59 +1075,61 @@ topology_template:
             - set_state: started
           on_success:
             - StageWRFResults_start
-        Webdrops_start:
-          target: Webdrops
+        ObservationsRISICO_create:
+          target: ObservationsRISICO
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ObservationsRISICO_start
+        ObservationsRISICO_start:
+          target: ObservationsRISICO
           activities:
             - call_operation: Standard.start
           on_success:
-            - Webdrops_started
-        Webdrops_started:
-          target: Webdrops
+            - ObservationsRISICO_started
+        ObservationsRISICO_started:
+          target: ObservationsRISICO
+          activities:
+            - set_state: started
+          on_success:
+            - ObservationsRISICO_delete
+        ObservationsRISICO_delete:
+          target: ObservationsRISICO
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - ObservationsRISICO_deleted
+        ObservationsRISICO_deleted:
+          target: ObservationsRISICO
+          activities:
+            - set_state: deleted
+          on_success:
+            - MoveObservationRISICOData_start
+        MoveObservationRISICOData_start:
+          target: MoveObservationRISICOData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveObservationRISICOData_started
+        MoveObservationRISICOData_started:
+          target: MoveObservationRISICOData
           activities:
             - set_state: started
           on_success:
             - RISICO_create
-        CopyWRFDay1FromJobTask_start:
-          target: CopyWRFDay1FromJobTask
+        CopyWRFResultsFromJobTask_start:
+          target: CopyWRFResultsFromJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyWRFDay1FromJobTask_started
-        CopyWRFDay1FromJobTask_started:
-          target: CopyWRFDay1FromJobTask
+            - CopyWRFResultsFromJobTask_started
+        CopyWRFResultsFromJobTask_started:
+          target: CopyWRFResultsFromJobTask
           activities:
             - set_state: started
           on_success:
             - RISICO_create
-            - WRF_DAY_1_disable_file_transfer
-            - StageWRFResults_start
-        CopyWRFDay2FromJobTask_start:
-          target: CopyWRFDay2FromJobTask
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CopyWRFDay2FromJobTask_started
-        CopyWRFDay2FromJobTask_started:
-          target: CopyWRFDay2FromJobTask
-          activities:
-            - set_state: started
-          on_success:
-            - RISICO_create
-            - WRF_DAY_2_disable_file_transfer
-            - StageWRFResults_start
-        CopyWRFDay3FromJobTask_start:
-          target: CopyWRFDay3FromJobTask
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CopyWRFDay3FromJobTask_started
-        CopyWRFDay3FromJobTask_started:
-          target: CopyWRFDay3FromJobTask
-          activities:
-            - set_state: started
-          on_success:
-            - RISICO_create
-            - WRF_DAY_3_disable_file_transfer
+            - WRF_disable_file_transfer
             - StageWRFResults_start
         StageWRFResults_start:
           target: StageWRFResults
@@ -1332,61 +1176,23 @@ topology_template:
             - set_state: executed
           on_success:
             - DeleteCloudGEOGDataJob_create
-            - WRF_DAY_1_disable_file_transfer
-            - WRF_DAY_2_disable_file_transfer
-            - WRF_DAY_3_disable_file_transfer
-        WRF_DAY_1_disable_file_transfer:
-          target: WRF_DAY_1
+            - WRF_disable_file_transfer
+        WRF_disable_file_transfer:
+          target: WRF
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: custom.disable_file_transfer
           on_success:
-            - WRF_DAY_1_delete
-        WRF_DAY_1_delete:
-          target: WRF_DAY_1
+            - WRF_delete
+        WRF_delete:
+          target: WRF
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.delete
           on_success:
-            - WRF_DAY_1_deleted
-        WRF_DAY_1_deleted:
-          target: WRF_DAY_1
-          activities:
-            - set_state: deleted
-        WRF_DAY_2_disable_file_transfer:
-          target: WRF_DAY_2
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: custom.disable_file_transfer
-          on_success:
-            - WRF_DAY_2_delete
-        WRF_DAY_2_delete:
-          target: WRF_DAY_2
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.delete
-          on_success:
-            - WRF_DAY_2_deleted
-        WRF_DAY_2_deleted:
-          target: WRF_DAY_2
-          activities:
-            - set_state: deleted
-        WRF_DAY_3_disable_file_transfer:
-          target: WRF_DAY_3
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: custom.disable_file_transfer
-          on_success:
-            - WRF_DAY_3_delete
-        WRF_DAY_3_delete:
-          target: WRF_DAY_3
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.delete
-          on_success:
-            - WRF_DAY_3_deleted
-        WRF_DAY_3_deleted:
-          target: WRF_DAY_3
+            - WRF_deleted
+        WRF_deleted:
+          target: WRF
           activities:
             - set_state: deleted
         RISICO_create:
@@ -1590,154 +1396,54 @@ topology_template:
             - delegate: uninstall
     RunComputation:
       steps:
-        WRF_DAY_1_create:
-          target: WRF_DAY_1
+        WRF_create:
+          target: WRF
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
           on_success:
-            - WRF_DAY_1_enable_file_transfer
-        WRF_DAY_2_create:
-          target: WRF_DAY_2
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - WRF_DAY_2_enable_file_transfer
-        WRF_DAY_3_create:
-          target: WRF_DAY_3
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - WRF_DAY_3_enable_file_transfer
-        WRF_DAY_1_enable_file_transfer:
-          target: WRF_DAY_1
+            - WRF_enable_file_transfer
+        WRF_enable_file_transfer:
+          target: WRF
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: custom.enable_file_transfer
           on_success:
-            - CopyDay1ToJobTask_start
-        WRF_DAY_2_enable_file_transfer:
-          target: WRF_DAY_2
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: custom.enable_file_transfer
-          on_success:
-            - CopyDay2ToJobTask_start
-        WRF_DAY_3_enable_file_transfer:
-          target: WRF_DAY_3
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: custom.enable_file_transfer
-          on_success:
-            - CopyDay3ToJobTask_start
-        CopyDay1ToJobTask_start:
-          target: CopyDay1DataToJobTask
+            - CopyToJobTask_start
+        CopyToJobTask_start:
+          target: CopyToJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyDay1ToJobTask_started
-        CopyDay1ToJobTask_started:
-          target: CopyDay1DataToJobTask
+            - CopyToJobTask_started
+        CopyToJobTask_started:
+          target: CopyToJobTask
           activities:
             - set_state: started
           on_success:
-            - WRF_DAY_1_submit
-        CopyDay2ToJobTask_start:
-          target: CopyDay2DataToJobTask
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CopyDay2ToJobTask_started
-        CopyDay2ToJobTask_started:
-          target: CopyDay2DataToJobTask
-          activities:
-            - set_state: started
-          on_success:
-            - WRF_DAY_2_submit
-        CopyDay3ToJobTask_start:
-          target: CopyDay3DataToJobTask
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CopyDay3ToJobTask_started
-        CopyDay3ToJobTask_started:
-          target: CopyDay3DataToJobTask
-          activities:
-            - set_state: started
-          on_success:
-            - WRF_DAY_3_submit
-        WRF_DAY_1_submit:
-          target: WRF_DAY_1
+            - WRF_submit
+        WRF_submit:
+          target: WRF
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
-            - WRF_DAY_1_submitted
-        WRF_DAY_1_submitted:
-          target: WRF_DAY_1
+            - WRF_submitted
+        WRF_submitted:
+          target: WRF
           activities:
             - set_state: submitted
           on_success:
-            - WRF_DAY_1_run
-        WRF_DAY_1_run:
-          target: WRF_DAY_1
+            - WRF_run
+        WRF_run:
+          target: WRF
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
           on_success:
-            - WRF_DAY_1_executed
-        WRF_DAY_1_executed:
-          target: WRF_DAY_1
-          activities:
-            - set_state: executed
-        WRF_DAY_2_submit:
-          target: WRF_DAY_2
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - WRF_DAY_2_submitted
-        WRF_DAY_2_submitted:
-          target: WRF_DAY_2
-          activities:
-            - set_state: submitted
-          on_success:
-            - WRF_DAY_2_run
-        WRF_DAY_2_run:
-          target: WRF_DAY_2
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - WRF_DAY_2_executed
-        WRF_DAY_2_executed:
-          target: WRF_DAY_2
-          activities:
-            - set_state: executed
-        WRF_DAY_3_submit:
-          target: WRF_DAY_3
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - WRF_DAY_3_submitted
-        WRF_DAY_3_submitted:
-          target: WRF_DAY_3
-          activities:
-            - set_state: submitted
-          on_success:
-            - WRF_DAY_3_run
-        WRF_DAY_3_run:
-          target: WRF_DAY_3
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - WRF_DAY_3_executed
-        WRF_DAY_3_executed:
-          target: WRF_DAY_3
+            - WRF_executed
+        WRF_executed:
+          target: WRF
           activities:
             - set_state: executed
     RunPostProcessing:
@@ -1754,10 +1460,7 @@ topology_template:
             - set_state: started
           on_success:
             - CreateStagingAreaWRFResultDir_start
-            - CopyWRFDay1FromJobTask_start
-            - CopyWRFDay2FromJobTask_start
-            - CopyWRFDay3FromJobTask_start
-            - Webdrops_start
+            - CopyWRFResultsFromJobTask_start
         CreateStagingAreaWRFResultDir_start:
           target: CreateStagingAreaWRFResultDir
           activities:
@@ -1770,59 +1473,19 @@ topology_template:
             - set_state: started
           on_success:
             - StageWRFResults_start
-        Webdrops_start:
-          target: Webdrops
+        CopyWRFResultsFromJobTask_start:
+          target: CopyWRFResultsFromJobTask
           activities:
             - call_operation: Standard.start
           on_success:
-            - Webdrops_started
-        Webdrops_started:
-          target: Webdrops
+            - CopyWRFResultsFromJobTask_started
+        CopyWRFResultsFromJobTask_started:
+          target: CopyWRFResultsFromJobTask
           activities:
             - set_state: started
           on_success:
             - RISICO_create
-        CopyWRFDay1FromJobTask_start:
-          target: CopyWRFDay1FromJobTask
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CopyWRFDay1FromJobTask_started
-        CopyWRFDay1FromJobTask_started:
-          target: CopyWRFDay1FromJobTask
-          activities:
-            - set_state: started
-          on_success:
-            - RISICO_create
-            - WRF_DAY_1_disable_file_transfer
-            - StageWRFResults_start
-        CopyWRFDay2FromJobTask_start:
-          target: CopyWRFDay2FromJobTask
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CopyWRFDay2FromJobTask_started
-        CopyWRFDay2FromJobTask_started:
-          target: CopyWRFDay2FromJobTask
-          activities:
-            - set_state: started
-          on_success:
-            - RISICO_create
-            - WRF_DAY_2_disable_file_transfer
-            - StageWRFResults_start
-        CopyWRFDay3FromJobTask_start:
-          target: CopyWRFDay3FromJobTask
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CopyWRFDay3FromJobTask_started
-        CopyWRFDay3FromJobTask_started:
-          target: CopyWRFDay3FromJobTask
-          activities:
-            - set_state: started
-          on_success:
-            - RISICO_create
-            - WRF_DAY_3_disable_file_transfer
+            - WRF_disable_file_transfer
             - StageWRFResults_start
         StageWRFResults_start:
           target: StageWRFResults
@@ -1869,61 +1532,23 @@ topology_template:
             - set_state: executed
           on_success:
             - DeleteCloudGEOGDataJob_create
-            - WRF_DAY_1_disable_file_transfer
-            - WRF_DAY_2_disable_file_transfer
-            - WRF_DAY_3_disable_file_transfer
-        WRF_DAY_1_disable_file_transfer:
-          target: WRF_DAY_1
+            - WRF_disable_file_transfer
+        WRF_disable_file_transfer:
+          target: WRF
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: custom.disable_file_transfer
           on_success:
-            - WRF_DAY_1_delete
-        WRF_DAY_1_delete:
-          target: WRF_DAY_1
+            - WRF_delete
+        WRF_delete:
+          target: WRF
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.delete
           on_success:
-            - WRF_DAY_1_deleted
-        WRF_DAY_1_deleted:
-          target: WRF_DAY_1
-          activities:
-            - set_state: deleted
-        WRF_DAY_2_disable_file_transfer:
-          target: WRF_DAY_2
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: custom.disable_file_transfer
-          on_success:
-            - WRF_DAY_2_delete
-        WRF_DAY_2_delete:
-          target: WRF_DAY_2
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.delete
-          on_success:
-            - WRF_DAY_2_deleted
-        WRF_DAY_2_deleted:
-          target: WRF_DAY_2
-          activities:
-            - set_state: deleted
-        WRF_DAY_3_disable_file_transfer:
-          target: WRF_DAY_3
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: custom.disable_file_transfer
-          on_success:
-            - WRF_DAY_3_delete
-        WRF_DAY_3_delete:
-          target: WRF_DAY_3
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.delete
-          on_success:
-            - WRF_DAY_3_deleted
-        WRF_DAY_3_deleted:
-          target: WRF_DAY_3
+            - WRF_deleted
+        WRF_deleted:
+          target: WRF
           activities:
             - set_state: deleted
         RISICO_create:
@@ -2064,57 +1689,105 @@ topology_template:
             - delegate: uninstall
     cleanupHPC:
       steps:
-        WRF_DAY_1_disable_file_transfer:
-          target: WRF_DAY_1
+        WRF_disable_file_transfer:
+          target: WRF
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: custom.disable_file_transfer
           on_success:
-            - WRF_DAY_1_delete
-        WRF_DAY_1_delete:
-          target: WRF_DAY_1
+            - WRF_delete
+        WRF_delete:
+          target: WRF
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.delete
           on_success:
-            - WRF_DAY_1_deleted
-        WRF_DAY_1_deleted:
-          target: WRF_DAY_1
+            - WRF_deleted
+        WRF_deleted:
+          target: WRF
           activities:
             - set_state: deleted
-        WRF_DAY_2_disable_file_transfer:
-          target: WRF_DAY_2
-          operation_host: ORCHESTRATOR
+    testWRFObservationData:
+      steps:
+        ObservationsWRF_create:
+          target: ObservationsWRF
           activities:
-            - call_operation: custom.disable_file_transfer
+            - call_operation: Standard.create
           on_success:
-            - WRF_DAY_2_delete
-        WRF_DAY_2_delete:
-          target: WRF_DAY_2
-          operation_host: ORCHESTRATOR
+            - ObservationsWRF_start
+        ObservationsWRF_start:
+          target: ObservationsWRF
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ObservationsWRF_started
+        ObservationsWRF_started:
+          target: ObservationsWRF
+          activities:
+            - set_state: started
+          on_success:
+            - ObservationsWRF_delete
+        ObservationsWRF_delete:
+          target: ObservationsWRF
           activities:
             - call_operation: Standard.delete
           on_success:
-            - WRF_DAY_2_deleted
-        WRF_DAY_2_deleted:
-          target: WRF_DAY_2
+            - ObservationsWRF_deleted
+        ObservationsWRF_deleted:
+          target: ObservationsWRF
           activities:
             - set_state: deleted
-        WRF_DAY_3_disable_file_transfer:
-          target: WRF_DAY_3
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: custom.disable_file_transfer
           on_success:
-            - WRF_DAY_3_delete
-        WRF_DAY_3_delete:
-          target: WRF_DAY_3
-          operation_host: ORCHESTRATOR
+            - MoveObservationData_start
+        MoveObservationData_start:
+          target: MoveObservationData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveObservationData_started
+        MoveObservationData_started:
+          target: MoveObservationData
+          activities:
+            - set_state: started
+    testRISICOObservationData:
+      steps:
+        ObservationsRISICO_create:
+          target: ObservationsRISICO
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ObservationsRISICO_start
+        ObservationsRISICO_start:
+          target: ObservationsRISICO
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ObservationsRISICO_started
+        ObservationsRISICO_started:
+          target: ObservationsRISICO
+          activities:
+            - set_state: started
+          on_success:
+            - ObservationsRISICO_delete
+        ObservationsRISICO_delete:
+          target: ObservationsRISICO
           activities:
             - call_operation: Standard.delete
           on_success:
-            - WRF_DAY_3_deleted
-        WRF_DAY_3_deleted:
-          target: WRF_DAY_3
+            - ObservationsRISICO_deleted
+        ObservationsRISICO_deleted:
+          target: ObservationsRISICO
           activities:
             - set_state: deleted
+          on_success:
+            - MoveObservationRISICOData_start
+        MoveObservationRISICOData_start:
+          target: MoveObservationRISICOData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveObservationRISICOData_started
+        MoveObservationRISICOData_started:
+          target: MoveObservationRISICOData
+          activities:
+            - set_state: started
