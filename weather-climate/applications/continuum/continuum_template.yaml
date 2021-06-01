@@ -1506,7 +1506,7 @@ topology_template:
       value: { get_attribute: [ CloudToDDIWRFJob, destination_path ] }
   workflows:
     # At deployment time, validating the input token and exchanging it
-    # to get an access/refresh token of all components needing it
+    # to get an access/refresh token for the orchestrator
     install:
       steps:
         ValidateExchangeToken_start:
@@ -1533,7 +1533,7 @@ topology_template:
             - delegate: uninstall
     Run:
       steps:
-        # Submit DDI job to get info on dataset (DDI location where it is availablr, size...)
+        # Submit DDI job to get info on dataset (DDI location where it is available, size...)
         InputDatasetInfoJob_submit:
           target: InputDatasetInfoJob
           operation_host: ORCHESTRATOR

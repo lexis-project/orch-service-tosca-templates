@@ -145,7 +145,7 @@ topology_template:
       required: false
     postprocessing_container_image:
       type: string
-      description: Posrprocessing container repository path
+      description: Postprocessing container repository path
       default: "laurentg/lexistest:1.1"
       required: false
     postprocessing_container_env_vars:
@@ -578,7 +578,7 @@ topology_template:
   #
   workflows:
     # At deployment time, validating the input token and exchanging it
-    # to get an access/refresh token of all components needing it
+    # to get an access/refresh token for the orchestrator
     install:
       steps:
         ValidateExchangeToken_start:
@@ -596,7 +596,7 @@ topology_template:
     #
     Run:
       steps:
-        # Submit DDI job to get info on dataset (DDI location where it is availablr, size...)
+        # Submit DDI job to get info on dataset (DDI location where it is available, size...)
         InputDatasetInfoJob_submit:
           target: InputDatasetInfoJob
           operation_host: ORCHESTRATOR
@@ -1245,7 +1245,7 @@ topology_template:
     #
     testPreprocessing:
       steps:
-        # Submit DDI job to get info on dataset (DDI location where it is availablr, size...)
+        # Submit DDI job to get info on dataset (DDI location where it is available, size...)
         InputDatasetInfoJob_submit:
           target: InputDatasetInfoJob
           operation_host: ORCHESTRATOR

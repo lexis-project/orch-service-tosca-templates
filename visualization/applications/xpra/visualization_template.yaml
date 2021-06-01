@@ -256,7 +256,7 @@ topology_template:
       value: { get_attribute: [ XpraJob, url ] }
   workflows:
     # At deployment time, validating the input token and exchanging it
-    # to get an access/refresh token of all components needing it
+    # to get an access/refresh token for the orchestrator
     install:
       steps:
         ValidateExchangeToken_start:
