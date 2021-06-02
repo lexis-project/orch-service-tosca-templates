@@ -27,7 +27,7 @@ The template expects the following input properties (mandatory inputs in **bold*
 * computation_mount_point_input_dataset: Directory on the compute instance where to mount the dataset
   * default: `/mnt/lexis_input`
 * computation_container_image: Computation container repository path
-  * default: `laurentg/lexistest:1.2` (see corresponding [Dockerfile](../cloudHPCComputation/Dockerfile)
+  * default: `laurentg/lexistest:1.2` (see corresponding [Dockerfile](../cloudHPCComputation/Dockerfile))
 * computation_container_env_vars: Computation container environment variables
   * default: map of environment variables expected by the container:
     * `INPUT_DIR: "/input_dataset"`
