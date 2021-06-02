@@ -80,6 +80,7 @@ topology_template:
       type: org.lexis.common.dynamic.orchestration.nodes.ValidateAndExchangeToken
       properties:
         token: {get_input: token}
+        project_id: { get_input: project_id }
 
     # Job gathering info on the input dataset:
     # - on which locations it is available
