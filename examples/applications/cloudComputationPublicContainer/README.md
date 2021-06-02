@@ -56,7 +56,7 @@ The template expects the following input properties (mandatory inputs in **bold*
 * computation_compress_dataset_result: Compress the result dataset
   * default: `false`
 
-## Ouput properties
+## Ouput attribute
 
 The following output attribute is provided:
 * attribute `destination_path` of component `CloudToDDIJob`: the path to the result dataset in DDI

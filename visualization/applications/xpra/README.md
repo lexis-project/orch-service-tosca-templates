@@ -28,7 +28,7 @@ but the user will get a warning that he attempts to connect to a server with an 
 * visualization_ca_passphrase: Certificate authority private key passphrase
 * visualization_port: Port to use to expose the remote display, should be > 1024 (default: 8765)
 
-## Ouput properties
+## Ouput attribute
 
 The following output attribute is provided:
 * attribute `url` of component `XpraJob`: the URL of the remote visualization session
