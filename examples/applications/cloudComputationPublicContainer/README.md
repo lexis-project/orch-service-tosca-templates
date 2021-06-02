@@ -1,4 +1,4 @@
-# Visualization Template
+# Template of a Cloud Computation using a public Docker container
 
 Template of a LEXIS workflow allowing to transfer a dataset from DDI to a Cloud
 Compute instance on which a computation will be done by a Docker container:
