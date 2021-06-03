@@ -22,8 +22,8 @@ The template expects the following input properties (mandatory inputs in **bold*
 * **visualization_walltime_minutes**: Duration in minutes of the visualization session
 * preprocessing_decrypt_input_dataset: Should the input dataset be decrypted (default: false)
 * preprocessing_uncompress_input_dataset: Should the input dataset be uncompressed (default: false)
-* computation_encrypt_result_dataset: Should the result dataset be encrypted (default: false)
-* computation_compress_result_dataset: Should the result dataset be compressed (default: false)
+* computation_encrypt_dataset_result: Should the result dataset be encrypted (default: false)
+* computation_compress_dataset_result: Should the result dataset be compressed (default: false)
 * visualization_directory: Directory where visualization data will be accesible on a cloud instance (default: openfoam)
 * visualization_ca_pem: PEM-encoded certificate authority content. Will be generated if not provided,
 but the user will get a warning that he attempts to connect to a server with an invalid certificate authority (as unknown certificate issuer)
@@ -31,7 +31,7 @@ but the user will get a warning that he attempts to connect to a server with an 
 * visualization_ca_passphrase: Certificate authority private key passphrase
 * visualization_port: Port to use to expose the remote display, should be > 1024 (default: 8765)
 
-## Ouput properties
+## Ouput attributes
 
 The following output attributes are provided:
 * attribute `url` of component `XpraJob`: the URL of the remote visualization session

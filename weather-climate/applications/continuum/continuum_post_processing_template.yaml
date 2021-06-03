@@ -1,4 +1,4 @@
-tosca_definitions_version: alien_dsl_2_0_0
+tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
   template_name: org.lexis.wp7.ContinuumPostProcessTemplate
@@ -77,6 +77,7 @@ topology_template:
         task: dynamic_orchestration
       properties:
         token: { get_input: token }
+        project_id: { get_input: project_id }
       requirements:
         - InputDataset:
             type_requirement: input_dataset
@@ -1314,7 +1315,7 @@ topology_template:
             - delegate: uninstall
     Run:
       steps:
-        # Submit DDI job to get info on dataset (DDI location where it is availablr, size...)
+        # Submit DDI job to get info on dataset (DDI location where it is available, size...)
         InputDatasetInfoJob_submit:
           target: InputDatasetInfoJob
           operation_host: ORCHESTRATOR
@@ -1407,7 +1408,7 @@ topology_template:
           on_success:
             - DDIToCloudWRFJob_create
             - DDIToCloudContinuumStaticDataJob_create
-            - Webdrops_start
+            - Webdrops_create
         GetDDIAccess_start:
           target: GetDDIAccess
           activities:
@@ -1598,6 +1599,12 @@ topology_template:
             - set_state: started
           on_success:
             - Continuum_Hyde_marche_create
+        Webdrops_create:
+          target: Webdrops
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Webdrops_start
         Webdrops_start:
           target: Webdrops
           activities:

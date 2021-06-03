@@ -1,0 +1,1722 @@
+tosca_definitions_version: alien_dsl_3_0_0
+
+metadata:
+  template_name: org.lexis.common.LEXISTemplate
+  template_version: 0.1.0-SNAPSHOT
+  template_author: lexis
+
+description: "LEXIS Generic Template"
+
+#
+# Imports from Alien4Cloud catalog providing definition of data types and node types
+#
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - yorc-openstack-types:3.0.0
+  - docker-types:3.0.0
+  - org.ystia.docker.ansible:3.0.0-SNAPSHOT
+  - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
+  - org.lexis.common.heappe-types:1.0.6
+  - org.lexis.common.ddi-types:0.1.4
+  - org.lexis.common.dynamic-orchestration-types:0.1.0
+  - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
+
+topology_template:
+  #
+  # Input parameters.
+  # The only required parameter is the OpenID Connect token.
+  # Other parameters have default values.
+  #
+  # Naming convention expected by LEXIS Portal:
+  # - input parameters used in the pre-processing phase start with preprocessing_
+  # - input parameters uded in the HPC computation phase start with computation_
+  # - input parameters used in the postprocessing phase start with postprocessing_
+  # - Paths of DDI dataset are expect to follow the experession <phase>_dataset_*
+  #   for example: preprocessing_dataset_input_path
+  #
+  inputs:
+    token:
+      type: string
+      description: "OpenID Connect token"
+      required: true
+    project_id:
+      type: string
+      description: "LEXIS project identifier"
+      required: true
+    preprocessing_dataset_input_path:
+      type: string
+      description: Dataset containing input data
+      default: "project/proj6abfa10a181f20196814dd1cd6e62723/32e5dff4-9e7d-11eb-a9c7-0050568fcecc"
+      required: false
+    preprocessing_decrypt_input_dataset:
+      type: boolean
+      description: Should the input dataset be decrypted
+      default: false
+      required: false
+    preprocessing_uncompress_input_dataset:
+      type: boolean
+      description: Should the input dataset be uncompressed
+      default: false
+      required: false
+    preprocessing_mount_point_input_dataset:
+      type: string
+      description: Directory on the compute instance where to mount the dataset
+      default: "/mnt/lexis_test"
+      required: false
+    preprocessing_container_image:
+      type: string
+      description: Preprocessing container repository path
+      default: "laurentg/lexistest:1.2"
+      required: false
+    preprocessing_container_env_vars:
+      type: map
+      description: Preprocessing container environment variables
+      entry_schema:
+        type: string
+      default:
+        INPUT_DIR: "/input_dataset"
+        RESULT_DIR: "/output"
+        RESULT_FILE_NAME: "preprocessing_result.txt"
+      required: false
+    preprocessing_container_volumes:
+      type: list
+      entry_schema:
+        type: string
+      description: |
+        List of volumes to mount within the preprocessing container.
+        Use docker CLI-style syntax: /host:/container[:mode]
+      default:
+        - "/mnt/lexis_test/32e5dff4-9e7d-11eb-a9c7-0050568fcecc:/input_dataset"
+        - "/lexistest/output:/output"
+      required: false
+    preprocessing_output_directory:
+      type: string
+      description: Preprocessing output directory
+      default: "/lexistest/output"
+      required: false
+    computation_heappe_job:
+      type: org.lexis.common.heappe.types.JobSpecification
+      description: Description of the HEAppE job/tasks
+      default:
+        Name: TestJob
+        Project: "DD-19-14"
+        ClusterId: 2
+        Tasks:
+          - Name: TestTemplate
+            ClusterNodeTypeId: 2
+            CommandTemplateId: 1
+            TemplateParameterValues:
+              - CommandParameterIdentifier: inputParam
+                ParameterValue: inputParam
+            WalltimeLimit: 3600
+            MinCores: 1
+            MaxCores: 1
+            Priority: 4
+            StandardOutputFile: "stdout"
+            StandardErrorFile: "stderr"
+            ProgressFile: "stdprog"
+            LogFile: "stdlog"
+      required: false
+    computation_heappe_task_name:
+      type: string
+      description: Name of the HEAppE job HPC task providing results to postprocess
+      default: TestTemplate
+      required: false
+    computation_metadata_dataset_result:
+      type: org.lexis.common.ddi.types.Metadata
+      description: Metadata for the Computation results dataset to create in DDI
+      default:
+        creator:
+          - "LEXIS Test worflow"
+        contributor:
+          - "LEXIS Test worflow"
+        publisher:
+          - "LEXIS Test worflow"
+        resourceType: "Workflow computation result"
+        title: "LEXIS Test HPC computation results"
+      required: false
+    computation_result_files_to_postprocess:
+      type: list
+      entry_schema:
+        type: string
+      description: List of HPC result files to postprocess (shell patterns allowed)
+      default:
+        - "result*"
+      required: false
+    postprocessing_container_image:
+      type: string
+      description: Postprocessing container repository path
+      default: "laurentg/lexistest:1.2"
+      required: false
+    postprocessing_container_env_vars:
+      type: map
+      description: Postprocessing container environment variables
+      entry_schema:
+        type: string
+      default:
+        INPUT_DIR: "/input_dataset"
+        RESULT_DIR: "/output"
+        RESULT_FILE_NAME: "postprocessing_result.txt"
+      required: false
+    postprocessing_container_volumes:
+      type: list
+      entry_schema:
+        type: string
+      description: |
+        List of volumes to mount within the postprocessing container.
+        Use docker CLI-style syntax: /host:/container[:mode]
+      default:
+        - "/input_computation_results:/input_dataset"
+        - "/output_postprocessing:/output"
+      required: false
+    postprocessing_input_directory:
+      type: string
+      description: Postprocessing input directory
+      default: "/input_computation_results"
+      required: false
+    postprocessing_output_directory:
+      type: string
+      description: Postprocessing output directory
+      default: "/output_postprocessing"
+      required: false
+    postprocessing_ddi_project_path:
+      type: string
+      description: "Path where to transfer the post-processing results in DDI"
+      default: "project/proj6abfa10a181f20196814dd1cd6e62723"
+      required: false
+    postprocessing_metadata_dataset_result:
+      type: org.lexis.common.ddi.types.Metadata
+      description: Metadata for the postprocessing results dataset to create in DDI
+      default:
+        creator:
+          - "LEXIS Test worflow"
+        contributor:
+          - "LEXIS Test worflow"
+        publisher:
+          - "LEXIS Test worflow"
+        resourceType: "Workflow result"
+        title: "LEXIS Test workflow results"
+      required: false
+    postprocessing_encrypt_dataset_result:
+      type: boolean
+      description: Encrypt the result dataset
+      default: false
+      required: false
+    postprocessing_compress_dataset_result:
+      type: boolean
+      description: Compress the result dataset
+      default: false
+      required: false
+
+  #
+  # Components instantiating the types imported, and using the input values above
+  # in properties definitions.
+  # Relationships between these components describing which requirement of a commponent
+  # is fulfilled by which capability of another component
+  #
+  node_templates:
+    # Validation of the token provided in input
+    # Exchanging this token to have an access and refresh tokens
+    # for any component needing it in the workflow
+    ValidateExchangeToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.ValidateAndExchangeToken
+      properties:
+        token: {get_input: token}
+        project_id: { get_input: project_id }
+
+    # Job gathering info on the input dataset:
+    # - on which locations it is available
+    # - size
+    # - number of files
+    # to take placement decisions on computing resources using this dataset
+    InputDatasetInfoJob:
+      type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
+      properties:
+        token: {get_input: token}
+        dataset_path: {get_input: preprocessing_dataset_input_path}
+
+    # DDI job managing the transfer of an input dataset from DDI to cloud staging area
+    DDIToCloudInputDatasetJob:
+      type: org.lexis.common.ddi.nodes.DDIToCloudJob
+      properties:
+        token: {get_input: token}
+        decrypt: {get_input: preprocessing_decrypt_input_dataset}
+        uncompress: {get_input: preprocessing_uncompress_input_dataset}
+        ddi_dataset_path: { get_input: preprocessing_dataset_input_path }
+        cloud_staging_area_directory_path: "lexis_test_preprocessing"
+        timestamp_cloud_staging_area_directory: true
+      requirements:
+        - sameSite:
+            type_requirement: os
+            node: ComputeInstance
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
+
+    # Floating IP address network
+    Network:
+      type: yorc.nodes.openstack.FloatingIP
+
+    # Cloud Compute Instance
+    ComputeInstance:
+      type: tosca.nodes.Compute
+      requirements:
+        - networkPublicNetConnection:
+            type_requirement: network
+            node: Network
+            capability: yorc.capabilities.openstack.FIPConnectivity
+            relationship: tosca.relationships.Network
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+        os:
+          properties:
+            type: linux
+
+    # Find the best cloud location depending on the input dataset and needed cloud resources
+    FindCloudLocation:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
+      properties:
+        token: {get_input: token}
+        project_id: { get_input: project_id }
+      requirements:
+        - InputDataset:
+            type_requirement: input_dataset
+            node: InputDatasetInfoJob
+            capability: org.lexis.common.ddi.capabilities.DatasetInfo
+            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
+        - CloudResourceVM:
+            type_requirement: cloud_instance
+            node: ComputeInstance
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.dynamic.orchestration.relationships.CloudResource
+
+    # Component retrieving access details to the DDI REST APIs from the compute
+    # instance where it running
+    # Needed by component MountInputDataset below
+    GetDDIAccess:
+      type: org.lexis.common.ddi.nodes.DDIAccess
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: os
+            node: ComputeInstance
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
+
+    # Component managing the SSH-mount of the input dataset in cloud staging area
+    # on the compute instance
+    MountInputDataset:
+      type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
+      properties:
+        token: {get_input: token}
+        mount_point_directory: { get_input: preprocessing_mount_point_input_dataset }
+      requirements:
+        - ddi_access:
+            type_requirement: ddi_access
+            node: GetDDIAccess
+            capability: org.lexis.common.ddi.capabilities.DDIAccess
+            relationship: org.lexis.common.ddi.relationships.DDIAccessProvider
+        - data_transfer:
+            type_requirement: data_transfer
+            node: DDIToCloudInputDatasetJob
+            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ComputeInstance
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+    # Create the output directory expected by the preprocessing container
+    CreatePreProcessDirs:
+      type: org.lexis.common.datatransfer.nodes.CreateDirectories
+      properties:
+        directories: {concat: ["[\"", get_input: preprocessing_output_directory, "\"]"]}
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: ComputeInstance
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+    # Docker service
+    Docker:
+      type: org.ystia.docker.ansible.nodes.Docker
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: ComputeInstance
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+    # Preprocessing docker container
+    PreprocessingContainer:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: preprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: preprocessing_container_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        volumes: {get_input: preprocessing_container_volumes}
+        docker_env_vars: {get_input: preprocessing_container_env_vars}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    
+    # Get pre-processing results details (size, number of files)
+    GetPreprocessDatasetInfo:
+      type: org.lexis.common.ddi.nodes.GetComputeInstanceDatasetInfo
+      properties:
+        dataset_path: { get_input: preprocessing_output_directory }
+      requirements:
+        - host:
+            type_requirement: host
+            node: ComputeInstance
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn  
+
+    # Find the best HPC location depending on the input dataset and needed HPC resources
+    FindHPCLocationJob:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
+      properties:
+        token: {get_input: token}
+        project_id: { get_input: project_id }
+      requirements:
+        - InputDataset:
+            type_requirement: input_dataset
+            node: GetPreprocessDatasetInfo
+            capability: org.lexis.common.ddi.capabilities.DatasetInfo
+            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
+        - HPCResourceHPCJob:
+            type_requirement: heappe_job
+            node: HPCJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.dynamic.orchestration.relationships.HeappeJob
+
+    # HPC computation job
+    HPCJob:
+      type: org.lexis.common.heappe.nodes.Job
+      metadata:
+        task: computation
+      properties:
+        token: {get_input: token}
+        JobSpecification: { get_input: computation_heappe_job }
+
+    # Component managing the transfer of data from the cloud staging area to the
+    # HPC directory of a given job task 
+    CopyToJobTask:
+      type: org.lexis.common.datatransfer.nodes.CopyToJobTask
+      properties:
+        task_name: { get_input: computation_heappe_task_name }
+        source_directory: {get_input: preprocessing_output_directory}
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: ComputeInstance
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - job:
+            type_requirement: job
+            node: HPCJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.heappe.relationships.SendInputsToJob
+
+    # DDI job managing the transfer of a HPC job task results to DDI
+    HPCToDDIJob:
+      type: org.lexis.common.ddi.nodes.HPCToDDIJob
+      properties:
+        token: {get_input: token}
+        encrypt: {get_input: postprocessing_encrypt_dataset_result}
+        compress: {get_input: postprocessing_compress_dataset_result}
+        metadata: { get_input: computation_metadata_dataset_result }
+        ddi_path: { get_input: postprocessing_ddi_project_path }
+        task_name: { get_input: computation_heappe_task_name }
+      requirements:
+        - job:
+            type_requirement: job
+            node: HPCJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.ddi.relationships.SendJobOutputsToDDI
+
+    # Create directories expected by the postprocessing container
+    CreatePostProcessDirs:
+      type: org.lexis.common.datatransfer.nodes.CreateDirectories
+      properties:
+        directories:  { get_input: postprocessing_container_volumes }
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: ComputeInstance
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+    # Component copying the HPC job task results to the compute instance
+    CopyFromJobTask:
+      type: org.lexis.common.datatransfer.nodes.CopyFromJobTask
+      properties:
+        task_name: { get_input: computation_heappe_task_name }
+        source_files: { get_input: computation_result_files_to_postprocess }
+        destination_directory: { get_input: postprocessing_input_directory }
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: ComputeInstance
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - job:
+            type_requirement: job
+            node: HPCJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.heappe.relationships.GetResultsFromJob
+
+    # Postprocessing docker container
+    PostprocessingContainer:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_container_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        volumes: {get_input: postprocessing_container_volumes}
+        docker_env_vars: {get_input: postprocessing_container_env_vars}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+
+    # Component creating a directory on cloud staging area where to store results
+    CreateStagingAreaResultDir:
+      type: org.lexis.common.datatransfer.nodes.CreateStagingAreaDirectory
+      properties:
+        directory: "lexis_test_postprocessing"
+      requirements:
+        - mountedCloudStagingArea:
+            type_requirement: mounted_staging_area
+            node: MountInputDataset
+            capability: org.lexis.common.ddi.capabilities.MountedStagingAreaAccess
+            relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ComputeInstance
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+    # Copy postprocessing results to the staging area
+    StagePostProcessingResults:
+      type: org.lexis.common.datatransfer.nodes.CopyToStagingAreaDirectory
+      properties:
+        source_directory: { get_input: postprocessing_output_directory }
+      requirements:
+        - staging_area_directory:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaResultDir
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ComputeInstance
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+    # DDI job transferring results from the cloud staging area to DDI
+    CloudToDDIJob:
+      type: org.lexis.common.ddi.nodes.CloudToDDIJob
+      properties:
+        metadata: { get_input: postprocessing_metadata_dataset_result }
+        token: {get_input: token}
+        encrypt: {get_input: postprocessing_encrypt_dataset_result}
+        compress: {get_input: postprocessing_compress_dataset_result}
+        ddi_path: { get_input: postprocessing_ddi_project_path }
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaResultDir
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
+
+    # DDI job cleaning up the cloud staging area
+    CleanupCloudStagingAreaJob:
+      type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
+      properties:
+        token: {get_input: token}
+      requirements:
+        - cloud_area_dataset_provider:
+            type_requirement: cloud_area_dataset_provider
+            node: DDIToCloudInputDatasetJob
+            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
+
+  #
+  # Component attribute values that will be exposed in the front-end
+  #
+  outputs:
+    computation_dataset_result_path:
+      description: DDI path to HPC results
+      value: { get_attribute: [ HPCToDDIJob, destination_path ] }
+    postprocessing_dataset_result_path:
+      description: DDI path to post-processing results
+      value: { get_attribute: [ CloudToDDIJob, destination_path ] }
+  
+  #
+  # Sequences of operations on components
+  #
+  workflows:
+    # At deployment time, validating the input token and exchanging it
+    # to get an access/refresh token for the orchestrator
+    install:
+      steps:
+        ValidateExchangeToken_start:
+          target: ValidateExchangeToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ValidateExchangeToken_started
+        ValidateExchangeToken_started:
+          target: ValidateExchangeToken
+          activities:
+            - set_state: started
+    #
+    # Workflow executed by LEXIS Portal
+    #
+    Run:
+      steps:
+        # Submit DDI job to get info on dataset (DDI location where it is available, size...)
+        InputDatasetInfoJob_submit:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - InputDatasetInfoJob_run
+        InputDatasetInfoJob_run:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - InputDatasetInfoJob_executed
+        InputDatasetInfoJob_executed:
+          target: InputDatasetInfoJob
+          activities:
+            - set_state: executed
+          on_success:
+            - FindCloudLocation_submit
+        # Submit the computation to find the best location from these inputs
+        FindCloudLocation_submit:
+          target: FindCloudLocation
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindCloudLocation_run
+        FindCloudLocation_run:
+          target: FindCloudLocation
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindCloudLocation_executed
+        FindCloudLocation_executed:
+          target: FindCloudLocation
+          activities:
+            - set_state: executed
+          on_success:
+            - DDIToCloudInputDatasetJob_create
+            - Network_install
+        # Transfer the input dataset to cloud staging area
+        DDIToCloudInputDatasetJob_create:
+          target: DDIToCloudInputDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToCloudInputDatasetJob_submit
+        DDIToCloudInputDatasetJob_submit:
+          target: DDIToCloudInputDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToCloudInputDatasetJob_submitted
+        DDIToCloudInputDatasetJob_submitted:
+          target: DDIToCloudInputDatasetJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToCloudInputDatasetJob_run
+        DDIToCloudInputDatasetJob_run:
+          target: DDIToCloudInputDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToCloudInputDatasetJob_executed
+        DDIToCloudInputDatasetJob_executed:
+          target: DDIToCloudInputDatasetJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountInputDataset_create
+        # Get a floating IP address for the Cloud Compute instance
+        Network_install:
+          target: Network
+          activities:
+            - delegate: install
+          on_success:
+            - ComputeInstance_install
+        # Create the compute instance
+        ComputeInstance_install:
+          target: ComputeInstance
+          activities:
+            - delegate: install
+          on_success:
+            - GetDDIAccess_start
+            - CreatePreProcessDirs_start
+        # Get details on DDI needed to mount cloud staging area filesystems on
+        # the Compute instance
+        GetDDIAccess_start:
+          target: GetDDIAccess
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetDDIAccess_started
+        GetDDIAccess_started:
+          target: GetDDIAccess
+          activities:
+            - set_state: started
+          on_success:
+            - MountInputDataset_create
+        # Create directories needed by the pre-processing container
+        CreatePreProcessDirs_start:
+          target: CreatePreProcessDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreatePreProcessDirs_started
+        CreatePreProcessDirs_started:
+          target: CreatePreProcessDirs
+          activities:
+            - set_state: started
+          on_success:
+            - MountInputDataset_create
+        # Mount the cloud staging are on the Cloud compute instance
+        MountInputDataset_create:
+          target: MountInputDataset
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - MountInputDataset_created
+        MountInputDataset_created:
+          target: MountInputDataset
+          activities:
+            - set_state: created
+          on_success:
+            - MountInputDataset_refresh_token
+        MountInputDataset_refresh_token:
+          target: MountInputDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountInputDataset_start
+        MountInputDataset_start:
+          target: MountInputDataset
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountInputDataset_started
+        MountInputDataset_started:
+          target: MountInputDataset
+          activities:
+            - set_state: started
+          on_success:
+            - Docker_create
+        # Install Docker
+        Docker_create:
+          target: Docker
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Docker_configure
+        Docker_configure:
+          target: Docker
+          activities:
+            - call_operation: Standard.configure
+          on_success:
+            - Docker_start
+        Docker_start:
+          target: Docker
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Docker_started
+        Docker_started:
+          target: Docker
+          activities:
+            - set_state: started
+          on_success:
+            - PreprocessingContainer_create
+        # Create and run the pre-processing container
+        PreprocessingContainer_create:
+          target: PreprocessingContainer
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - PreprocessingContainer_start
+        PreprocessingContainer_start:
+          target: PreprocessingContainer
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - PreprocessingContainer_started
+        PreprocessingContainer_started:
+          target: PreprocessingContainer
+          activities:
+            - set_state: started
+          on_success:
+            - GetPreprocessDatasetInfo_create
+        GetPreprocessDatasetInfo_create:
+          target: GetPreprocessDatasetInfo
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - GetPreprocessDatasetInfo_start
+        GetPreprocessDatasetInfo_start:
+          target: GetPreprocessDatasetInfo
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetPreprocessDatasetInfo_started
+        GetPreprocessDatasetInfo_started:
+          target: GetPreprocessDatasetInfo
+          activities:
+            - set_state: started
+          on_success:
+            - FindHPCLocationJob_submit
+        # Submit the computation to find the best location from these inputs
+        FindHPCLocationJob_submit:
+          target: FindHPCLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindHPCLocationJob_run
+        FindHPCLocationJob_run:
+          target: FindHPCLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindHPCLocationJob_executed
+        FindHPCLocationJob_executed:
+          target: FindHPCLocationJob
+          activities:
+            - set_state: executed
+          on_success:
+            - HPCJob_create
+        # Create the HPC job
+        HPCJob_create:
+          target: HPCJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - HPCJob_enable_file_transfer
+        # Enable file transfers on this job to provide input files
+        HPCJob_enable_file_transfer:
+          target: HPCJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - CopyToJobTask_start
+        # Copy input files to this job
+        CopyToJobTask_start:
+          target: CopyToJobTask
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyToJobTask_started
+        CopyToJobTask_started:
+          target: CopyToJobTask
+          activities:
+            - set_state: started
+          on_success:
+            - HPCJob_submit
+        # Submit and run the job
+        HPCJob_submit:
+          target: HPCJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - HPCJob_submitted
+        HPCJob_submitted:
+          target: HPCJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - HPCJob_run
+        HPCJob_run:
+          target: HPCJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - HPCJob_executed
+        HPCJob_executed:
+          target: HPCJob
+          activities:
+            - set_state: executed
+          on_success:
+            - HPCToDDIJob_create
+            - CreatePostProcessDirs_start
+        # Create directories needed by the post-processing
+        CreatePostProcessDirs_start:
+          target: CreatePostProcessDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreatePostProcessDirs_started
+        CreatePostProcessDirs_started:
+          target: CreatePostProcessDirs
+          activities:
+            - set_state: started
+          on_success:
+            - CopyFromJobTask_start
+        # Copy files from the HPC job on the Cloud Compute Instance
+        CopyFromJobTask_start:
+          target: CopyFromJobTask
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyFromJobTask_started
+        CopyFromJobTask_started:
+          target: CopyFromJobTask
+          activities:
+            - set_state: started
+          on_success:
+            - PostprocessingContainer_create
+            - HPCJob_disable_file_transfer
+        # Transfer HPC job results to DDI
+        HPCToDDIJob_create:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - HPCToDDIJob_submit
+        HPCToDDIJob_submit:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - HPCToDDIJob_submitted
+        HPCToDDIJob_submitted:
+          target: HPCToDDIJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - HPCToDDIJob_run
+        HPCToDDIJob_run:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - HPCToDDIJob_executed
+        HPCToDDIJob_executed:
+          target: HPCToDDIJob
+          activities:
+            - set_state: executed
+          on_success:
+            - HPCJob_disable_file_transfer
+        HPCJob_disable_file_transfer:
+          target: HPCJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - HPCJob_delete
+        HPCJob_delete:
+          target: HPCJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - HPCJob_deleted
+        HPCJob_deleted:
+          target: HPCJob
+          activities:
+            - set_state: deleted
+        # Create and run the post-processing container
+        PostprocessingContainer_create:
+          target: PostprocessingContainer
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - PostprocessingContainer_start
+        PostprocessingContainer_start:
+          target: PostprocessingContainer
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - PostprocessingContainer_started
+        PostprocessingContainer_started:
+          target: PostprocessingContainer
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        # Create a directory in cloud staging area and copy post-processing
+        # results there
+        CreateStagingAreaResultDir_start:
+          target: CreateStagingAreaResultDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaResultDir_started
+        CreateStagingAreaResultDir_started:
+          target: CreateStagingAreaResultDir
+          activities:
+            - set_state: started
+          on_success:
+            - StagePostProcessingResults_start
+        StagePostProcessingResults_start:
+          target: StagePostProcessingResults
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - StagePostProcessingResults_started
+        StagePostProcessingResults_started:
+          target: StagePostProcessingResults
+          activities:
+            - set_state: started
+          on_success:
+            - CloudToDDIJob_create
+        # Transfer post-processing results from Cloud staging area to DDI
+        CloudToDDIJob_create:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CloudToDDIJob_submit
+        CloudToDDIJob_submit:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CloudToDDIJob_submitted
+        CloudToDDIJob_submitted:
+          target: CloudToDDIJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CloudToDDIJob_run
+        CloudToDDIJob_run:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CloudToDDIJob_executed
+        CloudToDDIJob_executed:
+          target: CloudToDDIJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountInputDataset_refresh_token_before_stop
+        MountInputDataset_refresh_token_before_stop:
+          target: MountInputDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountInputDataset_stop
+        # Cleanup of ssh access to cloud staging area
+        MountInputDataset_stop:
+          target: MountInputDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountInputDataset_stopped
+        MountInputDataset_stopped:
+          target: MountInputDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - CleanupCloudStagingAreaJob_create
+        # Cleanup of cloud staging area files created by this workflow
+        CleanupCloudStagingAreaJob_create:
+          target: CleanupCloudStagingAreaJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CleanupCloudStagingAreaJob_created
+        CleanupCloudStagingAreaJob_created:
+          target: CleanupCloudStagingAreaJob
+          activities:
+            - set_state: created
+          on_success:
+            - CleanupCloudStagingAreaJob_submit
+        CleanupCloudStagingAreaJob_submit:
+          target: CleanupCloudStagingAreaJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CleanupCloudStagingAreaJob_submitted
+        CleanupCloudStagingAreaJob_submitted:
+          target: CleanupCloudStagingAreaJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CleanupCloudStagingAreaJob_run
+        CleanupCloudStagingAreaJob_run:
+          target: CleanupCloudStagingAreaJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CleanupCloudStagingAreaJob_executed
+        CleanupCloudStagingAreaJob_executed:
+          target: CleanupCloudStagingAreaJob
+          activities:
+            - set_state: executed
+          on_success:
+            - ComputeInstance_uninstall
+        # Delete Cloud Compute Instance
+        ComputeInstance_uninstall:
+          target: ComputeInstance
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        # Release Cloud floating IP address
+        Network_uninstall:
+          target: Network
+          activities:
+            - delegate: uninstall
+    #
+    # Worflow executed at undeployment time
+    # Deleting infrastructure resources if not yet dene
+    # (if the Run workflow failed before the cleanup phase)
+    #
+    uninstall:
+      steps:
+        ComputeInstance_uninstall:
+          target: ComputeInstance
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: Network
+          activities:
+            - delegate: uninstall
+          on_success:
+            - CleanupCloudStagingAreaJob_create
+        CleanupCloudStagingAreaJob_create:
+          target: CleanupCloudStagingAreaJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CleanupCloudStagingAreaJob_created
+        CleanupCloudStagingAreaJob_created:
+          target: CleanupCloudStagingAreaJob
+          activities:
+            - set_state: created
+          on_success:
+            - CleanupCloudStagingAreaJob_submit
+        CleanupCloudStagingAreaJob_submit:
+          target: CleanupCloudStagingAreaJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CleanupCloudStagingAreaJob_submitted
+        CleanupCloudStagingAreaJob_submitted:
+          target: CleanupCloudStagingAreaJob
+          activities:
+            - set_state: submitted
+    #
+    # Test workflow to only execute a SSH-unmount
+    #
+    cleanupMountPoint:
+      steps:
+        MountInputDataset_refresh_token:
+          target: MountInputDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountInputDataset_stop
+        MountInputDataset_stop:
+          target: MountInputDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountInputDataset_stopped
+        MountInputDataset_stopped:
+          target: MountInputDataset
+          activities:
+            - set_state: stopped
+    #
+    # Test workflow to only execute the cloud staging area cleanup
+    #
+    cleanupStagingArea:
+      steps:
+        CleanupCloudStagingAreaJob_create:
+          target: CleanupCloudStagingAreaJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CleanupCloudStagingAreaJob_created
+        CleanupCloudStagingAreaJob_created:
+          target: CleanupCloudStagingAreaJob
+          activities:
+            - set_state: created
+          on_success:
+            - CleanupCloudStagingAreaJob_submit
+        CleanupCloudStagingAreaJob_submit:
+          target: CleanupCloudStagingAreaJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CleanupCloudStagingAreaJob_submitted
+        CleanupCloudStagingAreaJob_submitted:
+          target: CleanupCloudStagingAreaJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CleanupCloudStagingAreaJob_run
+        CleanupCloudStagingAreaJob_run:
+          target: CleanupCloudStagingAreaJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CleanupCloudStagingAreaJob_executed
+        CleanupCloudStagingAreaJob_executed:
+          target: CleanupCloudStagingAreaJob
+          activities:
+            - set_state: executed
+    #
+    # Test workflow to only execute the disabling of file transfer and job deletion
+    #
+    cleanupHPC:
+      steps:
+        HPCJob_disable_file_transfer:
+          target: HPCJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - HPCJob_delete
+        HPCJob_delete:
+          target: HPCJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - HPCJob_deleted
+        HPCJob_deleted:
+          target: HPCJob
+          activities:
+            - set_state: deleted
+    #
+    # Test workflow to only execute the preprocessing
+    #
+    testPreprocessing:
+      steps:
+        # Submit DDI job to get info on dataset (DDI location where it is available, size...)
+        InputDatasetInfoJob_submit:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - InputDatasetInfoJob_run
+        InputDatasetInfoJob_run:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - InputDatasetInfoJob_executed
+        InputDatasetInfoJob_executed:
+          target: InputDatasetInfoJob
+          activities:
+            - set_state: executed
+          on_success:
+            - FindCloudLocation_submit
+        # Submit the computation to find the best location from these inputs
+        FindCloudLocation_submit:
+          target: FindCloudLocation
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindCloudLocation_run
+        FindCloudLocation_run:
+          target: FindCloudLocation
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindCloudLocation_executed
+        FindCloudLocation_executed:
+          target: FindCloudLocation
+          activities:
+            - set_state: executed
+          on_success:
+            - DDIToCloudInputDatasetJob_create
+            - Network_install
+        # Transfer the input dataset to cloud staging area
+        DDIToCloudInputDatasetJob_create:
+          target: DDIToCloudInputDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToCloudInputDatasetJob_submit
+        DDIToCloudInputDatasetJob_submit:
+          target: DDIToCloudInputDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToCloudInputDatasetJob_submitted
+        DDIToCloudInputDatasetJob_submitted:
+          target: DDIToCloudInputDatasetJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToCloudInputDatasetJob_run
+        DDIToCloudInputDatasetJob_run:
+          target: DDIToCloudInputDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToCloudInputDatasetJob_executed
+        DDIToCloudInputDatasetJob_executed:
+          target: DDIToCloudInputDatasetJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountInputDataset_create
+        # Get a floating IP address for the Cloud Compute instance
+        Network_install:
+          target: Network
+          activities:
+            - delegate: install
+          on_success:
+            - ComputeInstance_install
+        # Create the compute instance
+        ComputeInstance_install:
+          target: ComputeInstance
+          activities:
+            - delegate: install
+          on_success:
+            - GetDDIAccess_start
+            - CreatePreProcessDirs_start
+        # Get details on DDI needed to mount cloud staging area filesystems on
+        # the Compute instance
+        GetDDIAccess_start:
+          target: GetDDIAccess
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetDDIAccess_started
+        GetDDIAccess_started:
+          target: GetDDIAccess
+          activities:
+            - set_state: started
+          on_success:
+            - MountInputDataset_create
+        # Create directories needed by the pre-processing container
+        CreatePreProcessDirs_start:
+          target: CreatePreProcessDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreatePreProcessDirs_started
+        CreatePreProcessDirs_started:
+          target: CreatePreProcessDirs
+          activities:
+            - set_state: started
+          on_success:
+            - MountInputDataset_create
+        # Mount the cloud staging are on the Cloud compute instance
+        MountInputDataset_create:
+          target: MountInputDataset
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - MountInputDataset_created
+        MountInputDataset_created:
+          target: MountInputDataset
+          activities:
+            - set_state: created
+          on_success:
+            - MountInputDataset_refresh_token
+        MountInputDataset_refresh_token:
+          target: MountInputDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountInputDataset_start
+        MountInputDataset_start:
+          target: MountInputDataset
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountInputDataset_started
+        MountInputDataset_started:
+          target: MountInputDataset
+          activities:
+            - set_state: started
+          on_success:
+            - Docker_create
+        # Install Docker
+        Docker_create:
+          target: Docker
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Docker_configure
+        Docker_configure:
+          target: Docker
+          activities:
+            - call_operation: Standard.configure
+          on_success:
+            - Docker_start
+        Docker_start:
+          target: Docker
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Docker_started
+        Docker_started:
+          target: Docker
+          activities:
+            - set_state: started
+          on_success:
+            - PreprocessingContainer_create
+        # Create and run the pre-processing container
+        PreprocessingContainer_create:
+          target: PreprocessingContainer
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - PreprocessingContainer_start
+        PreprocessingContainer_start:
+          target: PreprocessingContainer
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - PreprocessingContainer_started
+        PreprocessingContainer_started:
+          target: PreprocessingContainer
+          activities:
+            - set_state: started
+    #
+    # Test workflow to only execute the computation
+    #
+    testComputation:
+      steps:
+        HPCJob_create:
+          target: HPCJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - HPCJob_enable_file_transfer
+        HPCJob_enable_file_transfer:
+          target: HPCJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - CopyToJobTask_start
+        CopyToJobTask_start:
+          target: CopyToJobTask
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyToJobTask_started
+        CopyToJobTask_started:
+          target: CopyToJobTask
+          activities:
+            - set_state: started
+          on_success:
+            - HPCJob_submit
+        HPCJob_submit:
+          target: HPCJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - HPCJob_submitted
+        HPCJob_submitted:
+          target: HPCJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - HPCJob_run
+        HPCJob_run:
+          target: HPCJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - HPCJob_executed
+        HPCJob_executed:
+          target: HPCJob
+          activities:
+            - set_state: executed
+          on_success:
+            - HPCToDDIJob_create
+        HPCToDDIJob_create:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - HPCToDDIJob_submit
+        HPCToDDIJob_submit:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - HPCToDDIJob_submitted
+        HPCToDDIJob_submitted:
+          target: HPCToDDIJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - HPCToDDIJob_run
+        HPCToDDIJob_run:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - HPCToDDIJob_executed
+        HPCToDDIJob_executed:
+          target: HPCToDDIJob
+          activities:
+            - set_state: executed
+    #
+    # Test workflow to only execute the postprocessing
+    #
+    testPostprocessing:
+      steps:
+        CreatePostProcessDirs_start:
+          target: CreatePostProcessDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreatePostProcessDirs_started
+        CreatePostProcessDirs_started:
+          target: CreatePostProcessDirs
+          activities:
+            - set_state: started
+          on_success:
+            - CopyFromJobTask_start
+        CopyFromJobTask_start:
+          target: CopyFromJobTask
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyFromJobTask_started
+        CopyFromJobTask_started:
+          target: CopyFromJobTask
+          activities:
+            - set_state: started
+          on_success:
+            - PostprocessingContainer_create
+            - HPCJob_disable_file_transfer
+        HPCJob_disable_file_transfer:
+          target: HPCJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - HPCJob_delete
+        HPCJob_delete:
+          target: HPCJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - HPCJob_deleted
+        HPCJob_deleted:
+          target: HPCJob
+          activities:
+            - set_state: deleted
+        PostprocessingContainer_create:
+          target: PostprocessingContainer
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - PostprocessingContainer_start
+        PostprocessingContainer_start:
+          target: PostprocessingContainer
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - PostprocessingContainer_started
+        PostprocessingContainer_started:
+          target: PostprocessingContainer
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        CreateStagingAreaResultDir_start:
+          target: CreateStagingAreaResultDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaResultDir_started
+        CreateStagingAreaResultDir_started:
+          target: CreateStagingAreaResultDir
+          activities:
+            - set_state: started
+          on_success:
+            - StagePostProcessingResults_start
+        StagePostProcessingResults_start:
+          target: StagePostProcessingResults
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - StagePostProcessingResults_started
+        StagePostProcessingResults_started:
+          target: StagePostProcessingResults
+          activities:
+            - set_state: started
+          on_success:
+            - CloudToDDIJob_create
+        CloudToDDIJob_create:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CloudToDDIJob_submit
+        CloudToDDIJob_submit:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CloudToDDIJob_submitted
+        CloudToDDIJob_submitted:
+          target: CloudToDDIJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CloudToDDIJob_run
+        CloudToDDIJob_run:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CloudToDDIJob_executed
+        CloudToDDIJob_executed:
+          target: CloudToDDIJob
+          activities:
+            - set_state: executed
+    #
+    # Test workflow to only execute the postprocessing cleanup
+    #
+    testPostprocessCleanup:
+      steps:
+        MountInputDataset_refresh_token:
+          target: MountInputDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountInputDataset_stop
+        MountInputDataset_stop:
+          target: MountInputDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountInputDataset_stopped
+        MountInputDataset_stopped:
+          target: MountInputDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - CleanupCloudStagingAreaJob_create
+        CleanupCloudStagingAreaJob_create:
+          target: CleanupCloudStagingAreaJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CleanupCloudStagingAreaJob_created
+        CleanupCloudStagingAreaJob_created:
+          target: CleanupCloudStagingAreaJob
+          activities:
+            - set_state: created
+          on_success:
+            - CleanupCloudStagingAreaJob_submit
+        CleanupCloudStagingAreaJob_submit:
+          target: CleanupCloudStagingAreaJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CleanupCloudStagingAreaJob_submitted
+        CleanupCloudStagingAreaJob_submitted:
+          target: CleanupCloudStagingAreaJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CleanupCloudStagingAreaJob_run
+        CleanupCloudStagingAreaJob_run:
+          target: CleanupCloudStagingAreaJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CleanupCloudStagingAreaJob_executed
+        CleanupCloudStagingAreaJob_executed:
+          target: CleanupCloudStagingAreaJob
+          activities:
+            - set_state: executed
+          on_success:
+            - ComputeInstance_uninstall
+        ComputeInstance_uninstall:
+          target: ComputeInstance
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: Network
+          activities:
+            - delegate: uninstall
+

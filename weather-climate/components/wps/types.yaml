@@ -1,4 +1,4 @@
-tosca_definitions_version: alien_dsl_2_0_0
+tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
   template_name: org.lexis.wp7.wps
@@ -24,10 +24,11 @@ node_types:
         type: string
         description: Download GFS files up to this date, format YYYYMMDDHH
         required: true
-      number_of_past_days:
+      past_day_number:
         type: integer
-        description: Download additional warmup data for this given number of days before the start date
-        required: true
+        description: Past day number before start date for which to download data (needed for warmup data)
+        required: false
+        default: 0
       output_directory:
         type: string
         description: Absolute path to directory where to store donwloaded data
@@ -60,7 +61,7 @@ node_types:
           inputs:
             START_DATE: {get_property: [SELF, start_date]}
             END_DATE: {get_property: [SELF, end_date]}
-            NUMBER_OF_PAST_DAYS: {get_property: [SELF, number_of_past_days]}
+            PAST_DAY_NUMBER: {get_property: [SELF, past_day_number]}
             WITH_DATA_ASSIMILATION:  {get_property: [SELF, with_data_assimilation]}
             LEFT_LONGITUDE: {get_property: [SELF, left_longitude]}
             RIGHT_LONGITUDE: {get_property: [SELF, right_longitude]}
@@ -127,24 +128,15 @@ node_types:
         type: string
         description: Start date, format YYYYMMDDHH
         required: true
-      wps_mode:
-        type: string
-        description: WPS mode - can WRF or WARMUP, or for data assimiliation WRFDA or WARMUPDA
-        required: true
       output_directory:
         type: string
         description: Absolute path to directory where to store donwloaded data
         required: true
-      number_of_hours:
-        type: integer
-        description: number of hours of data to get
-        required: false
-        default: 48
       past_day:
         type: integer
-        description: Download warmup data for this nth day before the start_date
+        description: Download data for this nth day before the start_date
         required: false
-        default: 0
+        default: 1
     interfaces:
       Standard:
         inputs:
@@ -155,8 +147,6 @@ node_types:
           inputs:
             START_DATE: {get_property: [SELF, start_date]}
             PAST_DAY: {get_property: [SELF, past_day]}
-            NUMBER_OF_HOURS: {get_property: [SELF, number_of_hours]}
-            WPS_MODE: {get_property: [SELF, wps_mode]}
             EMAIL_ADDRESS: { get_secret: ["/secret/wp7/ecmwf/creds", "data=email"]}
             KEY: { get_secret: ["/secret/wp7/ecmwf/creds", "data=key"]}
           implementation: scripts/download_ecmwf.py

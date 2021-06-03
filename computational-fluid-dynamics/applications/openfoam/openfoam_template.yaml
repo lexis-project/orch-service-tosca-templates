@@ -1,4 +1,4 @@
-tosca_definitions_version: alien_dsl_2_0_0
+tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
   template_name: org.lexis.common.OpenFOAMTemplate
@@ -46,20 +46,20 @@ topology_template:
       required: true
     preprocessing_decrypt_input_dataset:
       type: boolean
-      description: Is the input dataset encrypted
+      description: Should the input dataset be decrypted
       default: false
       required: false
     preprocessing_uncompress_input_dataset:
       type: boolean
-      description: Is the input dataset compressed
+      description: Should the input dataset be uncompressed
       default: false
       required: false
-    computation_encrypt_result_dataset:
+    computation_encrypt_dataset_result:
       type: boolean
       description: Encrypt the result dataset
       default: false
       required: false
-    computation_compress_result_dataset:
+    computation_compress_dataset_result:
       type: boolean
       description: Compress the result dataset
       default: false
@@ -94,6 +94,7 @@ topology_template:
       type: org.lexis.common.dynamic.orchestration.nodes.ValidateAndExchangeToken
       properties:
         token: {get_input: token}
+        project_id: { get_input: project_id }
 
     # Job gathering info on the input dataset:
     # - on which locations it is available
@@ -111,7 +112,8 @@ topology_template:
       metadata:
         task: dynamic_orchestration
       properties:
-        token: {get_input: token}
+        token: { get_input: token}
+        project_id: { get_input: project_id }
       requirements:
         - InputDataset:
             type_requirement: input_dataset
@@ -178,10 +180,11 @@ topology_template:
         task: preprocessing
       properties:
         token: { get_input: token }
-        encrypt: {get_input: computation_encrypt_result_dataset}
-        compress: {get_input: computation_compress_result_dataset}
+        encrypt: {get_input: computation_encrypt_dataset_result}
+        compress: {get_input: computation_compress_dataset_result}
         metadata: {concat: ["{\"creator\": [\"OpenFOAM workflow\"], \"contributor\": [\"OpenFOAM workflow\"], \"publisher\": [\"OpenFOAM workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"", get_input: computation_title_dataset_result, "\"}"]}
         ddi_path: { get_input: computation_ddi_project_path }
+        task_name: "OpenFoamParallel"
       requirements:
         - job:
             type_requirement: job
@@ -193,7 +196,7 @@ topology_template:
       type: org.lexis.common.ddi.nodes.GetHPCJobTaskDatasetInfo
       properties:
         task_name: "OpenFoamParallel"
-        needed_files_patterns: [ ".*/q.*.dat", ".*/turbo.*", ".*/xy.*.dat" ]
+        needed_files_patterns: [ "EnSight/.*" ]
       requirements:
         - job:
             type_requirement: job
@@ -207,6 +210,7 @@ topology_template:
         task: dynamic_orchestration
       properties:
         token: { get_input: token }
+        project_id: { get_input: project_id }
       requirements:
         - InputDataset:
             type_requirement: input_dataset
@@ -279,7 +283,6 @@ topology_template:
       type: org.lexis.common.datatransfer.nodes.CopyFromJobTask
       properties:
         task_name: "OpenFoamParallel"
-        # source_files: [ "/Run447x2/q*.dat", "/Run447x2/turbo*.*", "/Run447x2/xy*.dat" ]
         source_files: [ "EnSight" ]
         destination_directory:  { get_input: visualization_directory }
       requirements:
@@ -296,12 +299,12 @@ topology_template:
   outputs:
     visualization_url:
       value: { get_attribute: [ XpraJob, url ] }
-    computation_ddi_project_path:
+    computation_dataset_result_path:
       description: DDI path to OpenFOAM results
       value: { get_attribute: [ HPCToDDIJob, destination_path ] }
   workflows:
     # At deployment time, validating the input token and exchanging it
-    # to get an access/refresh token of all components needing it
+    # to get an access/refresh token for the orchestrator
     install:
       steps:
         ValidateExchangeToken_start:
@@ -430,7 +433,7 @@ topology_template:
           on_success:
             - GetHPCResultsDatasetInfo_start
             - HPCToDDIJob_create
-        # Transfer HOC results to DDI
+        # Transfer HPC results to DDI
         HPCToDDIJob_create:
           target: HPCToDDIJob
           operation_host: ORCHESTRATOR

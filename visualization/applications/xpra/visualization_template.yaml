@@ -1,4 +1,4 @@
-tosca_definitions_version: alien_dsl_2_0_0
+tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
   template_name: org.lexis.common.VisualizationTemplate
@@ -37,12 +37,12 @@ topology_template:
       required: true
     visualization_decrypt_input_dataset:
       type: boolean
-      description: Is the input dataset encrypted
+      description: Should the input dataset be decrypted
       default: false
       required: false
     visualization_uncompress_input_dataset:
       type: boolean
-      description: Is the input dataset compressed
+      description: Should the input dataset be uncompressed
       default: false
       required: false
     visualization_directory:
@@ -80,6 +80,7 @@ topology_template:
       type: org.lexis.common.dynamic.orchestration.nodes.ValidateAndExchangeToken
       properties:
         token: {get_input: token}
+        project_id: { get_input: project_id }
 
     # Job gathering info on the input dataset:
     # - on which locations it is available
@@ -99,6 +100,7 @@ topology_template:
         task: dynamic_orchestration
       properties:
         token: { get_input: token }
+        project_id: { get_input: project_id }
       requirements:
         - InputDataset:
             type_requirement: input_dataset
@@ -255,7 +257,7 @@ topology_template:
       value: { get_attribute: [ XpraJob, url ] }
   workflows:
     # At deployment time, validating the input token and exchanging it
-    # to get an access/refresh token of all components needing it
+    # to get an access/refresh token for the orchestrator
     install:
       steps:
         ValidateExchangeToken_start:

@@ -18,8 +18,8 @@ The template expects the following input properties (mandatory inputs in **bold*
 * **project_id**: LEXIS project identifier
 * **visualization_dataset_input_path**: Dataset path in DDI containing visualization data
 * **visualization_walltime_minutes**: Duration in minutes of the visualization session
-* visualization_decrypt_input_dataset: Is the input dataset encrypted (default: false)
-* visualization_uncompress_input_dataset: Is the input dataset compressed (default: false)
+* visualization_decrypt_input_dataset: Should the input dataset be decrypted (default: false)
+* visualization_uncompress_input_dataset: Should the input dataset be uncompressed (default: false)
 * visualization_directory: Directory where visualization data will be accesible on a cloud instance (default: visualization)
 * visualization_mount_point: Directory where visualization data will be mounted from Cloud staging area (default: /mnt/visualization)
 * visualization_ca_pem: PEM-encoded certificate authority content. Will be generated if not provided,
@@ -28,7 +28,7 @@ but the user will get a warning that he attempts to connect to a server with an 
 * visualization_ca_passphrase: Certificate authority private key passphrase
 * visualization_port: Port to use to expose the remote display, should be > 1024 (default: 8765)
 
-## Ouput properties
+## Ouput attribute
 
 The following output attribute is provided:
 * attribute `url` of component `XpraJob`: the URL of the remote visualization session
