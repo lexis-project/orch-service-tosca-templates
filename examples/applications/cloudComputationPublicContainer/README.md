@@ -38,7 +38,7 @@ The template expects the following input properties (mandatory inputs in **bold*
 * computation_container_volumes: List of volumes to mount within the computation container (Use docker CLI-style syntax: /host:/container[:mode])
   * default:
     * `/mnt/lexis_input:/input_dataset`
-    * `lexis/output:/output`
+    * `/lexis/output:/output`
 * computation_output_directory: Computation output directory
   * default: `/lexis/output`
 * computation_metadata_dataset_result: Metadata for the computation results dataset to create in DDI
