@@ -45,8 +45,11 @@ topology_template:
     computation_dataset_input_path:
       type: string
       description: Dataset containing input data
-      default: "project/proj812b07ed780274387d12c665fa3a4f7f/03ecd6a8-b8c7-11eb-885c-0050568fcecc"
-      required: false
+      required: true
+    computation_ddi_project_path:
+      type: string
+      description: "Path where to transfer the computation results in DDI"
+      required: true
     computation_decrypt_input_dataset:
       type: boolean
       description: Should the input dataset be decrypted
@@ -92,11 +95,6 @@ topology_template:
       type: string
       description: Computation output directory
       default: "/lexis/output"
-      required: false
-    computation_ddi_project_path:
-      type: string
-      description: "Path where to transfer the computation results in DDI"
-      default: "project/proj812b07ed780274387d12c665fa3a4f7f"
       required: false
     computation_metadata_dataset_result:
       type: org.lexis.common.ddi.types.Metadata

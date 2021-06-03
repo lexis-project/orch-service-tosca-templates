@@ -21,3 +21,8 @@ Repository of TOSCA components and Application Templates.
     * the transfer of a input dataset from DDI
     * a computation done by a Docker Container using these inputs
     * the transfer of result files produced by this container to DDI
+  * [HPC Computation using HEAppE](examples/applications/hpcComputation/) performing:
+    * the creation of a HEAppE job on a HPC cluster
+    * the transfer of a input dataset from DDI to this HEAppE job
+    * the submission and monitoring of this HEAppE job until it ends
+    * the transfer of result files produced by this HEAppE job to DDI

@@ -414,37 +414,12 @@ topology_template:
               ClusterNodeTypeId: 7
               CommandTemplateId: 9
               TemplateParameterValues:
-                - CommandParameterIdentifier: MPICores
-                  ParameterValue: "48"
+                - CommandParameterIdentifier: MPI_PROCESSES
+                  ParameterValue: "36"
               WalltimeLimit: 36000
-              MinCores: 48
-              MaxCores: 48
+              MinCores: 144
+              MaxCores: 144
               Priority: 4
-              EnvironmentVariables:
-                - Name: HDF5
-                  Value: "./deps"
-                - Name: NETCDF
-                  Value: "./deps"
-                - Name: CPPFLAGS
-                  Value: "-I./deps/include"
-                - Name: CFLAGS
-                  Value: "-I./deps/include"
-                - Name: CXXFLAGS
-                  Value: "-I./deps/include"
-                - Name: FCFLAGS
-                  Value: "-I./deps/include"
-                - Name: FFLAGS
-                  Value: "-I./deps/include"
-                - Name: LDFLAGS
-                  Value: "-L./deps/lib"
-                - Name: WRFIO_NCD_LARGE_FILE_SUPPORT
-                  Value: "1"
-                - Name: LD_LIBRARY_PATH
-                  Value: "$LD_LIBRARY_PATH:./deps/lib"
-                - Name: JASPERLIB
-                  Value: "./deps/lib"
-                - Name: JASPERINC
-                  Value: "./deps/include"
               StandardOutputFile: "stdout"
               StandardErrorFile: "stderr"
               ProgressFile: "stdprog"

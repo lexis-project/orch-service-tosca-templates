@@ -54,12 +54,12 @@ topology_template:
       description: Should the input dataset be uncompressed
       default: false
       required: false
-    computation_encrypt_result_dataset:
+    computation_encrypt_dataset_result:
       type: boolean
       description: Encrypt the result dataset
       default: false
       required: false
-    computation_compress_result_dataset:
+    computation_compress_dataset_result:
       type: boolean
       description: Compress the result dataset
       default: false
@@ -180,10 +180,11 @@ topology_template:
         task: preprocessing
       properties:
         token: { get_input: token }
-        encrypt: {get_input: computation_encrypt_result_dataset}
-        compress: {get_input: computation_compress_result_dataset}
+        encrypt: {get_input: computation_encrypt_dataset_result}
+        compress: {get_input: computation_compress_dataset_result}
         metadata: {concat: ["{\"creator\": [\"OpenFOAM workflow\"], \"contributor\": [\"OpenFOAM workflow\"], \"publisher\": [\"OpenFOAM workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"", get_input: computation_title_dataset_result, "\"}"]}
         ddi_path: { get_input: computation_ddi_project_path }
+        task_name: "OpenFoamParallel"
       requirements:
         - job:
             type_requirement: job
@@ -298,7 +299,7 @@ topology_template:
   outputs:
     visualization_url:
       value: { get_attribute: [ XpraJob, url ] }
-    computation_ddi_project_path:
+    computation_dataset_result_path:
       description: DDI path to OpenFOAM results
       value: { get_attribute: [ HPCToDDIJob, destination_path ] }
   workflows:
@@ -432,7 +433,7 @@ topology_template:
           on_success:
             - GetHPCResultsDatasetInfo_start
             - HPCToDDIJob_create
-        # Transfer HOC results to DDI
+        # Transfer HPC results to DDI
         HPCToDDIJob_create:
           target: HPCToDDIJob
           operation_host: ORCHESTRATOR

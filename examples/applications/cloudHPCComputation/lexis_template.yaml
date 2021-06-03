@@ -103,8 +103,8 @@ topology_template:
         ClusterId: 2
         Tasks:
           - Name: TestTemplate
-            ClusterNodeTypeId: 8
-            CommandTemplateId: 2
+            ClusterNodeTypeId: 2
+            CommandTemplateId: 1
             TemplateParameterValues:
               - CommandParameterIdentifier: inputParam
                 ParameterValue: inputParam
@@ -569,10 +569,10 @@ topology_template:
   # Component attribute values that will be exposed in the front-end
   #
   outputs:
-    computation_dataset_hpc_result_path:
+    computation_dataset_result_path:
       description: DDI path to HPC results
       value: { get_attribute: [ HPCToDDIJob, destination_path ] }
-    postprocessing_ddi_project_path:
+    postprocessing_dataset_result_path:
       description: DDI path to post-processing results
       value: { get_attribute: [ CloudToDDIJob, destination_path ] }
   
