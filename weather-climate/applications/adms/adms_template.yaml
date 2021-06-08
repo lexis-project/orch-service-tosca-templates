@@ -40,10 +40,6 @@ topology_template:
       type: string
       description: Download GFS files from this date, format YYYYMMDDHH
       required: true
-    preprocessing_end_date:
-      type: string
-      description: Download GFS files up to this date, format YYYYMMDDHH
-      required: true
     postprocessing_adms_type:
       type: string
       description: type of ADMS simulation executed, urban or industrial
@@ -61,10 +57,20 @@ topology_template:
       description: Pre-processing container repository path
       default: "cimafoundation/wps-da.gfs:v2.0.3"
       required: false
-    preprocessing_dataset_geographical_data:
+    preprocessing_dataset_geographical_data_path:
       type: string
       description: Dataset containing geographical data
-      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/69c0f740-33f0-11eb-8f85-0050568fcecc"
+      default: project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/055b25ea-ba60-11eb-a44e-0050568fc9b5/static_geog_data.tar.gz
+      required: false
+    preprocessing_decrypt_dataset_geographical_data:
+      type: boolean
+      description: Should the input dataset be decrypted
+      default: false
+      required: false
+    preprocessing_uncompress_dataset_geographical_data:
+      type: boolean
+      description: Should the input dataset be uncompressed
+      default: true
       required: false
     preprocessing_volumes:
       type: list
@@ -73,7 +79,7 @@ topology_template:
       description: |
         List of volumes to mount within the pre-processing container.
         Use docker CLI-style syntax: /host:/container[:mode]
-      default: ["/wps_data/gfs:/input", "/wps_data/output:/output", "/mnt/cloud_staging_area/adms/69c0f740-33f0-11eb-8f85-0050568fcecc:/geogrid"]
+      default: ["/wps_data/gfs:/input", "/wps_data/output:/output", "/mnt/cloud_staging_area/adms:/geogrid"]
       required: false
     postprocessing_adms_sftp_industrial_dir:
         type: string
@@ -154,7 +160,7 @@ topology_template:
       type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
       properties:
         token: {get_input: token}
-        dataset_path: {get_input: preprocessing_dataset_geographical_data}
+        dataset_path: {get_input: preprocessing_dataset_geographical_data_path}
     # Find the best cloud location depending on the input dataset and needed cloud resources
     FindCloudLocationJob:
       type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
@@ -217,7 +223,9 @@ topology_template:
       type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
         token: { get_input: token }
-        ddi_dataset_path: { get_input: preprocessing_dataset_geographical_data }
+        decrypt: {get_input: preprocessing_decrypt_dataset_geographical_data}
+        uncompress: {get_input: preprocessing_uncompress_dataset_geographical_data}
+        ddi_dataset_path: { get_input: preprocessing_dataset_geographical_data_path }
         cloud_staging_area_directory_path: "adms_preprocessing_geog"
         timestamp_cloud_staging_area_directory: true
       requirements:
@@ -261,7 +269,7 @@ topology_template:
       type: org.lexis.wp7.nodes.GFSData
       properties:
         start_date: {get_input: preprocessing_start_date}
-        end_date: {get_input: preprocessing_end_date}
+        end_date: {get_input: preprocessing_start_date}
         number_of_past_days: 0
         with_data_assimilation: true
         left_longitude: "-19.0"
@@ -297,7 +305,7 @@ topology_template:
         cpu_share: 1.0
         shm_size: "64 GB"
         volumes: {get_input: preprocessing_volumes}
-        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_end_date, "\", \"WPS_MODE\": \"WRF\"}"]}
+        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_MODE\": \"WRF\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
@@ -348,7 +356,7 @@ topology_template:
         token: { get_input: token }
         JobSpecification:
           Name: WRFJob
-          Project: "OPEN-20-47"
+          Project: "MyProject"
           ClusterId: 2
           Tasks:
             - Name: "WRF Generic"
