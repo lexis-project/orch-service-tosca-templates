@@ -134,7 +134,6 @@ topology_template:
         task: computation
       properties:
         token: { get_input: token }
-        # TODO: set listChangedFilesWhileRunning to ture for checkpointing
         listChangedFilesWhileRunning: false
         JobSpecification: {concat: ["{\"Name\":\"HPCJob\",\"Project\":\"MyProject\",\"ClusterId\":\"1\",\"Tasks\":[{\"Name\":\"", get_input: computation_heappe_command_template_name, "\",\"MinCores\":\"", get_input: computation_heappe_number_of_cores ,"\",\"MaxCores\":\"", get_input: computation_heappe_number_of_cores,"\",\"WalltimeLimit\":\"", get_input: computation_heappe_walltime_limit, "\",\"TemplateParameterValues\":[{\"CommandParameterIdentifier\":\"", get_input: computation_heappe_parameter_name, "\",\"ParameterValue\":\"", get_input: computation_heappe_parameter_value, "\"}],\"Priority\":\"4\",\"JobArrays\":\"\",\"IsExclusive\":\"false\",\"IsRerunnable\":\"false\",\"CpuHyperThreading\":\"false\",\"StandardInputFile\":\"\",\"StandardOutputFile\":\"stdout\",\"StandardErrorFile\":\"stderr\",\"ProgressFile\":\"stdprog\",\"LogFile\":\"stdlog\",\"ClusterTaskSubdirectory\":\"\",\"ClusterNodeTypeId\":\"1\",\"CommandTemplateId\":\"1\"}]}"]}
     # Transfer the input dataset to the job task input directory

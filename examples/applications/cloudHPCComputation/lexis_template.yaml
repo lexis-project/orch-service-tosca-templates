@@ -99,7 +99,7 @@ topology_template:
       description: Description of the HEAppE job/tasks
       default:
         Name: TestJob
-        Project: "DD-19-14"
+        Project: "MyProject"
         ClusterId: 2
         Tasks:
           - Name: TestTemplate

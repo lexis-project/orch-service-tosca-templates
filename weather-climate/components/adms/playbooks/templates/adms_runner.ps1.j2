@@ -21,6 +21,7 @@
 # ADMS_SFTP_INDUSTRIAL_DIR:       SFTP destination directory for the industrial case
 # ADMS_SFTP_URBAN_DIR:            SFTP destination directory for the urban case
 # DATASET_URL:                    REST Endpoint of the DDI dataset API
+# DDI_PROJECT_SHORT_NAME:         Short Name of the DDI Project (wp7)
 
 
 #industrial
@@ -45,11 +46,11 @@ $global:result_dataset_id = ""
 ####
 
 # Call DDI and pull the dataset to dataset.zip in current directory
-function PullDatasetDDI( $dataset, $token ,$dataset_url)
+function PullDatasetDDI( $dataset, $token, $dataset_url, $ddi_project_short_name)
 {
 
 $header_auth = @{Authorization="Bearer $token"}
-$body = @{push_method="directupload";internalID="$dataset";access="project";project="wp7"} | ConvertTo-Json
+$body = @{push_method="directupload";internalID="$dataset";access="project";project="$ddi_project_short_name"} | ConvertTo-Json
 
 try
 {
@@ -98,7 +99,7 @@ Get-ChildItem -Directory $path
 }
 
 # Upload results to the DDI
-function UploadResults($file, $name, $token, $dataset_url)
+function UploadResults($file, $name, $token, $dataset_url, $ddi_project_short_name)
 {
 # Encode file
 $header_auth = @{Authorization="Bearer $token"}
@@ -106,7 +107,7 @@ $file_enc = [Convert]::ToBase64String((Get-Content -Path $file -Encoding Byte))
 
 # Create JSON body
 $meta = @{contributor=@("ADMS Workflow");creator=@("ADMS Workflow");owner=@("ADMS Workflow");publicationYear="2020";publisher=@("ADMS Workflow");resourceType="Workflow result";title="$name"}
-$body = @{push_method="directupload";name="adms_run_result.zip";access="project";project="wp7";metadata=$meta;file="$file_enc"} | ConvertTo-Json
+$body = @{push_method="directupload";name="adms_run_result.zip";access="project";project="$ddi_project_short_name";metadata=$meta;file="$file_enc"} | ConvertTo-Json
 
 # Upload
 try
@@ -157,7 +158,7 @@ Set-Location C:\adms
 
 #Download app
 echo "Pulling ADMS app dataset"
-$app_dataset_path = PullDatasetDDI $app_dataset {{ACCESS_TOKEN}} {{DATASET_URL}}
+$app_dataset_path = PullDatasetDDI $app_dataset "{{ACCESS_TOKEN}}" "{{DATASET_URL}}" "{{DDI_PROJECT_SHORT_NAME}}"
 $app_path = $(ExpandZipsInPlace $app_dataset_path)[0].FullName
 
 echo "Copying licence files"
@@ -167,7 +168,7 @@ Copy-Item "$app_path\systme" C:\Windows
 
 # Download the static dataset
 echo "Pulling static dataset"
-$static_dataset = PullDatasetDDI $app_static_dataset "{{ACCESS_TOKEN}}" "{{DATASET_URL}}"
+$static_dataset = PullDatasetDDI $app_static_dataset "{{ACCESS_TOKEN}}" "{{DATASET_URL}}" "{{DDI_PROJECT_SHORT_NAME}}"
 $static_data_path = $(ExpandZipsInPlace $static_dataset)[0].FullName
 
 
@@ -175,7 +176,7 @@ $static_data_path = $(ExpandZipsInPlace $static_dataset)[0].FullName
 echo "Looking for dataset by name: {{METEO_DATASET_NAME}}"
 $meteo_dataset_id = FindDatasetByName "{{METEO_DATASET_NAME}}" "{{ACCESS_TOKEN}}" "{{DATASET_URL}}"
 echo "Pulling meteo data set: $meteo_dataset_id"
-$meteo_data_path = PullDatasetDDI $meteo_dataset_id "{{ACCESS_TOKEN}}" "{{DATASET_URL}}"
+$meteo_data_path = PullDatasetDDI $meteo_dataset_id "{{ACCESS_TOKEN}}" "{{DATASET_URL}}" "{{DDI_PROJECT_SHORT_NAME}}"
 $met_files = Get-ChildItem -Filter "*.met" $meteo_data_path\met
 
 if ($met_files.Length -eq 0)
@@ -202,7 +203,7 @@ Start-Process -Wait -FilePath "$app_path/$app_bin" -ArgumentList "/E2",$_.FullNa
 Compress-Archive -Path $static_data_path -DestinationPath C:\adms\results.zip
 
 # Upload them
-UploadResults C:\adms\results.zip "{{ADMS_RESULT_DATASET_NAME}}" "{{ACCESS_TOKEN}}" "{{DATASET_URL}}"
+UploadResults C:\adms\results.zip "{{ADMS_RESULT_DATASET_NAME}}" "{{ACCESS_TOKEN}}" "{{DATASET_URL}}" "{{DDI_PROJECT_SHORT_NAME}}"
 
 {% if ADMS_SFTP_SERVER_IP != "" %}
 # Rename result file before storing it to the SFTP server

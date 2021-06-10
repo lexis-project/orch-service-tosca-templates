@@ -31,30 +31,47 @@ topology_template:
       type: string
       description: "LEXIS project identifier"
       required: true
-    project_short_name:
+    postprocessing_adms_type:
       type: string
-      description: "DDI project short name"
+      description: type of ADMS simulation executed, urban or industrial
       required: true
     postprocessing_MET_results_title:
       type: string
       description: Title of the MET processing results dataset to create in DDI
       required: true
-    postprocessing_adms_type:
+    postprocessing_title_dataset_adms_result:
       type: string
-      description: type of ADMS simulation executed, urban or industrial
+      description: Title of the ADMS results dataset to create in DDI
       required: true
     postprocessing_adms_sftp_server_ip:
         type: string
-        description: IP address of a SPTP server where to store results
-        required: true
+        description: IP address of a SPTP server where to store results (default, no sftp server upload)
+        required: false
+        default: ""
     postprocessing_adms_sftp_port:
         type: integer
         description: Port of the SFTP server
-        required: true
+        required: false
+        default: 22
+    postprocessing_project_short_name:
+      type: string
+      description: "DDI project short name"
+      default: "wp7"
+      required: false
     postprocessing_dataset_wrf_results_path:
       type: string
       description: WRF results dataset path in DDI
       default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/11d5558c-2809-11eb-88f6-0050568fc9b5"
+      required: false
+    postprocessing_decrypt_dataset_wrf_results:
+      type: boolean
+      description: Should the WRF results input dataset be decrypted
+      default: false
+      required: false
+    postprocessing_uncompress_dataset_wrf_results:
+      type: boolean
+      description: Should the WRF results input dataset be uncompressed
+      default: true
       required: false
     postprocessing_image:
       type: string
@@ -86,11 +103,6 @@ topology_template:
         description: IP address of a SPTP server where to store results (no upload to sftp server if not defined)
         required: false
         default: "/admsurban"
-    postprocessing_title_dataset_adms_result:
-      type: string
-      description: Which will be the title of the dataset containing ADMS results
-      default: ADMS tests results
-      required: false
     postprocessing_dataset_id_adms_urban_app:
       type: string
       description: ID of the dataset containing the ADMSUrban.exe and corresponding files. The DDI dataset has to contain single file called adms_urban.zip
@@ -314,6 +326,8 @@ topology_template:
         ddi_dataset_path: { get_input: postprocessing_dataset_wrf_results_path }
         cloud_staging_area_directory_path: "adms_postprocessing_wrf"
         timestamp_cloud_staging_area_directory: true
+        decrypt: {get_input: postprocessing_decrypt_dataset_wrf_results}
+        uncompress: {get_input: postprocessing_uncompress_dataset_wrf_results}
       requirements:
         - sameSite:
             type_requirement: os
@@ -446,7 +460,7 @@ topology_template:
     METResultsToDDIJob:
       type: org.lexis.common.ddi.nodes.CloudToDDIJob
       properties:
-        metadata: {concat: ["{\"creator\": [\"ADMS workflow\"], \"contributor\": [\"ADMS workflow\"], \"publisher\": [\"ADMS workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"", get_input: postprocessing_MET_results_title, "\"}"]}
+        metadata: {concat: ["{\"creator\": [\"ADMS workflow\"], \"contributor\": [\"ADMS workflow\"], \"publisher\": [\"ADMS workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"", get_input: postprocessing_MET_results_title, " - ", get_input: preprocessing_start_date, "\"}"]}
         token: { get_input: token }
         ddi_path: { get_input: postprocessing_ddi_path }
         source_subdirectory: "met"
@@ -486,6 +500,36 @@ topology_template:
             node: DDIToCloudWRFJob
             capability: org.lexis.common.ddi.capabilities.DataTransferCloud
             relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
+    # Get post-processing results details (size, number of files)
+    GetPostprocessDatasetInfo:
+      type: org.lexis.common.ddi.nodes.GetComputeInstanceDatasetInfo
+      properties:
+        dataset_path: "/mnt/cloud_staging_area/postprocess/adms_data/DATA-WRF/met"
+      requirements:
+        - host:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    # Find the best cloud location depending on the input dataset and needed cloud resources
+    FindWindowsCloudLocationJob:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
+      properties:
+        token: { get_input: token }
+        project_id: { get_input: project_id }
+      requirements:
+        - InputDataset:
+            type_requirement: input_dataset
+            node: GetPostprocessDatasetInfo
+            capability: org.lexis.common.ddi.capabilities.DatasetInfo
+            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
+        - CloudResourceWinVM:
+            type_requirement: cloud_instance
+            node: ADMS_WIN_VM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.dynamic.orchestration.relationships.CloudResource
     # Floating IP address network
     PublicNetADMSWinVM:
       type: yorc.nodes.openstack.FloatingIP
@@ -527,9 +571,8 @@ topology_template:
       type: org.lexis.wp7.nodes.ADMS
       properties:
         adms_type: { get_input: postprocessing_adms_type }
-        token: { get_input: token }
-        dataset_title_adms_result: { get_input: postprocessing_title_dataset_adms_result }
-        dataset_title_ncl_result: { get_input: postprocessing_MET_results_title }
+        dataset_title_adms_result: { concat: [get_input: postprocessing_title_dataset_adms_result, " - ", get_input: preprocessing_start_date ] }
+        dataset_title_ncl_result: { concat: [get_input: postprocessing_MET_results_title, " - ", get_input: preprocessing_start_date ] }
         dataset_id_adms_urban_app: { get_input: postprocessing_dataset_id_adms_urban_app }
         dataset_id_adms_urban_static_data: { get_input: postprocessing_dataset_id_adms_urban_static_data }
         dataset_id_adms_industrial_app: { get_input: postprocessing_dataset_id_adms_industrial_app }
@@ -538,6 +581,7 @@ topology_template:
         adms_sftp_port: { get_input: postprocessing_adms_sftp_port }
         adms_sftp_industrial_dir: { get_input: postprocessing_adms_sftp_industrial_dir }
         adms_sftp_urban_dir: { get_input: postprocessing_adms_sftp_urban_dir }
+        ddi_project_short_name: { get_input: postprocessing_project_short_name }
       requirements:
         - ddi_access:
             type_requirement: ddi_access
@@ -578,6 +622,8 @@ topology_template:
           target: ADMS_VM
           activities:
             - delegate: uninstall
+          on_success:
+            - Network_uninstall
         Network_uninstall:
           target: PublicNetADMSVM
           activities:
@@ -586,6 +632,8 @@ topology_template:
           target: ADMS_WIN_VM
           activities:
             - delegate: uninstall
+          on_success:
+            - WindowsNetwork_uninstall
         WindowsNetwork_uninstall:
           target: PublicNetADMSWinVM
           activities:
@@ -647,6 +695,7 @@ topology_template:
             - delegate: install
           on_success:
             - Docker_create
+            - GetDDIAccess_start
         Docker_create:
           target: Docker
           activities:
@@ -682,7 +731,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - GetDDIAccess_start
+            - WRFToMet_create
         GetDDIAccess_start:
           target: GetDDIAccess
           activities:
@@ -1044,10 +1093,43 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - GetPostprocessDatasetInfo_create
+        GetPostprocessDatasetInfo_create:
+          target: GetPostprocessDatasetInfo
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - GetPostprocessDatasetInfo_start
+        GetPostprocessDatasetInfo_start:
+          target: GetPostprocessDatasetInfo
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetPostprocessDatasetInfo_started
+        GetPostprocessDatasetInfo_started:
+          target: GetPostprocessDatasetInfo
+          activities:
+            - set_state: started
+          on_success:
+            - FindWindowsCloudLocationJob_submit
+        FindWindowsCloudLocationJob_submit:
+          target: FindWindowsCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindWindowsCloudLocationJob_run
+        FindWindowsCloudLocationJob_run:
+          target: FindWindowsCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindWindowsCloudLocationJob_executed
+        FindWindowsCloudLocationJob_executed:
+          target: FindWindowsCloudLocationJob
+          activities:
+            - set_state: executed
+          on_success:
             - WindowsNetwork_install
-            - MountDockerImageDataset_refresh_token_for_stop
-            - MountNCLScriptDataset_refresh_token_for_stop
-            - MountWRFDataset_refresh_token_for_stop
         WindowsNetwork_install:
           target: PublicNetADMSWinVM
           activities:
@@ -1066,7 +1148,7 @@ topology_template:
             - call_operation: Standard.start
           on_success:
             - GetDDIAccessWinVM_started
-        GetDDIAccess_started:
+        GetDDIAccessWinVM_started:
           target: GetDDIAccessWinVM
           activities:
             - set_state: started
@@ -1102,6 +1184,7 @@ topology_template:
             - delegate: uninstall
           on_success:
             - WindowsNetwork_uninstall
+            - MountDockerImageDataset_refresh_token_for_stop
         WindowsNetwork_uninstall:
           target: PublicNetADMSWinVM
           activities:
@@ -1125,7 +1208,7 @@ topology_template:
           activities:
             - set_state: stopped
           on_success:
-            - DeleteCloudDataImageJob_create
+            - MountNCLScriptDataset_refresh_token_for_stop
         MountNCLScriptDataset_refresh_token_for_stop:
           target: MountNCLScriptDataset
           activities:
@@ -1143,7 +1226,7 @@ topology_template:
           activities:
             - set_state: stopped
           on_success:
-            - DeleteCloudDataNCLScriptJob_create
+            - MountWRFDataset_refresh_token_for_stop
         MountWRFDataset_refresh_token_for_stop:
           target: MountWRFDataset
           activities:
@@ -1161,6 +1244,8 @@ topology_template:
           activities:
             - set_state: stopped
           on_success:
+            - DeleteCloudDataImageJob_create
+            - DeleteCloudDataNCLScriptJob_create
             - DeleteCloudDataWRFJob_create
         DeleteCloudDataImageJob_create:
           target: DeleteCloudDataImageJob
@@ -1200,7 +1285,7 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - Compute_uninstall
+            - Network_uninstall
         DeleteCloudDataNCLScriptJob_create:
           target: DeleteCloudDataNCLScriptJob
           operation_host: ORCHESTRATOR
@@ -1238,8 +1323,6 @@ topology_template:
           target: DeleteCloudDataNCLScriptJob
           activities:
             - set_state: executed
-          on_success:
-            - Compute_uninstall
         DeleteCloudDataWRFJob_create:
           target: DeleteCloudDataWRFJob
           operation_host: ORCHESTRATOR
@@ -1277,8 +1360,6 @@ topology_template:
           target: DeleteCloudDataWRFJob
           activities:
             - set_state: executed
-          on_success:
-            - Network_uninstall
         Network_uninstall:
           target: PublicNetADMSVM
           activities:
@@ -1355,366 +1436,3 @@ topology_template:
           target: ImageLoader
           activities:
             - set_state: started
-    testSSHFSUnMount:
-      steps:
-        MountDockerImageDataset_refresh_token:
-          target: MountDockerImageDataset
-          activities:
-            - call_operation: custom.refresh_token
-          on_success:
-            - MountDockerImageDataset_stop
-        MountDockerImageDataset_stop:
-          target: MountDockerImageDataset
-          activities:
-            - call_operation: Standard.stop
-          on_success:
-            - MountDockerImageDataset_stopped
-        MountDockerImageDataset_stopped:
-          target: MountDockerImageDataset
-          activities:
-            - set_state: stopped
-          on_success:
-            - DeleteCloudDataImageJob_create
-        MountNCLScriptDataset_refresh_token:
-          target: MountNCLScriptDataset
-          activities:
-            - call_operation: custom.refresh_token
-          on_success:
-            - MountNCLScriptDataset_stop
-        MountNCLScriptDataset_stop:
-          target: MountNCLScriptDataset
-          activities:
-            - call_operation: Standard.stop
-          on_success:
-            - MountNCLScriptDataset_stopped
-        MountNCLScriptDataset_stopped:
-          target: MountNCLScriptDataset
-          activities:
-            - set_state: stopped
-          on_success:
-            - DeleteCloudDataNCLScriptJob_create
-        MountWRFDataset_refresh_token:
-          target: MountWRFDataset
-          activities:
-            - call_operation: custom.refresh_token
-          on_success:
-            - MountWRFDataset_stop
-        MountWRFDataset_stop:
-          target: MountWRFDataset
-          activities:
-            - call_operation: Standard.stop
-          on_success:
-            - MountWRFDataset_stopped
-        MountWRFDataset_stopped:
-          target: MountWRFDataset
-          activities:
-            - set_state: stopped
-          on_success:
-            - DeleteCloudDataWRFJob_create
-        DeleteCloudDataImageJob_create:
-          target: DeleteCloudDataImageJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DeleteCloudDataImageJob_created
-        DeleteCloudDataImageJob_created:
-          target: DeleteCloudDataImageJob
-          activities:
-            - set_state: created
-          on_success:
-            - DeleteCloudDataImageJob_submit
-        DeleteCloudDataImageJob_submit:
-          target: DeleteCloudDataImageJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DeleteCloudDataImageJob_submitted
-        DeleteCloudDataImageJob_submitted:
-          target: DeleteCloudDataImageJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DeleteCloudDataImageJob_run
-        DeleteCloudDataImageJob_run:
-          target: DeleteCloudDataImageJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DeleteCloudDataImageJob_executed
-        DeleteCloudDataImageJob_executed:
-          target: DeleteCloudDataImageJob
-          activities:
-            - set_state: executed
-        DeleteCloudDataNCLScriptJob_create:
-          target: DeleteCloudDataNCLScriptJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DeleteCloudDataNCLScriptJob_created
-        DeleteCloudDataNCLScriptJob_created:
-          target: DeleteCloudDataNCLScriptJob
-          activities:
-            - set_state: created
-          on_success:
-            - DeleteCloudDataNCLScriptJob_submit
-        DeleteCloudDataNCLScriptJob_submit:
-          target: DeleteCloudDataNCLScriptJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DeleteCloudDataNCLScriptJob_submitted
-        DeleteCloudDataNCLScriptJob_submitted:
-          target: DeleteCloudDataNCLScriptJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DeleteCloudDataNCLScriptJob_run
-        DeleteCloudDataNCLScriptJob_run:
-          target: DeleteCloudDataNCLScriptJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DeleteCloudDataNCLScriptJob_executed
-        DeleteCloudDataNCLScriptJob_executed:
-          target: DeleteCloudDataNCLScriptJob
-          activities:
-            - set_state: executed
-        DeleteCloudDataWRFJob_create:
-          target: DeleteCloudDataWRFJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DeleteCloudDataWRFJob_created
-        DeleteCloudDataWRFJob_created:
-          target: DeleteCloudDataWRFJob
-          activities:
-            - set_state: created
-          on_success:
-            - DeleteCloudDataWRFJob_submit
-        DeleteCloudDataWRFJob_submit:
-          target: DeleteCloudDataWRFJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DeleteCloudDataWRFJob_submitted
-        DeleteCloudDataWRFJob_submitted:
-          target: DeleteCloudDataWRFJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DeleteCloudDataWRFJob_run
-        DeleteCloudDataWRFJob_run:
-          target: DeleteCloudDataWRFJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DeleteCloudDataWRFJob_executed
-        DeleteCloudDataWRFJob_executed:
-          target: DeleteCloudDataWRFJob
-          activities:
-            - set_state: executed
-    testRunDelete:
-      steps:
-        WindowsCompute_uninstall:
-          target: ADMS_WIN_VM
-          activities:
-            - delegate: uninstall
-          on_success:
-            - WindowsNetwork_uninstall
-        WindowsNetwork_uninstall:
-          target: PublicNetADMSWinVM
-          activities:
-            - delegate: uninstall
-          on_success:
-            - Compute_uninstall
-        MountDockerImageDataset_refresh_token:
-          target: MountDockerImageDataset
-          activities:
-            - call_operation: custom.refresh_token
-          on_success:
-            - MountDockerImageDataset_stop
-        MountDockerImageDataset_stop:
-          target: MountDockerImageDataset
-          activities:
-            - call_operation: Standard.stop
-          on_success:
-            - MountDockerImageDataset_stopped
-        MountDockerImageDataset_stopped:
-          target: MountDockerImageDataset
-          activities:
-            - set_state: stopped
-          on_success:
-            - DeleteCloudDataImageJob_create
-        MountNCLScriptDataset_refresh_token:
-          target: MountNCLScriptDataset
-          activities:
-            - call_operation: custom.refresh_token
-          on_success:
-            - MountNCLScriptDataset_stop
-        MountNCLScriptDataset_stop:
-          target: MountNCLScriptDataset
-          activities:
-            - call_operation: Standard.stop
-          on_success:
-            - MountNCLScriptDataset_stopped
-        MountNCLScriptDataset_stopped:
-          target: MountNCLScriptDataset
-          activities:
-            - set_state: stopped
-          on_success:
-            - DeleteCloudDataNCLScriptJob_create
-        MountWRFDataset_refresh_token:
-          target: MountWRFDataset
-          activities:
-            - call_operation: custom.refresh_token
-          on_success:
-            - MountWRFDataset_stop
-        MountWRFDataset_stop:
-          target: MountWRFDataset
-          activities:
-            - call_operation: Standard.stop
-          on_success:
-            - MountWRFDataset_stopped
-        MountWRFDataset_stopped:
-          target: MountWRFDataset
-          activities:
-            - set_state: stopped
-          on_success:
-            - DeleteCloudDataWRFJob_create
-        DeleteCloudDataImageJob_create:
-          target: DeleteCloudDataImageJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DeleteCloudDataImageJob_created
-        DeleteCloudDataImageJob_created:
-          target: DeleteCloudDataImageJob
-          activities:
-            - set_state: created
-          on_success:
-            - DeleteCloudDataImageJob_submit
-        DeleteCloudDataImageJob_submit:
-          target: DeleteCloudDataImageJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DeleteCloudDataImageJob_submitted
-        DeleteCloudDataImageJob_submitted:
-          target: DeleteCloudDataImageJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DeleteCloudDataImageJob_run
-        DeleteCloudDataImageJob_run:
-          target: DeleteCloudDataImageJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DeleteCloudDataImageJob_executed
-        DeleteCloudDataImageJob_executed:
-          target: DeleteCloudDataImageJob
-          activities:
-            - set_state: executed
-          on_success:
-            - Compute_uninstall
-        DeleteCloudDataNCLScriptJob_create:
-          target: DeleteCloudDataNCLScriptJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DeleteCloudDataNCLScriptJob_created
-        DeleteCloudDataNCLScriptJob_created:
-          target: DeleteCloudDataNCLScriptJob
-          activities:
-            - set_state: created
-          on_success:
-            - DeleteCloudDataNCLScriptJob_submit
-        DeleteCloudDataNCLScriptJob_submit:
-          target: DeleteCloudDataNCLScriptJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DeleteCloudDataNCLScriptJob_submitted
-        DeleteCloudDataNCLScriptJob_submitted:
-          target: DeleteCloudDataNCLScriptJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DeleteCloudDataNCLScriptJob_run
-        DeleteCloudDataNCLScriptJob_run:
-          target: DeleteCloudDataNCLScriptJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DeleteCloudDataNCLScriptJob_executed
-        DeleteCloudDataNCLScriptJob_executed:
-          target: DeleteCloudDataNCLScriptJob
-          activities:
-            - set_state: executed
-          on_success:
-            - Compute_uninstall
-        DeleteCloudDataWRFJob_create:
-          target: DeleteCloudDataWRFJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DeleteCloudDataWRFJob_created
-        DeleteCloudDataWRFJob_created:
-          target: DeleteCloudDataWRFJob
-          activities:
-            - set_state: created
-          on_success:
-            - DeleteCloudDataWRFJob_submit
-        DeleteCloudDataWRFJob_submit:
-          target: DeleteCloudDataWRFJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DeleteCloudDataWRFJob_submitted
-        DeleteCloudDataWRFJob_submitted:
-          target: DeleteCloudDataWRFJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DeleteCloudDataWRFJob_run
-        DeleteCloudDataWRFJob_run:
-          target: DeleteCloudDataWRFJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DeleteCloudDataWRFJob_executed
-        DeleteCloudDataWRFJob_executed:
-          target: DeleteCloudDataWRFJob
-          activities:
-            - set_state: executed
-          on_success:
-            - Network_uninstall
-        Network_uninstall:
-          target: PublicNetADMSVM
-          activities:
-            - delegate: uninstall
-          on_success:
-            - Compute_uninstall
-        Compute_uninstall:
-          target: ADMS_VM
-          activities:
-            - delegate: uninstall
-

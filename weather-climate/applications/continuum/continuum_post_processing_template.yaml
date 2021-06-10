@@ -18,7 +18,6 @@ imports:
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
-  - org.lexis.wp7.webdrops:0.1.0
 
 topology_template:
   inputs:
@@ -351,18 +350,43 @@ topology_template:
             node: ContinuumVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
-    Webdrops:
-      type: org.lexis.wp7.nodes.Webdrops
+    # Download observation data needed by Continuum 
+    ObservationsContinuum:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
       properties:
-        start_date: {get_input: preprocessing_start_date}
-        download_type: "CONTINUUM"
-        destination: "/continuum/datasets_hyde/dynamic_data"
-        auth_url: "https://testauth.cimafoundation.org/auth/realms/webdrops/protocol/openid-connect/token"
-        url: "http://webdrops.cimafoundation.org/app/"
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: preprocessing_docker_image_observation_data}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        shm_size: "64 GB"
+        volumes: ["/continuum/downloads:/output"]
+        docker_env_vars:  {concat: ["{\"START_DATE\": \"", get_input: preprocessing_start_date, "\", \"DOWNLOAD_TYPE\": \"CONTINUUM\", \"WEBDROPS_USER\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=user"], "\", \"WEBDROPS_PWD\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=password"], "\"}"]}
       requirements:
-        - hostedOnComputeHost:
+        - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
-            node: ContinuumVM
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+    # Move results to match Continuum inputs structure expectations
+    MoveObservationContinuumData:
+      type: org.lexis.common.datatransfer.nodes.MoveFile
+      properties:
+        source_file:  "/continuum/downloads/*/*/*"
+        destination: "/continuum/datasets_hyde/dynamic_data"
+        as_user: "root"
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: IFSContinuumVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     Continuum_Hyde_marche:
@@ -1408,7 +1432,7 @@ topology_template:
           on_success:
             - DDIToCloudWRFJob_create
             - DDIToCloudContinuumStaticDataJob_create
-            - Webdrops_create
+            - ObservationsContinuum_create
         GetDDIAccess_start:
           target: GetDDIAccess
           activities:
@@ -1599,20 +1623,44 @@ topology_template:
             - set_state: started
           on_success:
             - Continuum_Hyde_marche_create
-        Webdrops_create:
-          target: Webdrops
+        ObservationsContinuum_create:
+          target: ObservationsContinuum
           activities:
             - call_operation: Standard.create
           on_success:
-            - Webdrops_start
-        Webdrops_start:
-          target: Webdrops
+            - ObservationsContinuum_start
+        ObservationsContinuum_start:
+          target: ObservationsContinuum
           activities:
             - call_operation: Standard.start
           on_success:
-            - Webdrops_started
-        Webdrops_started:
-          target: Webdrops
+            - ObservationsContinuum_started
+        ObservationsContinuum_started:
+          target: ObservationsContinuum
+          activities:
+            - set_state: started
+          on_success:
+            - ObservationsContinuum_delete
+        ObservationsContinuum_delete:
+          target: ObservationsContinuum
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - ObservationsContinuum_deleted
+        ObservationsContinuum_deleted:
+          target: ObservationsContinuum
+          activities:
+            - set_state: deleted
+          on_success:
+            - MoveObservationContinuumData_start
+        MoveObservationContinuumData_start:
+          target: MoveObservationContinuumData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveObservationContinuumData_started
+        MoveObservationContinuumData_started:
+          target: MoveObservationContinuumData
           activities:
             - set_state: started
           on_success:

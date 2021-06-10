@@ -1,0 +1,100 @@
+# ADMS Templates - Agricultural impact models
+
+Templates of LEXIS workflow for Agricutural impacts.
+The [ADMS template](adms_template.yaml) provides a full worklow, while the [ADMS post-processing template](adms_postprocessing_template.yaml)
+provides a workflow using alreay computed WRF results available as a dataset in LEXIS DDI (Distributed Data Ifrastructure).
+
+## ADMS template
+
+The Run workflow for the ADMS template is executing the following steps:
+* getting details on a input dataset (size, locations) in DDI containing static geographical data
+* asking the Dynamic Allocation Module (DAM) to select the best Cloud infrastructure where to trasnfer these input data
+* transferring the geographical static data input dataset from DDI to the selected Cloud Staging Area
+* creating a Cloud Compute instance
+* then, in parallel:
+  * downloading ECMWF data needed for the preprocessing
+  * downloading observations data needed later for the WRF HPC computation
+  * installing and starting Docker on the compute instance
+  * wait for the end of geographical static data input dataset transfer on cloud staging area and SSHFS-mount the cloud staging area
+* once the ECMWF data is downloaded, docker started, and the geographica input data filesystem mounted, the WPS IFS docker container is executed
+* once the preprocessing is done, the size of results is computed, and the 
+Dynamic Allocation Module (DAM) is asked to select the best HPC infrastructure where to create a WRF computation job
+* A WRF HEAppE job is created on the selected HPC infrastructure
+* pre-processing results are transferred to this WRF job
+* A DDI dataset containing weather radar reflectivity over France is transferred to this WRF job too
+* the job is then submitted, and the orchestrator monitors its execution until it ends
+* once the job is done, WRF results are compressed and stored in DDI
+* WRF results are also transferred to the compute instance for post-processing
+* a private docker docker image used for post-processing is transferred from DDI to the cloud staging area
+* this private docker image is then loaded by docker
+* a NCL script available in a DDI dataset and needed by this post-processing container is transferred from DDI to the cloud staging area
+* The post-processing container is then run on WRF results to produce MET files
+* These MET files are then transferre to DDI
+* finally for the final step of the post-processing, the Dynamic Allocation Module (DAM)
+is asked to select the best Cloud infrastructure where to create a Windows compute instance
+* A windows compute instance is created the selected location
+* The orchestrator executes then a powershell script on this Windows instance to generate ADMS results from MET results
+and store these ADMS results in DDI
+* If a SFTP server was specified by the user, these results will also be uploaded to the SFTP server. 
+
+### ADMS template input properties
+
+The template expects the following input properties (mandatory inputs in **bold**):
+*  **token**: OpenID Connect access token
+* **project_id**: LEXIS project identifier
+* **preprocessing_start_date**: Download IFS files from this date, format YYYYMMDDHH
+* **postprocessing_adms_type**: type of ADMS simulation executed, `urban` or `industrial`
+* postprocessing_adms_sftp_server_ip: IP address of a SPTP server where to store results (default, no sftp server upload)
+* postprocessing_adms_sftp_port: Port of the SFTP server
+  * default: `22`
+* preprocessing_docker_image_ifs: Pre-processing container repository path
+  * default: `cimafoundation/wps-da.ifs:v2.0.3`
+* preprocessing_docker_image_observation_data: Repository path of container downloading observation data
+  * default: `laurentg/lexisdn:1.0.0`
+* preprocessing_dataset_geographical_data_path: Dataset containing compressed geographical data
+  * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/055b25ea-ba60-11eb-a44e-0050568fc9b5/static_geog_data.tar.gz`
+* preprocessing_decrypt_dataset_geographical_data: Should the input dataset be decrypted
+  * default: `false`
+* preprocessing_uncompress_dataset_geographical_data: Should the input dataset be uncompressed
+  * default: `true`
+* computation_dataset_radar_observations_data_path: Dataset containing radar observations data over France
+  * default: `proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/5ec52c36-c9e5-11eb-9aa8-0050568fc9b5/observations.tar.gz`
+* computation_decrypt_dataset_radar_observations_data: Should the radar observations data dataset be decrypted
+  * default: `false`
+* computation_uncompress_dataset_radar_observations_data: Should the radar observations data dataset be uncompressed
+  * default: `true`
+* postprocessing_adms_sftp_industrial_dir: SFTP destination directory for the industrial case
+  * default: `/adms5`
+* postprocessing_adms_sftp_urban_dir: SFTP destination directory for the urban case
+  * default: `/admsurban`
+* postprocessing_MET_results_title: Title of the MET processing results dataset to create in DDI (will be suffixed by the start data)
+  * default: `MET processing results`
+* postprocessing_title_dataset_adms_result: Which will be the title of the dataset containing ADMS results (will be suffixed by the start data)
+  * default: `ADMS results`
+* postprocessing_docker_image: Post-processing docker image name:tag
+  * default: `adms/ncl:1.0.0`
+* postprocessing_dataset_docker_image_path: Post-processing docker image tar archive path in DDI
+  * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/89ddda90-1918-11eb-b6d1-0050568fc9b5`
+* postprocessing_dataset_ncl_script: Post-processing NCL script path in DDI
+  * default: project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/7fc89bf4-1d13-11eb-ae7e-0050568fc9b5
+* postprocessing_ddi_path: Path of the project where to transfer the post-processing results in DDI
+  * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c`
+* postprocessing_dataset_id_adms_urban_app: ID of the dataset containing the ADMSUrban.exe and corresponding files. The DDI dataset has to contain single file called adms_urban.zip
+  * default: `f284db6c-2588-11eb-bbae-0050568fcecc`
+* postprocessing_dataset_id_adms_urban_static_data: ID of the dataset containing the static data for ADMSUrban
+  * default: `f1275722-25b5-11eb-bbae-0050568fcecc`
+* postprocessing_dataset_id_adms_industrial_app: ID of the dataset containing the ADMSIndustrial.exe and corresponding files. The DDI dataset has to contain single file called adms_industrial.zip
+  * default: `ab773490-544a-11eb-b72c-0050568fcecc`
+* `postprocessing_dataset_id_adms_industrial_static_data`: ID of the dataset containing the static data for ADMSIndustrial
+  * default: `b6e09a96-25ac-11eb-bbae-0050568fcecc`
+* postprocessing_encrypt_wrf_dataset_result: Encrypt the WRF result dataset
+  * default: `false`
+* postprocessing_compress_wrf_dataset_result: Compress the WRF result dataset
+  * default: `true`
+
+### ADMS template ouput attributes
+
+The following output attribute is provided:
+* attribute `destination_path` of component `CloudToDDIWRFJob`: the path to compressed WRF results in DDI
+* attribute `destination_path` of component `METResultsToDDIJob`: the path to ADMS MET results in DDI
+* attribute `dataset_id_result` of component `ADMS`: the ID of the DDI dataset where ADMS post-process results are stored

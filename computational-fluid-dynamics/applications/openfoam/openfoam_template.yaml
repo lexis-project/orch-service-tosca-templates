@@ -132,11 +132,11 @@ topology_template:
         task: computation
       properties:
         token: { get_input: token }
-        # TODO: set listChangedFilesWhileRunning to ture for checkpointing
+        # TODO: set listChangedFilesWhileRunning to true for checkpointing
         listChangedFilesWhileRunning: false
         JobSpecification:
           Name: "OpenFoam"
-          Project: "OPEN-16-24"
+          Project: "MyProject"
           ClusterId: 1
           Tasks:
             - Name: "OpenFoamParallel"

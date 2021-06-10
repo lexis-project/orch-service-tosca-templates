@@ -8,6 +8,7 @@ metadata:
 imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - yorc-types:1.1.0
+  - org.lexis.common.ddi-types:0.1.4
 node_types:
   org.lexis.wp7.nodes.ADMS:
     derived_from: tosca.nodes.SoftwareComponent
@@ -39,6 +40,10 @@ node_types:
       dataset_id_adms_industrial_static_data:
         type: string
         description: ID of the dataset containing the static data for ADMSIndustrial
+        required: true
+      ddi_project_short_name:
+        type: string
+        description: Short name of the DDI project where to store results
         required: true
       adms_sftp_server_ip:
         type: string
@@ -93,4 +98,5 @@ node_types:
             ADMS_SFTP_INDUSTRIAL_DIR: {get_property: [SELF, adms_sftp_industrial_dir]}
             ADMS_SFTP_URBAN_DIR: {get_property: [SELF, adms_sftp_urban_dir]}
             DATASET_URL: {get_attribute: [REQ_TARGET, ddi_access, dataset_url]}
+            DDI_PROJECT_SHORT_NAME:  {get_property: [SELF, ddi_project_short_name]}
           implementation: playbooks/adms_run.yaml
