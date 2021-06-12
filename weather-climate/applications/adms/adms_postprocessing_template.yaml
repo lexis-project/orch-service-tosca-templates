@@ -31,6 +31,10 @@ topology_template:
       type: string
       description: "LEXIS project identifier"
       required: true
+    postprocessing_dataset_wrf_results_path:
+      type: string
+      description: WRF results dataset path in DDI
+      required: true
     postprocessing_adms_type:
       type: string
       description: type of ADMS simulation executed, urban or industrial
@@ -57,11 +61,6 @@ topology_template:
       type: string
       description: "DDI project short name"
       default: "wp7"
-      required: false
-    postprocessing_dataset_wrf_results_path:
-      type: string
-      description: WRF results dataset path in DDI
-      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/11d5558c-2809-11eb-88f6-0050568fc9b5"
       required: false
     postprocessing_decrypt_dataset_wrf_results:
       type: boolean
@@ -338,7 +337,7 @@ topology_template:
       type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
       properties:
         token: { get_input: token }
-        mount_point_directory: "/mnt/cloud_staging_area/postprocess"
+        mount_point_directory: "/mnt/cloud_staging_area/adms"
       requirements:
         - ddi_access:
             type_requirement: ddi_access
@@ -373,7 +372,7 @@ topology_template:
     MoveWRFFiles:
       type: org.lexis.common.datatransfer.nodes.MoveFilesFromProvider
       properties:
-        destination_directory:  "/mnt/cloud_staging_area/postprocess/adms_data/DATA-WRF/"
+        destination_directory:  "/mnt/cloud_staging_area/adms/adms_data/DATA-WRF/"
       requirements:
         - files_provider:
             type_requirement: files_provider
@@ -388,7 +387,7 @@ topology_template:
     MoveNCLScript:
       type: org.lexis.common.datatransfer.nodes.CopyFilesFromProvider
       properties:
-        destination_directory:  "/mnt/cloud_staging_area/postprocess/adms_data"
+        destination_directory:  "/mnt/cloud_staging_area/adms/adms_data"
       requirements:
         - files_provider:
             type_requirement: files_provider
@@ -412,7 +411,7 @@ topology_template:
         keep_volumes: true
         restart_policy: no
         cpu_share: 1.0
-        volumes: ["/mnt/cloud_staging_area/postprocess/adms_data/:/wrfdata"]
+        volumes: ["/mnt/cloud_staging_area/adms/adms_data/:/wrfdata"]
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
@@ -443,7 +442,7 @@ topology_template:
     StageMETResults:
       type: org.lexis.common.datatransfer.nodes.CopyFilesToStagingAreaDirectory
       properties:
-        source_directory: "/mnt/cloud_staging_area/postprocess/adms_data/DATA-WRF/"
+        source_directory: "/mnt/cloud_staging_area/adms/adms_data/DATA-WRF/"
         source_files: [ "*.met" ]
         destination_subdirectory: "met"
       requirements:
@@ -504,7 +503,7 @@ topology_template:
     GetPostprocessDatasetInfo:
       type: org.lexis.common.ddi.nodes.GetComputeInstanceDatasetInfo
       properties:
-        dataset_path: "/mnt/cloud_staging_area/postprocess/adms_data/DATA-WRF/met"
+        dataset_path: "/mnt/cloud_staging_area/adms/adms_data/DATA-WRF/met"
       requirements:
         - host:
             type_requirement: host

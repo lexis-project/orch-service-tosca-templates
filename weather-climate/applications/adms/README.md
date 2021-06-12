@@ -7,8 +7,8 @@ provides a workflow using alreay computed WRF results available as a dataset in 
 ## ADMS template
 
 The Run workflow for the ADMS template is executing the following steps:
-* getting details on a input dataset (size, locations) in DDI containing static geographical data
-* asking the Dynamic Allocation Module (DAM) to select the best Cloud infrastructure where to trasnfer these input data
+* getting details on the input dataset (size, locations) in DDI containing static geographical data
+* asking the Dynamic Allocation Module (DAM) to select the best Cloud infrastructure where to transfer these input data
 * transferring the geographical static data input dataset from DDI to the selected Cloud Staging Area
 * creating a Cloud Compute instance
 * then, in parallel:
@@ -96,5 +96,66 @@ The template expects the following input properties (mandatory inputs in **bold*
 
 The following output attribute is provided:
 * attribute `destination_path` of component `CloudToDDIWRFJob`: the path to compressed WRF results in DDI
+* attribute `destination_path` of component `METResultsToDDIJob`: the path to ADMS MET results in DDI
+* attribute `dataset_id_result` of component `ADMS`: the ID of the DDI dataset where ADMS post-process results are stored
+
+## ADMS post-processing template
+
+The ADMS post-processing template is only performing the post-processing, taking
+in input a WRF results dataset that was stored in DDI by a previous ADMS template workfolow execution.
+
+This workflow is executing the following steps:
+* getting details on the WRF results input dataset (size, locations) in DDI
+* asking the Dynamic Allocation Module (DAM) to select the best Cloud infrastructure where to transfer these input data
+* transferring the WRF results input dataset from DDI to the selected Cloud Staging Area
+* creating a Cloud Compute instance
+* a private docker docker image used for post-processing is transferred from DDI to the cloud staging area
+* this private docker image is then loaded by docker
+* a NCL script available in a DDI dataset and needed by this post-processing container is transferred from DDI to the cloud staging area
+* The post-processing container is then run on WRF results to produce MET files
+* These MET files are then transferre to DDI
+* finally for the final step of the post-processing, the Dynamic Allocation Module (DAM)
+is asked to select the best Cloud infrastructure where to create a Windows compute instance
+* A windows compute instance is created the selected location
+* The orchestrator executes then a powershell script on this Windows instance to generate ADMS results from MET results
+and store these ADMS results in DDI
+* If a SFTP server was specified by the user, these results will also be uploaded to the SFTP server. 
+
+### ADMS post-processing template input properties
+
+The template expects the following input properties (mandatory inputs in **bold**):
+*  **token**: OpenID Connect access token
+* **project_id**: LEXIS project identifier
+* **postprocessing_dataset_wrf_results_path**: WRF results dataset path in DDI
+* **postprocessing_adms_type**: Type of ADMS simulation executed, `urban` or `industrial`
+* **postprocessing_MET_results_title**: Title of the MET processing results dataset to create in DDI
+* **postprocessing_title_dataset_adms_result**: Title of the ADMS results dataset to create in DDI
+* postprocessing_adms_sftp_server_ip: IP address of a SPTP server where to store results (default, no sftp server upload)
+* postprocessing_adms_sftp_port: Port of the SFTP server
+  * default: `22`
+* postprocessing_adms_sftp_industrial_dir: SFTP destination directory for the industrial case
+  * default: `/adms5`
+* postprocessing_adms_sftp_urban_dir: SFTP destination directory for the urban case
+  * default: `/admsurban`
+* postprocessing_docker_image: Post-processing docker image name:tag
+  * default: `adms/ncl:1.0.0`
+* postprocessing_dataset_docker_image_path: Post-processing docker image tar archive path in DDI
+  * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/89ddda90-1918-11eb-b6d1-0050568fc9b5`
+* postprocessing_dataset_ncl_script: Post-processing NCL script path in DDI
+  * default: project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/7fc89bf4-1d13-11eb-ae7e-0050568fc9b5
+* postprocessing_ddi_path: Path of the project where to transfer the post-processing results in DDI
+  * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c`
+* postprocessing_dataset_id_adms_urban_app: ID of the dataset containing the ADMSUrban.exe and corresponding files. The DDI dataset has to contain single file called adms_urban.zip
+  * default: `f284db6c-2588-11eb-bbae-0050568fcecc`
+* postprocessing_dataset_id_adms_urban_static_data: ID of the dataset containing the static data for ADMSUrban
+  * default: `f1275722-25b5-11eb-bbae-0050568fcecc`
+* postprocessing_dataset_id_adms_industrial_app: ID of the dataset containing the ADMSIndustrial.exe and corresponding files. The DDI dataset has to contain single file called adms_industrial.zip
+  * default: `ab773490-544a-11eb-b72c-0050568fcecc`
+* `postprocessing_dataset_id_adms_industrial_static_data`: ID of the dataset containing the static data for ADMSIndustrial
+  * default: `b6e09a96-25ac-11eb-bbae-0050568fcecc`
+
+### ADMS post-processing template ouput attributes
+
+The following output attribute is provided:
 * attribute `destination_path` of component `METResultsToDDIJob`: the path to ADMS MET results in DDI
 * attribute `dataset_id_result` of component `ADMS`: the ID of the DDI dataset where ADMS post-process results are stored
