@@ -9,7 +9,7 @@ description: ADMS post-processing template
 
 imports:
   - yorc-types:1.1.0
-  - yorc-openstack-types:3.0.0
+  - yorc-openstack-types:3.1.0
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
@@ -39,7 +39,7 @@ topology_template:
       type: string
       description: type of ADMS simulation executed, urban or industrial
       required: true
-    postprocessing_MET_results_title:
+    postprocessing_title_dataset_MET_results:
       type: string
       description: Title of the MET processing results dataset to create in DDI
       required: true
@@ -337,7 +337,7 @@ topology_template:
       type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
       properties:
         token: { get_input: token }
-        mount_point_directory: "/mnt/cloud_staging_area/adms"
+        mount_point_directory: "/mnt/cloud_staging_area/wrf_results"
       requirements:
         - ddi_access:
             type_requirement: ddi_access
@@ -459,7 +459,7 @@ topology_template:
     METResultsToDDIJob:
       type: org.lexis.common.ddi.nodes.CloudToDDIJob
       properties:
-        metadata: {concat: ["{\"creator\": [\"ADMS workflow\"], \"contributor\": [\"ADMS workflow\"], \"publisher\": [\"ADMS workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"", get_input: postprocessing_MET_results_title, " - ", get_input: preprocessing_start_date, "\"}"]}
+        metadata: {concat: ["{\"creator\": [\"ADMS workflow\"], \"contributor\": [\"ADMS workflow\"], \"publisher\": [\"ADMS workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"", get_input: postprocessing_title_dataset_MET_results, " - ", get_input: preprocessing_start_date, "\"}"]}
         token: { get_input: token }
         ddi_path: { get_input: postprocessing_ddi_path }
         source_subdirectory: "met"
@@ -571,7 +571,7 @@ topology_template:
       properties:
         adms_type: { get_input: postprocessing_adms_type }
         dataset_title_adms_result: { concat: [get_input: postprocessing_title_dataset_adms_result, " - ", get_input: preprocessing_start_date ] }
-        dataset_title_ncl_result: { concat: [get_input: postprocessing_MET_results_title, " - ", get_input: preprocessing_start_date ] }
+        dataset_title_ncl_result: { concat: [get_input: postprocessing_title_dataset_MET_results, " - ", get_input: preprocessing_start_date ] }
         dataset_id_adms_urban_app: { get_input: postprocessing_dataset_id_adms_urban_app }
         dataset_id_adms_urban_static_data: { get_input: postprocessing_dataset_id_adms_urban_static_data }
         dataset_id_adms_industrial_app: { get_input: postprocessing_dataset_id_adms_industrial_app }
@@ -617,6 +617,46 @@ topology_template:
             - set_state: started
     uninstall:
       steps:
+        DeleteCloudDataImageJob_create:
+          target: DeleteCloudDataImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudDataImageJob_submit
+        DeleteCloudDataImageJob_submit:
+          target: DeleteCloudDataImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudDataNCLScriptJob_create
+        DeleteCloudDataNCLScriptJob_create:
+          target: DeleteCloudDataNCLScriptJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudDataNCLScriptJob_submit
+        DeleteCloudDataNCLScriptJob_submit:
+          target: DeleteCloudDataNCLScriptJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudDataWRFJob_create
+        DeleteCloudDataWRFJob_create:
+          target: DeleteCloudDataWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudDataWRFJob_submit
+        DeleteCloudDataWRFJob_submit:
+          target: DeleteCloudDataWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
         Compute_uninstall:
           target: ADMS_VM
           activities:
@@ -680,6 +720,7 @@ topology_template:
           on_success:
             - DDIToCloudWRFJob_create
             - DDIToCloudDockerImageJob_create
+            - DDIToCloudNCLScriptJob_create
             - Network_install
         # Get a floating IP address for the Cloud Compute instance
         Network_install:
@@ -694,7 +735,6 @@ topology_template:
             - delegate: install
           on_success:
             - Docker_create
-            - GetDDIAccess_start
         Docker_create:
           target: Docker
           activities:
@@ -730,7 +770,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - WRFToMet_create
+            - GetDDIAccess_start
         GetDDIAccess_start:
           target: GetDDIAccess
           activities:
@@ -805,6 +845,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
+            - MountNCLScriptDataset_create
             - FindArchive_start
         FindArchive_start:
           target: FindArchive
@@ -841,7 +882,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - DDIToCloudNCLScriptJob_create
+            - WRFToMet_create
         DDIToCloudNCLScriptJob_create:
           target: DDIToCloudNCLScriptJob
           operation_host: ORCHESTRATOR
@@ -904,6 +945,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
+            - MountWRFDataset_create
             - FindNCLScript_start
         FindNCLScript_start:
           target: FindNCLScript
@@ -991,8 +1033,6 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - MoveNCLScript_start
-            - CreateStagingAreaResultDir_start
             - FindWRFiles_start
         FindWRFiles_start:
           target: FindWRFiles
@@ -1035,7 +1075,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - StageMETResults_start
+            - CreateStagingAreaResultDir_start
         CreateStagingAreaResultDir_start:
           target: CreateStagingAreaResultDir
           activities:
@@ -1177,13 +1217,13 @@ topology_template:
             - set_state: started
           on_success:
             - WindowsCompute_uninstall
+            - MountDockerImageDataset_refresh_token_for_stop
         WindowsCompute_uninstall:
           target: ADMS_WIN_VM
           activities:
             - delegate: uninstall
           on_success:
             - WindowsNetwork_uninstall
-            - MountDockerImageDataset_refresh_token_for_stop
         WindowsNetwork_uninstall:
           target: PublicNetADMSWinVM
           activities:
@@ -1244,8 +1284,6 @@ topology_template:
             - set_state: stopped
           on_success:
             - DeleteCloudDataImageJob_create
-            - DeleteCloudDataNCLScriptJob_create
-            - DeleteCloudDataWRFJob_create
         DeleteCloudDataImageJob_create:
           target: DeleteCloudDataImageJob
           operation_host: ORCHESTRATOR
@@ -1284,7 +1322,7 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - Network_uninstall
+            - DeleteCloudDataNCLScriptJob_create
         DeleteCloudDataNCLScriptJob_create:
           target: DeleteCloudDataNCLScriptJob
           operation_host: ORCHESTRATOR
@@ -1322,6 +1360,8 @@ topology_template:
           target: DeleteCloudDataNCLScriptJob
           activities:
             - set_state: executed
+          on_success:
+            - DeleteCloudDataWRFJob_create
         DeleteCloudDataWRFJob_create:
           target: DeleteCloudDataWRFJob
           operation_host: ORCHESTRATOR
@@ -1359,14 +1399,16 @@ topology_template:
           target: DeleteCloudDataWRFJob
           activities:
             - set_state: executed
-        Network_uninstall:
-          target: PublicNetADMSVM
-          activities:
-            - delegate: uninstall
           on_success:
             - Compute_uninstall
         Compute_uninstall:
           target: ADMS_VM
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: PublicNetADMSVM
           activities:
             - delegate: uninstall
     testMountLoadImage:

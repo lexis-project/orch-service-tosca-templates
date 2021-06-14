@@ -1,0 +1,14 @@
+- name: "CreaRunningting script"
+  hosts: all
+  strategy: linear
+  tasks:
+    - name: Download webdrops data
+      command: /tmp/lexis_exec_script.sh
+      environment: "{{ TOSCA_ENV_VARS_INPUT }}"
+      register: execRes
+    - debug: var=execRes.stdout_lines
+    - name: Set STDOUT adn STDERR (operation outputs)
+      set_fact:
+        STDOUT: "{{ execRes.stdout }}"
+      set_fact:
+        STDERR: "{{ execRes.stderr }}"

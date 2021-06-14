@@ -9,7 +9,7 @@ description: RISICO template
 
 imports:
   - yorc-types:1.1.0
-  - yorc-openstack-types:3.0.0
+  - yorc-openstack-types:3.1.0
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
@@ -616,18 +616,19 @@ topology_template:
           activities:
             - call_operation: Standard.create
           on_success:
-            - DeleteCloudGEOGDataJob_created
-        DeleteCloudGEOGDataJob_created:
-          target: DeleteCloudGEOGDataJob
-          activities:
-            - set_state: created
-          on_success:
             - DeleteCloudGEOGDataJob_submit
         DeleteCloudGEOGDataJob_submit:
           target: DeleteCloudGEOGDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - WRF_delete
+        WRF_delete:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
           on_success:
             - Compute_uninstall
         Compute_uninstall:
@@ -1258,6 +1259,12 @@ topology_template:
             - Compute_uninstall
         Compute_uninstall:
           target: RisicoVM
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: PublicNet
           activities:
             - delegate: uninstall
     cleanupRun:

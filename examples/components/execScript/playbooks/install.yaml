@@ -1,0 +1,14 @@
+- name: "Creating script"
+  hosts: all
+  strategy: linear
+  tasks:
+    - name: create temporary file
+      tempfile:
+        state: file
+        suffix: temp
+      register: privatekeyfile
+    - name: Add private key content
+      copy:
+        content: "{{ private_key }}"
+        dest: "/tmp/lexis_exec_script.sh"
+        mode: 0555

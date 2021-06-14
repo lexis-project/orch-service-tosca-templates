@@ -1,0 +1,41 @@
+tosca_definitions_version: alien_dsl_3_0_0
+
+metadata:
+  template_name: org.lexis.common.examples.exec
+  template_version: 0.1.0
+  template_author: lexis
+  
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - yorc-types:1.1.0
+
+node_types:
+  org.lexis.common.examples.exec.Script:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+      Executes a script
+    properties:
+      script_content:
+        description: Script content 
+        type: string
+        required: true
+      environment_variables:
+        type: map
+        description: Environment variables
+        entry_schema:
+          type: string
+        default: {}
+        required: false
+    attributes:
+      stdout: {get_operation_output: [SELF, Standard, start, STDOUT]}
+      stderr: { get_operation_output: [SELF, Standard, start, STDERR] }
+    interfaces:
+      Standard:
+        create:
+          inputs:
+            SCRIPT_CONTENT: {get_property: [SELF, script_content]}
+          implementation: playbooks/install.yaml
+        start:
+          inputs:
+            TOSCA_ENV_VARS_INPUT: {get_property: [SELF, environment_variables]}
+          implementation: playbooks/start.yaml
