@@ -13,10 +13,10 @@ The Run workflow for the ADMS template is executing the following steps:
 * creating a Cloud Compute instance
 * then, in parallel:
   * downloading ECMWF data needed for the preprocessing
-  * downloading observations data needed later for the WRF HPC computation
   * installing and starting Docker on the compute instance
   * wait for the end of geographical static data input dataset transfer on cloud staging area and SSHFS-mount the cloud staging area
-* once the ECMWF data is downloaded, docker started, and the geographica input data filesystem mounted, the WPS IFS docker container is executed
+* once Docker is installed and started, a [container downloading observations data](https://github.com/meteocima/lexis-download-docker) provided by CIMA is executed
+* once the ECMWF data is downloaded, docker started, and the geographica input data filesystem mounted, the [WPS IFS docker container](https://github.com/meteocima/wps-da.ifs) provided by CIMA is executed
 * once the preprocessing is done, the size of results is computed, and the 
 Dynamic Allocation Module (DAM) is asked to select the best HPC infrastructure where to create a WRF computation job
 * A WRF HEAppE job is created on the selected HPC infrastructure
@@ -67,7 +67,7 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `/adms5`
 * postprocessing_adms_sftp_urban_dir: SFTP destination directory for the urban case
   * default: `/admsurban`
-* postprocessing_MET_results_title: Title of the MET processing results dataset to create in DDI (will be suffixed by the start data)
+* postprocessing_title_dataset_MET_results: Title of the MET processing results dataset to create in DDI (will be suffixed by the start data)
   * default: `MET processing results`
 * postprocessing_title_dataset_adms_result: Which will be the title of the dataset containing ADMS results (will be suffixed by the start data)
   * default: `ADMS results`
@@ -128,7 +128,7 @@ The template expects the following input properties (mandatory inputs in **bold*
 * **project_id**: LEXIS project identifier
 * **postprocessing_dataset_wrf_results_path**: WRF results dataset path in DDI
 * **postprocessing_adms_type**: Type of ADMS simulation executed, `urban` or `industrial`
-* **postprocessing_MET_results_title**: Title of the MET processing results dataset to create in DDI
+* **postprocessing_title_dataset_MET_results**: Title of the MET processing results dataset to create in DDI
 * **postprocessing_title_dataset_adms_result**: Title of the ADMS results dataset to create in DDI
 * postprocessing_adms_sftp_server_ip: IP address of a SPTP server where to store results (default, no sftp server upload)
 * postprocessing_adms_sftp_port: Port of the SFTP server

@@ -1,37 +1,57 @@
-# RISICO Application Template
+# RISICO Application Template - Risks of wildlands fires simulations
 
-First draft for RISICO application template.
-The graphical view of the application template shows the following components hosted
-on a Virtual Machine:
+The Run workflow for the RISICO template is executing the following steps:
+* getting details on the input dataset (size, locations) in DDI containing static geographical data
+* asking the Dynamic Allocation Module (DAM) to select the best Cloud infrastructure where to transfer these input data
+* transferring the geographical static data input dataset from DDI to the selected Cloud Staging Area
+* creating a Cloud Compute instance
+* then, in parallel:
+  * waiting for the end of geographical static data input dataset transfer on cloud staging area and SSHFS-mounting the cloud staging area
+  * installing and starting Docker on the compute instance
+  * downloading Global Forecast System (GFS) data:
+    * from https://nomads.ncep.noaa.gov for recent dates (less than 10 days ago)
+    * from https://rda.ucar.edu for historical data (more than 10 days ago)
+* once Docker is installed and started, a [container downloading observations data](https://github.com/meteocima/lexis-download-docker) provided by CIMA is executed
+* once the GFS data is downloaded, docker started, and the geographica input data filesystem mounted, the [WPS GFS docker container](https://github.com/meteocima/wps-da.gfs) provided by CIMA is executed
+* once the preprocessing is done, the size of results is computed, and the 
+Dynamic Allocation Module (DAM) is asked to select the best HPC infrastructure where to create a WRF computation job
+* a WRF HEAppE job is created on the selected HPC infrastructure
+* pre-processing results are transferred to this WRF job
+* the job is then submitted, and the orchestrator monitors its execution until it ends
+* once the job is done, WRF results are compressed and stored in DDI
+* WRF results are also transferred to the compute instance for post-processing
+* then, a [RISICO container](https://github.com/cima-lexis/risico-docker) provided by CIMA is executed
+* results are then transferred from the cloud staging area to DDI
+* finally, the cloud staging area is cleaned and the cloud compute instance is released
 
-* Docker, to run containers
-* WFS_GFS, container performing the pre-processing (see [CIMA WPS model](https://github.com/cima-lexis/wps.docker))
-* RISICO, container performing the post-processing (see [CIMA RISICO model](https://github.com/cima-lexis/risico-docker))
-* CreateDirs, component creating directories expected by containers
-* GFSData, component downloading Global Forecast System files from a web site
-* GEOGData, component downloading geographical files from a web site
-* CopyToJob, component copying pre-processing results to a Job input directory
-* CopyFromJob, component copying Job computation results to the compute instance
+## Input properties
 
-And a job:
+The template expects the following input properties (mandatory inputs in **bold**):
+*  **token**: OpenID Connect access token
+* **project_id**: LEXIS project identifier
+* **preprocessing_start_date**: Download GFS files from this date, format YYYYMMDDHH
+* **postprocessing_run_date**: Continuum run date, format YYYY-MM-DD HH:MM
+* preprocessing_docker_image_gfs: Pre-processing container repository path
+  * default: `cimafoundation/wps-da.gfs:v2.0.3`
+* preprocessing_docker_image_observation_data: Repository path of container downloading observation data
+  * default: `laurentg/lexisdn:1.0.0`
+* preprocessing_dataset_geographical_data_path: Dataset containing geographical data
+  * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/055b25ea-ba60-11eb-a44e-0050568fc9b5/static_geog_data.tar.gz`
+* preprocessing_decrypt_dataset_geographical_data: Should the input dataset be decrypted
+  * default: `false`
+* preprocessing_uncompress_dataset_geographical_data: Should the input dataset be uncompressed
+  * default: `true`
+* postprocessing_image: Post-processing container repository path
+  * default: `laurentg/risico:0.3.1`
+* postprocessing_ddi_project_path: Path where to transfer the post-processing results in DDI
+  * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c`
+* postprocessing_encrypt_dataset_result: Encrypt the result dataset
+  * default: `false`
+* postprocessing_compress_dataset_result: Compress the result dataset
+  * default: `false`
 
-* WRF, HEAppE Job performing a computation on the HPC infrastructure    
+## Ouput attribute
 
-![App template](images/risico_app.png)
-
-The associated workflow creates first a Virtual Machine.
-Then downloads in parallel GFS and geographical data files.
-Docker is then installed on the Virtual Machine and the WPS GFS pre-processing container is run.
-
-![Workflow ](images/risico_preprocessing.png)
-
-Once done, the workflow goes on creating a HEAppE job on the HPC infrastructure.
-Next step enables file transfers for this job.
-Then, WPS GFS pre-processing results are copied to the job (component CopyToJob operation).
-The Job is then submitted, and the orchestrator waits until it ends.
-Once done, Job results are copied to the Virtual Machine (component CopyFromJob operation).
-Finally, in parallel:
-* file transfer is disabled for the job and the job is deleted
-* RISICO post-processing container is run.
-
-![Workflow ](images/risico_end_workflow.png)
+The following output attribute is provided:
+* attribute `destination_path` of component `CloudToDDIJob`: DDI path to Continuum post-processing results
+* attribute `destination_path` of component `CloudToDDIWRFJob`: DDI path to Continuum WRF results
