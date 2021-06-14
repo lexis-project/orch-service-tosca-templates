@@ -9,7 +9,7 @@ description: Continuum Post processing template
 
 imports:
   - yorc-types:1.1.0
-  - yorc-openstack-types:3.0.0
+  - yorc-openstack-types:3.1.0
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0

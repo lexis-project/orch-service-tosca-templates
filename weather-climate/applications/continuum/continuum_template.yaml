@@ -9,7 +9,7 @@ description: Continuum template
 
 imports:
   - yorc-types:1.1.0
-  - yorc-openstack-types:3.0.0
+  - yorc-openstack-types:3.1.0
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
@@ -1591,7 +1591,7 @@ topology_template:
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
-            - Compute_uninstall
+            - DeleteCloudContinuumStaticDataJob_create
         DeleteCloudContinuumStaticDataJob_create:
           target: DeleteCloudContinuumStaticDataJob
           operation_host: ORCHESTRATOR
@@ -1604,6 +1604,13 @@ topology_template:
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - WRF_delete
+        WRF_delete:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
         Compute_uninstall:
           target: ContinuumVM
           activities:
@@ -2813,7 +2820,6 @@ topology_template:
             - set_state: executed
           on_success:
             - MountGEOGDataset_refresh_token_for_stop
-            - MountContinuumDataset_refresh_token_for_stop
         MountGEOGDataset_refresh_token_for_stop:
           target: MountGEOGDataset
           activities:
@@ -2870,7 +2876,7 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - Compute_uninstall
+            - MountContinuumDataset_refresh_token_for_stop
         MountContinuumDataset_refresh_token_for_stop:
           target: MountContinuumDataset
           activities:

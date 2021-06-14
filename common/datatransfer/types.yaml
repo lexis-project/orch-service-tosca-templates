@@ -439,7 +439,6 @@ node_types:
         description: Source directory
         type: string
         required: true
-      
       destination_subdirectory:
         description: Subdirectory in staging area where to store the source directory content
         type: string

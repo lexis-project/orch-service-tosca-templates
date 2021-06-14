@@ -1,11 +1,11 @@
 tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
-  template_name: org.lexis.common.CloudComputationPublicContainerTemplate
+  template_name: org.lexis.common.CloudComputationTemplate
   template_version: 0.1.0-SNAPSHOT
   template_author: lexis
 
-description: "LEXIS Cloud Computation using a public container"
+description: "LEXIS Cloud Computation"
 
 #
 # Imports from Alien4Cloud catalog providing definition of data types and node types
@@ -14,11 +14,10 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - yorc-openstack-types:3.1.0
   - docker-types:3.0.0
-  - org.ystia.docker.ansible:3.0.0-SNAPSHOT
-  - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.lexis.common.ddi-types:0.1.4
   - org.lexis.common.dynamic-orchestration-types:0.1.0
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
+  - org.lexis.common.examples.exec:0.1.0
 
 topology_template:
   #
@@ -65,31 +64,10 @@ topology_template:
       description: Directory on the compute instance where to mount the dataset
       default: "/mnt/lexis_input"
       required: false
-    computation_container_image:
+    computation_openstack_image:
       type: string
-      description: Computation container repository path
-      default: "laurentg/lexistest:1.2"
-      required: false
-    computation_container_env_vars:
-      type: map
-      description: Computation container environment variables
-      entry_schema:
-        type: string
-      default:
-        INPUT_DIR: "/input_dataset"
-        RESULT_DIR: "/output"
-        RESULT_FILE_NAME: "computation_result.txt"
-      required: false
-    computation_container_volumes:
-      type: list
-      entry_schema:
-        type: string
-      description: |
-        List of volumes to mount within the computation container.
-        Use docker CLI-style syntax: /host:/container[:mode]
-      default:
-        - "/mnt/lexis_input:/input_dataset"
-        - "/lexis/output:/output"
+      description: OpenStack glance image name to use
+      default: ""
       required: false
     computation_output_directory:
       type: string
@@ -190,7 +168,11 @@ topology_template:
 
     # Cloud Compute Instance
     CloudComputeInstance:
-      type: tosca.nodes.Compute
+      type: yorc.nodes.openstack.Compute
+      properties:
+        image: {get_input: computation_openstack_image}
+        boot_volume:
+          source: image
       requirements:
         - networkPublicNetConnection:
             type_requirement: network
@@ -204,6 +186,24 @@ topology_template:
         os:
           properties:
             type: linux
+        endpoint:
+          properties:
+            credentials: 
+              user: ubuntu
+              token_type: key
+    # TOSCA component executing the script provided in input
+    ExecScript:
+      type: org.lexis.common.examples.pi.ComputePI
+      metadata:
+        task: computation
+      properties:
+        decimalsNumber: { get_input: preprocessing_decimalsNumber }
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: VirtualMachinePI
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
 
     # Component retrieving access details to the DDI REST APIs from the compute
     # instance where it running
@@ -241,49 +241,17 @@ topology_template:
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
 
-    # Docker service
-    Docker:
-      type: org.ystia.docker.ansible.nodes.Docker
-      requirements:
-        - hostedOnVirtualMachineHost:
-            type_requirement: host
-            node: CloudComputeInstance
-            capability: tosca.capabilities.Container
-            relationship: tosca.relationships.HostedOn
-
-    # Create directories expected by the computation container
+    # Create directories expected by the computation
     CreateComputationDirs:
       type: org.lexis.common.datatransfer.nodes.CreateDirectories
       properties:
-        directories:  { get_input: computation_container_volumes }
+        directories: {concat: ["[\"", get_input: computation_mount_point_input_dataset, "\",", "\"", get_input: computation_output_directory, "\"]"]}
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
             node: CloudComputeInstance
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
-
-    # Computation docker container
-    ComputationContainer:
-      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
-      metadata:
-        task: computation
-      properties:
-        auto_remove: false
-        cleanup: false
-        detach: false
-        image: {get_input: computation_container_image}
-        keep_volumes: true
-        restart_policy: no
-        cpu_share: 1.0
-        volumes: {get_input: computation_container_volumes}
-        docker_env_vars: {get_input: computation_container_env_vars}
-      requirements:
-        - hostedOnContainerRuntimeDockerHost:
-            type_requirement: host
-            node: Docker
-            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
-            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
 
     # Component creating a directory on cloud staging area where to store results
     CreateStagingAreaResultDir:
@@ -373,6 +341,20 @@ topology_template:
           target: ValidateExchangeToken
           activities:
             - set_state: started
+    testCompute:
+      steps:
+        # Get a floating IP address for the Cloud Compute instance
+        Network_install:
+          target: Network
+          activities:
+            - delegate: install
+          on_success:
+            - CloudComputeInstance_install
+        # Create the compute instance
+        CloudComputeInstance_install:
+          target: CloudComputeInstance
+          activities:
+            - delegate: install 
     #
     # Workflow executed by LEXIS Portal
     #
@@ -468,7 +450,6 @@ topology_template:
           on_success:
             - GetDDIAccess_start
             - CreateComputationDirs_start
-            - Docker_create
         # Get details on DDI needed to mount cloud staging area filesystems on
         # the Compute instance
         GetDDIAccess_start:
@@ -483,7 +464,7 @@ topology_template:
             - set_state: started
           on_success:
             - MountInputDataset_create
-        # Create directories needed by the computation container
+        # Create directories needed by the computation
         CreateComputationDirs_start:
           target: CreateComputationDirs
           activities:
@@ -495,32 +476,6 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - MountInputDataset_create
-        # Install Docker
-        Docker_create:
-          target: Docker
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Docker_configure
-        Docker_configure:
-          target: Docker
-          activities:
-            - call_operation: Standard.configure
-          on_success:
-            - Docker_start
-        Docker_start:
-          target: Docker
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Docker_started
-        Docker_started:
-          target: Docker
-          activities:
-            - set_state: started
-          on_success:
-            - ComputationContainer_create
             - MountInputDataset_create
         # Mount the cloud staging are on the Cloud compute instance
         MountInputDataset_create:
@@ -549,25 +504,6 @@ topology_template:
             - MountInputDataset_started
         MountInputDataset_started:
           target: MountInputDataset
-          activities:
-            - set_state: started
-          on_success:
-            - ComputationContainer_create
-        # Create and run the computation container
-        ComputationContainer_create:
-          target: ComputationContainer
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - ComputationContainer_start
-        ComputationContainer_start:
-          target: ComputationContainer
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - ComputationContainer_started
-        ComputationContainer_started:
-          target: ComputationContainer
           activities:
             - set_state: started
           on_success:
@@ -807,88 +743,6 @@ topology_template:
             - CleanupCloudStagingAreaJob_executed
         CleanupCloudStagingAreaJob_executed:
           target: CleanupCloudStagingAreaJob
-          activities:
-            - set_state: executed
-    #
-    # Test workflow to only execute the computation
-    #
-    testComputation:
-      steps:
-        # Create and run the computation container
-        ComputationContainer_create:
-          target: ComputationContainer
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - ComputationContainer_start
-        ComputationContainer_start:
-          target: ComputationContainer
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - ComputationContainer_started
-        ComputationContainer_started:
-          target: ComputationContainer
-          activities:
-            - set_state: started
-          on_success:
-            - CreateStagingAreaResultDir_start
-        # Create a directory in cloud staging area and copy computation
-        # results there
-        CreateStagingAreaResultDir_start:
-          target: CreateStagingAreaResultDir
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CreateStagingAreaResultDir_started
-        CreateStagingAreaResultDir_started:
-          target: CreateStagingAreaResultDir
-          activities:
-            - set_state: started
-          on_success:
-            - StageComputationResults_start
-        StageComputationResults_start:
-          target: StageComputationResults
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - StageComputationResults_started
-        StageComputationResults_started:
-          target: StageComputationResults
-          activities:
-            - set_state: started
-          on_success:
-            - CloudToDDIJob_create
-        # Transfer computation results from Cloud staging area to DDI
-        CloudToDDIJob_create:
-          target: CloudToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - CloudToDDIJob_submit
-        CloudToDDIJob_submit:
-          target: CloudToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - CloudToDDIJob_submitted
-        CloudToDDIJob_submitted:
-          target: CloudToDDIJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - CloudToDDIJob_run
-        CloudToDDIJob_run:
-          target: CloudToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - CloudToDDIJob_executed
-        CloudToDDIJob_executed:
-          target: CloudToDDIJob
           activities:
             - set_state: executed
     #
