@@ -32,17 +32,9 @@ topology_template:
       type: string
       description: "LEXIS project identifier"
       required: true
-    project_short_name:
-      type: string
-      description: "DDI project short name"
-      required: true
     preprocessing_start_date:
       type: string
-      description: Download GFS files from this date, format YYYYMMDDHH
-      required: true
-    preprocessing_end_date:
-      type: string
-      description: Download GFS files up to this date, format YYYYMMDDHH
+      description: Download IFS files from this date, format YYYYMMDDHH
       required: true
     postprocessing_adms_type:
       type: string
@@ -50,22 +42,49 @@ topology_template:
       required: true
     postprocessing_adms_sftp_server_ip:
         type: string
-        description: IP address of a SPTP server where to store results
-        required: true
+        description: IP address of a SPTP server where to store results (default, no sftp server upload)
+        required: false
+        default: ""
     postprocessing_adms_sftp_port:
         type: integer
         description: Port of the SFTP server
-        required: true
-    preprocessing_docker_image:
+        required: false
+        default: 22
+    postprocessing_project_short_name:
+      type: string
+      description: "DDI project short name"
+      default: "wp7"
+      required: false
+    preprocessing_docker_image_ifs:
       type: string
       description: Pre-processing container repository path
-      default: "cimafoundation/wps-da.gfs:v2.0.3"
+      default: "cimafoundation/wps-da.ifs:v2.0.3"
       required: false
-    preprocessing_dataset_geographical_data:
+    preprocessing_docker_image_observation_data:
+      type: string
+      description: Repository path of container downloading observation data
+      default: "laurentg/lexisdn:1.0.0"
+      required: false
+    preprocessing_dataset_geographical_data_path:
       type: string
       description: Dataset containing geographical data
-      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/69c0f740-33f0-11eb-8f85-0050568fcecc"
+      default: project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/055b25ea-ba60-11eb-a44e-0050568fc9b5/static_geog_data.tar.gz
       required: false
+    preprocessing_decrypt_dataset_geographical_data:
+      type: boolean
+      description: Should the input dataset be decrypted
+      default: false
+      required: false
+    preprocessing_uncompress_dataset_geographical_data:
+      type: boolean
+      description: Should the input dataset be uncompressed
+      default: true
+      required: false
+    preprocessing_wps_mode:
+      type: string
+      description: WPS mode, WRF or WRFDA if data assimilation is needed
+      required: false
+      default: WRFDA
     preprocessing_volumes:
       type: list
       entry_schema:
@@ -73,7 +92,30 @@ topology_template:
       description: |
         List of volumes to mount within the pre-processing container.
         Use docker CLI-style syntax: /host:/container[:mode]
-      default: ["/wps_data/gfs:/input", "/wps_data/output:/output", "/mnt/cloud_staging_area/adms/69c0f740-33f0-11eb-8f85-0050568fcecc:/geogrid"]
+      default: ["/wps_data/ifs:/input", "/wps_data/output/inputs:/output", "/mnt/cloud_staging_area/adms:/geogrid"]
+      required: false
+    preprocessing_observation_data_volumes:
+      type: list
+      entry_schema:
+        type: string
+      description: |
+        List of volumes to mount within the post-processing container downloading observation data.
+        Use docker CLI-style syntax: /host:/container[:mode]
+      default: ["/wps_data/observations:/output"]
+    computation_dataset_radar_observations_data_path:
+      type: string
+      description: Dataset containing radar observations data over France
+      default: project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/5ec52c36-c9e5-11eb-9aa8-0050568fc9b5/observations.tar.gz
+      required: false
+    computation_decrypt_dataset_radar_observations_data:
+      type: boolean
+      description: Should the radar observations data dataset be decrypted
+      default: false
+      required: false
+    computation_uncompress_dataset_radar_observations_data:
+      type: boolean
+      description: Should the radar observations data dataset be uncompressed
+      default: true
       required: false
     postprocessing_adms_sftp_industrial_dir:
         type: string
@@ -82,17 +124,22 @@ topology_template:
         default: "/adms5"
     postprocessing_adms_sftp_urban_dir:
         type: string
-        description: IP address of a SPTP server where to store results (no upload to sftp server if not defined)
+        description: SFTP destination directory for the urban case
         required: false
         default: "/admsurban"
     postprocessing_MET_results_title:
       type: string
-      description: Title of the MET processing results dataset to create in DDI
+      description: Title of the MET processing results dataset to create in DDI (will be suffixed by the start data)
       default: MET processing results
+      required: false
+    postprocessing_title_dataset_adms_result:
+      type: string
+      description: Which will be the title of the dataset containing ADMS results (will be suffixed by the start data)
+      default: ADMS results
       required: false
     postprocessing_docker_image:
       type: string
-      description: Post-processing docker image mame:tag
+      description: Post-processing docker image name:tag
       default: "adms/ncl:1.0.0"
       required: false
     postprocessing_dataset_docker_image_path:
@@ -107,13 +154,8 @@ topology_template:
       required: false
     postprocessing_ddi_path:
       type: string
-      description: Path where to transfer the post-processing results in DDI
+      description: Path of the project where to transfer the post-processing results in DDI
       default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c"
-      required: false
-    postprocessing_title_dataset_adms_result:
-      type: string
-      description: Which will be the title of the dataset containing ADMS results
-      default: ADMS tests results
       required: false
     postprocessing_dataset_id_adms_urban_app:
       type: string
@@ -135,6 +177,16 @@ topology_template:
       description: ID of the dataset containing the static data for ADMSIndustrial
       default: "b6e09a96-25ac-11eb-bbae-0050568fcecc"
       required: false
+    postprocessing_encrypt_wrf_dataset_result:
+      type: boolean
+      description: Encrypt the WRF result dataset
+      default: false
+      required: false
+    postprocessing_compress_wrf_dataset_result:
+      type: boolean
+      description: Compress the WRF result dataset
+      default: true
+      required: false
   node_templates:
     # Validation of the token provided in input
     # Exchanging this token to have an access and refresh tokens
@@ -154,7 +206,7 @@ topology_template:
       type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
       properties:
         token: {get_input: token}
-        dataset_path: {get_input: preprocessing_dataset_geographical_data}
+        dataset_path: {get_input: preprocessing_dataset_geographical_data_path}
     # Find the best cloud location depending on the input dataset and needed cloud resources
     FindCloudLocationJob:
       type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
@@ -172,11 +224,6 @@ topology_template:
         - CloudResourceVM:
             type_requirement: cloud_instance
             node: ADMS_VM
-            capability: tosca.capabilities.OperatingSystem
-            relationship: org.lexis.common.dynamic.orchestration.relationships.CloudResource
-        - CloudResourceWinVM:
-            type_requirement: cloud_instance
-            node: ADMS_WIN_VM
             capability: tosca.capabilities.OperatingSystem
             relationship: org.lexis.common.dynamic.orchestration.relationships.CloudResource
     # Floating IP address network
@@ -217,7 +264,9 @@ topology_template:
       type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
         token: { get_input: token }
-        ddi_dataset_path: { get_input: preprocessing_dataset_geographical_data }
+        decrypt: {get_input: preprocessing_decrypt_dataset_geographical_data}
+        uncompress: {get_input: preprocessing_uncompress_dataset_geographical_data}
+        ddi_dataset_path: { get_input: preprocessing_dataset_geographical_data_path }
         cloud_staging_area_directory_path: "adms_preprocessing_geog"
         timestamp_cloud_staging_area_directory: true
       requirements:
@@ -250,25 +299,7 @@ topology_template:
     CreatePreProcessDirs:
       type: org.lexis.common.datatransfer.nodes.CreateDirectories
       properties:
-        directories: ["/wps_data/gfs", "/wps_data/output"]
-      requirements:
-        - hostedOnVirtualMachineHost:
-            type_requirement: host
-            node: ADMS_VM
-            capability: tosca.capabilities.Container
-            relationship: tosca.relationships.HostedOn
-    GFSData:
-      type: org.lexis.wp7.nodes.GFSData
-      properties:
-        start_date: {get_input: preprocessing_start_date}
-        end_date: {get_input: preprocessing_end_date}
-        number_of_past_days: 0
-        with_data_assimilation: true
-        left_longitude: "-19.0"
-        right_longitude: "48.0"
-        top_latitude: "64.0"
-        bottom_latitude: "24.0"
-        output_directory: "/wps_data/gfs"
+        directories: ["/wps_data/ifs", "/wps_data/output/inputs", "/wps_data/output/observations"]
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -283,7 +314,7 @@ topology_template:
             node: ADMS_VM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
-    WPS_GFS:
+    WPS_IFS:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
       metadata:
         task: preprocessing
@@ -291,13 +322,51 @@ topology_template:
         auto_remove: false
         cleanup: false
         detach: false
-        image: {get_input: preprocessing_docker_image}
+        docker_run_cmd: "bash common-start.sh"
+        image: {get_input: preprocessing_docker_image_ifs}
         keep_volumes: true
         restart_policy: no
         cpu_share: 1.0
         shm_size: "64 GB"
         volumes: {get_input: preprocessing_volumes}
-        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_end_date, "\", \"WPS_MODE\": \"WRF\"}"]}
+        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_MODE\": \"", get_input: preprocessing_wps_mode, "\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+
+    # Get ECMWF data
+    ECMWFData:
+      type: org.lexis.wp7.nodes.ECMWFData
+      properties:
+        start_date: {get_input: preprocessing_start_date}
+        output_directory: "/wps_data/ifs"
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+    # Download observation data needed by ADMS 
+    ObservationsData:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: preprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: preprocessing_docker_image_observation_data}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        shm_size: "64 GB"
+        volumes: {get_input: preprocessing_observation_data_volumes}
+        # TODO: update DOWNLOAD_TYPE to ADMS
+        docker_env_vars:  {concat: ["{\"START_DATE\": \"", get_input: preprocessing_start_date, "\", \"DOWNLOAD_TYPE\": \"WRFDAFR\", \"WEBDROPS_USER\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=user"], "\", \"WEBDROPS_PWD\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=password"], "\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
@@ -310,6 +379,20 @@ topology_template:
             min_instances: 1
             max_instances: 1
             default_instances: 1
+    # Move results to match WRF inputs structure expectations
+    MoveObservationData:
+      type: org.lexis.common.datatransfer.nodes.MoveFile
+      properties:
+        source_file:  "/wps_data/observations/*/*"
+        destination: "/wps_data/output/observations"
+        as_user: "root"
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
     # Get pre-processing results details (size, number of files)
     GetPreprocessDatasetInfo:
       type: org.lexis.common.ddi.nodes.GetComputeInstanceDatasetInfo
@@ -348,54 +431,29 @@ topology_template:
         token: { get_input: token }
         JobSpecification:
           Name: WRFJob
-          Project: "OPEN-20-47"
+          Project: "MyProject"
           ClusterId: 2
           Tasks:
-            - Name: "WRF Generic"
+            - Name: WRF Generic
               ClusterNodeTypeId: 7
               CommandTemplateId: 9
               TemplateParameterValues:
-                - CommandParameterIdentifier: MPICores
-                  ParameterValue: "48"
+                - CommandParameterIdentifier: MPI_PROCESSES
+                  ParameterValue: "36"
               WalltimeLimit: 36000
-              MinCores: 48
-              MaxCores: 48
+              MinCores: 144
+              MaxCores: 144
               Priority: 4
-              EnvironmentVariables:
-                - Name: HDF5
-                  Value: "./deps"
-                - Name: NETCDF
-                  Value: "./deps"
-                - Name: CPPFLAGS
-                  Value: "-I./deps/include"
-                - Name: CFLAGS
-                  Value: "-I./deps/include"
-                - Name: CXXFLAGS
-                  Value: "-I./deps/include"
-                - Name: FCFLAGS
-                  Value: "-I./deps/include"
-                - Name: FFLAGS
-                  Value: "-I./deps/include"
-                - Name: LDFLAGS
-                  Value: "-L./deps/lib"
-                - Name: WRFIO_NCD_LARGE_FILE_SUPPORT
-                  Value: "1"
-                - Name: LD_LIBRARY_PATH
-                  Value: "$LD_LIBRARY_PATH:./deps/lib"
-                - Name: JASPERLIB
-                  Value: "./deps/lib"
-                - Name: JASPERINC
-                  Value: "./deps/include"
               StandardOutputFile: "stdout"
               StandardErrorFile: "stderr"
               ProgressFile: "stdprog"
               LogFile: "stdlog"
+    # copy the content of /wps_data/output: inputs and observations subdirs
     CopyToJobTask:
-      type: org.lexis.common.datatransfer.nodes.CopySubDirToJobTask
+      type: org.lexis.common.datatransfer.nodes.CopyToJobTask
       properties:
         task_name: "WRF Generic"
-        parent_directory: /wps_data/output
-        subdirectory_index: 0
+        source_directory: /wps_data/output
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -407,11 +465,28 @@ topology_template:
             node: WRF
             capability: org.lexis.common.heappe.capabilities.HeappeJob
             relationship: org.lexis.common.heappe.relationships.SendInputsToJob
+    # Transfer the input dataset to the job task input directory
+    DDIToHPCTaskJob:
+      type: org.lexis.common.ddi.nodes.DDIToHPCTaskJob
+      metadata:
+        task: preprocessing
+      properties:
+        token: { get_input: token }
+        decrypt: {get_input: computation_decrypt_dataset_radar_observations_data}
+        uncompress: {get_input: computation_uncompress_dataset_radar_observations_data}
+        ddi_dataset_path: { get_input: computation_dataset_radar_observations_data_path }
+        task_name: "WRF Generic"
+      requirements:
+        - job:
+            type_requirement: job
+            node: WRF
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.heappe.relationships.SendInputsToJob
     CopyFromJobTask:
       type: org.lexis.common.datatransfer.nodes.CopyFromJobTask
       properties:
         task_name: "WRF Generic"
-        source_files: [ "auxhist*" ]
+        source_files: [ "*/wrf*/auxhist*" ]
         destination_directory: "/mnt/cloud_staging_area/adms/adms_data/DATA-WRF/"
         as_user: root
       requirements:
@@ -444,7 +519,7 @@ topology_template:
     StageWRFResults:
       type: org.lexis.common.datatransfer.nodes.CopyToStagingAreaDirectory
       properties:
-        source_directory: "/mnt/cloud_staging_area/postprocess/adms_data/DATA-WRF/"
+        source_directory: "/mnt/cloud_staging_area/adms/adms_data/DATA-WRF/"
         destination_subdirectory: "wrf"
       requirements:
         - staging_area_directory:
@@ -630,7 +705,7 @@ topology_template:
     StageMETResults:
       type: org.lexis.common.datatransfer.nodes.CopyFilesToStagingAreaDirectory
       properties:
-        source_directory: "/mnt/cloud_staging_area/postprocess/adms_data/DATA-WRF/"
+        source_directory: "/mnt/cloud_staging_area/adms/adms_data/DATA-WRF/"
         source_files: [ "*.met" ]
         destination_subdirectory: "met"
       requirements:
@@ -650,6 +725,8 @@ topology_template:
         metadata: {concat: ["{\"creator\": [\"ADMS workflow\"], \"contributor\": [\"ADMS workflow\"], \"publisher\": [\"ADMS workflow\"], \"resourceType\": \"WRF result\", \"title\": \"ADMS Workflow WRF result - ", get_input: preprocessing_start_date, "\"}"]}
         token: { get_input: token }
         ddi_path: { get_input: postprocessing_ddi_path }
+        encrypt: {get_input: postprocessing_encrypt_wrf_dataset_result}
+        compress: {get_input: postprocessing_compress_wrf_dataset_result}
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
@@ -659,7 +736,7 @@ topology_template:
     METResultsToDDIJob:
       type: org.lexis.common.ddi.nodes.CloudToDDIJob
       properties:
-        metadata: {concat: ["{\"creator\": [\"ADMS workflow\"], \"contributor\": [\"ADMS workflow\"], \"publisher\": [\"ADMS workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"", get_input: postprocessing_MET_results_title, "\"}"]}
+        metadata: {concat: ["{\"creator\": [\"ADMS workflow\"], \"contributor\": [\"ADMS workflow\"], \"publisher\": [\"ADMS workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"", get_input: postprocessing_MET_results_title, " - ", get_input: preprocessing_start_date,"\"}"]}
         token: { get_input: token }
         ddi_path: { get_input: postprocessing_ddi_path }
         source_subdirectory: "met"
@@ -689,7 +766,7 @@ topology_template:
             node: DDIToCloudNCLScriptJob
             capability: org.lexis.common.ddi.capabilities.DataTransferCloud
             relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
-    DeleteCloudDataGEOGJob:
+    DeleteCloudGEOGDataJob:
       type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
       properties:
         token: { get_input: token }
@@ -699,6 +776,36 @@ topology_template:
             node: DDIToCloudGEOGDatasetJob
             capability: org.lexis.common.ddi.capabilities.DataTransferCloud
             relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
+    # Get post-processing results details (size, number of files)
+    GetPostprocessDatasetInfo:
+      type: org.lexis.common.ddi.nodes.GetComputeInstanceDatasetInfo
+      properties:
+        dataset_path: "/mnt/cloud_staging_area/adms/adms_data/DATA-WRF/met"
+      requirements:
+        - host:
+            type_requirement: host
+            node: ADMS_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    # Find the best cloud location depending on the input dataset and needed cloud resources
+    FindWindowsCloudLocationJob:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
+      properties:
+        token: { get_input: token }
+        project_id: { get_input: project_id }
+      requirements:
+        - InputDataset:
+            type_requirement: input_dataset
+            node: GetPostprocessDatasetInfo
+            capability: org.lexis.common.ddi.capabilities.DatasetInfo
+            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
+        - CloudResourceWinVM:
+            type_requirement: cloud_instance
+            node: ADMS_WIN_VM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.dynamic.orchestration.relationships.CloudResource
     PublicNetADMSWinVM:
       type: yorc.nodes.openstack.FloatingIP
     ADMS_WIN_VM:
@@ -739,9 +846,8 @@ topology_template:
       type: org.lexis.wp7.nodes.ADMS
       properties:
         adms_type: { get_input: postprocessing_adms_type }
-        token: { get_input: token }
-        dataset_title_adms_result: { get_input: postprocessing_title_dataset_adms_result }
-        dataset_title_ncl_result: { get_input: postprocessing_MET_results_title }
+        dataset_title_adms_result: { concat: [get_input: postprocessing_title_dataset_adms_result, " - ", get_input: preprocessing_start_date ] }
+        dataset_title_ncl_result: { concat: [get_input: postprocessing_MET_results_title, " - ", get_input: preprocessing_start_date ] }
         dataset_id_adms_urban_app: { get_input: postprocessing_dataset_id_adms_urban_app }
         dataset_id_adms_urban_static_data: { get_input: postprocessing_dataset_id_adms_urban_static_data }
         dataset_id_adms_industrial_app: { get_input: postprocessing_dataset_id_adms_industrial_app }
@@ -750,6 +856,7 @@ topology_template:
         adms_sftp_port: { get_input: postprocessing_adms_sftp_port }
         adms_sftp_industrial_dir: { get_input: postprocessing_adms_sftp_industrial_dir }
         adms_sftp_urban_dir: { get_input: postprocessing_adms_sftp_urban_dir }
+        ddi_project_short_name: { get_input: postprocessing_project_short_name }
       requirements:
         - ddi_access:
             type_requirement: ddi_access
@@ -788,10 +895,55 @@ topology_template:
             - set_state: started
     uninstall:
       steps:
+        WRF_delete:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+        DeleteCloudGEOGDataJob_create:
+          target: DeleteCloudGEOGDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudGEOGDataJob_submit
+        DeleteCloudGEOGDataJob_submit:
+          target: DeleteCloudGEOGDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - Compute_uninstall
+        DeleteCloudDataImageJob_create:
+          target: DeleteCloudDataImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudDataImageJob_submit
+        DeleteCloudDataImageJob_submit:
+          target: DeleteCloudDataImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+        DeleteCloudDataNCLScriptJob_create:
+          target: DeleteCloudDataNCLScriptJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudDataNCLScriptJob_submit
+        DeleteCloudDataNCLScriptJob_submit:
+          target: DeleteCloudDataNCLScriptJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
         Compute_uninstall:
           target: ADMS_VM
           activities:
             - delegate: uninstall
+          on_success:
+            - Network_uninstall
         Network_uninstall:
           target: PublicNetADMSVM
           activities:
@@ -800,6 +952,8 @@ topology_template:
           target: ADMS_WIN_VM
           activities:
             - delegate: uninstall
+          on_success:
+            - WindowsNetwork_uninstall
         WindowsNetwork_uninstall:
           target: PublicNetADMSWinVM
           activities:
@@ -935,7 +1089,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - Docker_create
+            - WPS_IFS_start
         CreatePreProcessDirs_start:
           target: CreatePreProcessDirs
           activities:
@@ -947,19 +1101,26 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - GFSData_start
-        GFSData_start:
-          target: GFSData
+            - ECMWFData_create
+        ECMWFData_create:
+          target: ECMWFData
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ECMWFData_start
+            - Docker_create
+        ECMWFData_start:
+          target: ECMWFData
           activities:
             - call_operation: Standard.start
           on_success:
-            - GFSData_started
-        GFSData_started:
-          target: GFSData
+            - ECMWFData_started
+        ECMWFData_started:
+          target: ECMWFData
           activities:
             - set_state: started
           on_success:
-            - Docker_create
+            - WPS_IFS_start
         Docker_create:
           target: Docker
           activities:
@@ -983,36 +1144,80 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - WPS_GFS_create
-        WPS_GFS_create:
-          target: WPS_GFS
+            - WPS_IFS_create
+        WPS_IFS_create:
+          target: WPS_IFS
           activities:
             - call_operation: Standard.create
           on_success:
-            - WPS_GFS_start
-        WPS_GFS_start:
-          target: WPS_GFS
+            - WPS_IFS_start
+            - ObservationsData_create
+        WPS_IFS_start:
+          target: WPS_IFS
           activities:
             - call_operation: Standard.start
           on_success:
-            - WPS_GFS_started
-        WPS_GFS_started:
-          target: WPS_GFS
+            - WPS_IFS_started
+        WPS_IFS_started:
+          target: WPS_IFS
+          activities:
+            - set_state: started
+          on_success:
+            - WPS_IFS_delete
+        WPS_IFS_delete:
+          target: WPS_IFS
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WPS_IFS_deleted
+        WPS_IFS_deleted:
+          target: WPS_IFS
+          activities:
+            - set_state: deleted
+          on_success:
+            - GetPreprocessDatasetInfo_create
+        ObservationsData_create:
+          target: ObservationsData
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ObservationsData_start
+        ObservationsData_start:
+          target: ObservationsData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ObservationsData_started
+        ObservationsData_started:
+          target: ObservationsData
+          activities:
+            - set_state: started
+          on_success:
+            - ObservationsData_delete
+        ObservationsData_delete:
+          target: ObservationsData
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - ObservationsData_deleted
+        ObservationsData_deleted:
+          target: ObservationsData
+          activities:
+            - set_state: deleted
+          on_success:
+            - MoveObservationData_start
+        MoveObservationData_start:
+          target: MoveObservationData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveObservationData_started
+        MoveObservationData_started:
+          target: MoveObservationData
           activities:
             - set_state: started
           on_success:
             - GetPreprocessDatasetInfo_create
-            - WPS_GFS_delete
-        WPS_GFS_delete:
-          target: WPS_GFS
-          activities:
-            - call_operation: Standard.delete
-          on_success:
-            - WPS_GFS_deleted
-        WPS_GFS_deleted:
-          target: WPS_GFS
-          activities:
-            - set_state: deleted
         GetPreprocessDatasetInfo_create:
           target: GetPreprocessDatasetInfo
           activities:
@@ -1063,6 +1268,7 @@ topology_template:
             - call_operation: custom.enable_file_transfer
           on_success:
             - CopyToJobTask_start
+            - DDIToHPCTaskJob_create
         CopyToJobTask_start:
           target: CopyToJobTask
           activities:
@@ -1073,6 +1279,39 @@ topology_template:
           target: CopyToJobTask
           activities:
             - set_state: started
+          on_success:
+            - WRF_submit
+        DDIToHPCTaskJob_create:
+          target: DDIToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToHPCTaskJob_submit
+        DDIToHPCTaskJob_submit:
+          target: DDIToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToHPCTaskJob_submitted
+        DDIToHPCTaskJob_submitted:
+          target: DDIToHPCTaskJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToHPCTaskJob_run
+        DDIToHPCTaskJob_run:
+          target: DDIToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToHPCTaskJob_executed
+        DDIToHPCTaskJob_executed:
+          target: DDIToHPCTaskJob
+          activities:
+            - set_state: executed
           on_success:
             - WRF_submit
         WRF_submit:
@@ -1443,6 +1682,42 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - GetPostprocessDatasetInfo_create
+        GetPostprocessDatasetInfo_create:
+          target: GetPostprocessDatasetInfo
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - GetPostprocessDatasetInfo_start
+        GetPostprocessDatasetInfo_start:
+          target: GetPostprocessDatasetInfo
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetPostprocessDatasetInfo_started
+        GetPostprocessDatasetInfo_started:
+          target: GetPostprocessDatasetInfo
+          activities:
+            - set_state: started
+          on_success:
+            - FindWindowsCloudLocationJob_submit
+        FindWindowsCloudLocationJob_submit:
+          target: FindWindowsCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindWindowsCloudLocationJob_run
+        FindWindowsCloudLocationJob_run:
+          target: FindWindowsCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindWindowsCloudLocationJob_executed
+        FindWindowsCloudLocationJob_executed:
+          target: FindWindowsCloudLocationJob
+          activities:
+            - set_state: executed
+          on_success:
             - WindowsNetwork_install
         WindowsNetwork_install:
           target: PublicNetADMSWinVM
@@ -1462,7 +1737,7 @@ topology_template:
             - call_operation: Standard.start
           on_success:
             - GetDDIAccessWinVM_started
-        GetDDIAccess_started:
+        GetDDIAccessWinVM_started:
           target: GetDDIAccessWinVM
           activities:
             - set_state: started
@@ -1493,8 +1768,6 @@ topology_template:
           on_success:
             - WindowsCompute_uninstall
             - MountGEOGDataset_refresh_token_for_stop
-            - MountDockerImageDataset_refresh_token_for_stop
-            - MountNCLScriptDataset_refresh_token_for_stop
         WindowsCompute_uninstall:
           target: ADMS_WIN_VM
           activities:
@@ -1524,7 +1797,7 @@ topology_template:
           activities:
             - set_state: stopped
           on_success:
-            - DeleteCloudDataGEOGJob_create
+            - MountDockerImageDataset_refresh_token_for_stop
         MountDockerImageDataset_refresh_token_for_stop:
           target: MountDockerImageDataset
           activities:
@@ -1542,8 +1815,7 @@ topology_template:
           activities:
             - set_state: stopped
           on_success:
-            - DeleteCloudDataImageJob_create
-            - MountNCLScriptDataset_refresh_token
+            - MountNCLScriptDataset_refresh_token_for_stop
         MountNCLScriptDataset_refresh_token_for_stop:
           target: MountNCLScriptDataset
           activities:
@@ -1561,6 +1833,8 @@ topology_template:
           activities:
             - set_state: stopped
           on_success:
+            - DeleteCloudGEOGDataJob_create
+            - DeleteCloudDataImageJob_create
             - DeleteCloudDataNCLScriptJob_create
         DeleteCloudDataImageJob_create:
           target: DeleteCloudDataImageJob
@@ -1639,46 +1913,44 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - Compute_uninstall
-        DeleteCloudDataGEOGJob_create:
-          target: DeleteCloudDataGEOGJob
+            - Network_uninstall
+        DeleteCloudGEOGDataJob_create:
+          target: DeleteCloudGEOGDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
           on_success:
-            - DeleteCloudDataGEOGJob_created
-        DeleteCloudDataGEOGJob_created:
-          target: DeleteCloudDataGEOGJob
+            - DeleteCloudGEOGDataJob_created
+        DeleteCloudGEOGDataJob_created:
+          target: DeleteCloudGEOGDataJob
           activities:
             - set_state: created
           on_success:
-            - DeleteCloudDataGEOGJob_submit
-        DeleteCloudDataGEOGJob_submit:
-          target: DeleteCloudDataGEOGJob
+            - DeleteCloudGEOGDataJob_submit
+        DeleteCloudGEOGDataJob_submit:
+          target: DeleteCloudGEOGDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
-            - DeleteCloudDataGEOGJob_submitted
-        DeleteCloudDataGEOGJob_submitted:
-          target: DeleteCloudDataGEOGJob
+            - DeleteCloudGEOGDataJob_submitted
+        DeleteCloudGEOGDataJob_submitted:
+          target: DeleteCloudGEOGDataJob
           activities:
             - set_state: submitted
           on_success:
-            - DeleteCloudDataGEOGJob_run
-        DeleteCloudDataGEOGJob_run:
-          target: DeleteCloudDataGEOGJob
+            - DeleteCloudGEOGDataJob_run
+        DeleteCloudGEOGDataJob_run:
+          target: DeleteCloudGEOGDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
           on_success:
-            - DeleteCloudDataGEOGJob_executed
-        DeleteCloudDataGEOGJob_executed:
-          target: DeleteCloudDataGEOGJob
+            - DeleteCloudGEOGDataJob_executed
+        DeleteCloudGEOGDataJob_executed:
+          target: DeleteCloudGEOGDataJob
           activities:
             - set_state: executed
-          on_success:
-            - Network_uninstall
         Network_uninstall:
           target: PublicNetADMSVM
           activities:
@@ -1687,59 +1959,7 @@ topology_template:
           target: ADMS_VM
           activities:
             - delegate: uninstall
-    testWRF:
-      steps:
-        WRF_create:
-          target: WRF
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - WRF_enable_file_transfer
-        WRF_enable_file_transfer:
-          target: WRF
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: custom.enable_file_transfer
-          on_success:
-            - CopyToJobTask_start
-        CopyToJobTask_start:
-          target: CopyToJobTask
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CopyToJobTask_started
-        CopyToJobTask_started:
-          target: CopyToJobTask
-          activities:
-            - set_state: started
-          on_success:
-            - WRF_submit
-        WRF_submit:
-          target: WRF
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - WRF_submitted
-        WRF_submitted:
-          target: WRF
-          activities:
-            - set_state: submitted
-          on_success:
-            - WRF_run
-        WRF_run:
-          target: WRF
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - WRF_executed
-        WRF_executed:
-          target: WRF
-          activities:
-            - set_state: executed
-    testPostProcess:
+    testPostProcessing:
       steps:
         CreateStagingAreaWRFResultDir_start:
           target: CreateStagingAreaWRFResultDir
@@ -2083,6 +2303,42 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - GetPostprocessDatasetInfo_create
+        GetPostprocessDatasetInfo_create:
+          target: GetPostprocessDatasetInfo
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - GetPostprocessDatasetInfo_start
+        GetPostprocessDatasetInfo_start:
+          target: GetPostprocessDatasetInfo
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetPostprocessDatasetInfo_started
+        GetPostprocessDatasetInfo_started:
+          target: GetPostprocessDatasetInfo
+          activities:
+            - set_state: started
+          on_success:
+            - FindWindowsCloudLocationJob_submit
+        FindWindowsCloudLocationJob_submit:
+          target: FindWindowsCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindWindowsCloudLocationJob_run
+        FindWindowsCloudLocationJob_run:
+          target: FindWindowsCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindWindowsCloudLocationJob_executed
+        FindWindowsCloudLocationJob_executed:
+          target: FindWindowsCloudLocationJob
+          activities:
+            - set_state: executed
+          on_success:
             - WindowsNetwork_install
         WindowsNetwork_install:
           target: PublicNetADMSWinVM
@@ -2102,7 +2358,7 @@ topology_template:
             - call_operation: Standard.start
           on_success:
             - GetDDIAccessWinVM_started
-        GetDDIAccess_started:
+        GetDDIAccessWinVM_started:
           target: GetDDIAccessWinVM
           activities:
             - set_state: started
@@ -2133,8 +2389,6 @@ topology_template:
           on_success:
             - WindowsCompute_uninstall
             - MountGEOGDataset_refresh_token_for_stop
-            - MountDockerImageDataset_refresh_token_for_stop
-            - MountNCLScriptDataset_refresh_token_for_stop
         WindowsCompute_uninstall:
           target: ADMS_WIN_VM
           activities:
@@ -2164,7 +2418,7 @@ topology_template:
           activities:
             - set_state: stopped
           on_success:
-            - DeleteCloudDataGEOGJob_create
+            - MountDockerImageDataset_refresh_token_for_stop
         MountDockerImageDataset_refresh_token_for_stop:
           target: MountDockerImageDataset
           activities:
@@ -2182,7 +2436,7 @@ topology_template:
           activities:
             - set_state: stopped
           on_success:
-            - DeleteCloudDataImageJob_create
+            - MountNCLScriptDataset_refresh_token_for_stop
         MountNCLScriptDataset_refresh_token_for_stop:
           target: MountNCLScriptDataset
           activities:
@@ -2200,6 +2454,8 @@ topology_template:
           activities:
             - set_state: stopped
           on_success:
+            - DeleteCloudGEOGDataJob_create
+            - DeleteCloudDataImageJob_create
             - DeleteCloudDataNCLScriptJob_create
         DeleteCloudDataImageJob_create:
           target: DeleteCloudDataImageJob
@@ -2278,46 +2534,44 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - Compute_uninstall
-        DeleteCloudDataGEOGJob_create:
-          target: DeleteCloudDataGEOGJob
+            - Network_uninstall
+        DeleteCloudGEOGDataJob_create:
+          target: DeleteCloudGEOGDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
           on_success:
-            - DeleteCloudDataGEOGJob_created
-        DeleteCloudDataGEOGJob_created:
-          target: DeleteCloudDataGEOGJob
+            - DeleteCloudGEOGDataJob_created
+        DeleteCloudGEOGDataJob_created:
+          target: DeleteCloudGEOGDataJob
           activities:
             - set_state: created
           on_success:
-            - DeleteCloudDataGEOGJob_submit
-        DeleteCloudDataGEOGJob_submit:
-          target: DeleteCloudDataGEOGJob
+            - DeleteCloudGEOGDataJob_submit
+        DeleteCloudGEOGDataJob_submit:
+          target: DeleteCloudGEOGDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
-            - DeleteCloudDataGEOGJob_submitted
-        DeleteCloudDataGEOGJob_submitted:
-          target: DeleteCloudDataGEOGJob
+            - DeleteCloudGEOGDataJob_submitted
+        DeleteCloudGEOGDataJob_submitted:
+          target: DeleteCloudGEOGDataJob
           activities:
             - set_state: submitted
           on_success:
-            - DeleteCloudDataGEOGJob_run
-        DeleteCloudDataGEOGJob_run:
-          target: DeleteCloudDataGEOGJob
+            - DeleteCloudGEOGDataJob_run
+        DeleteCloudGEOGDataJob_run:
+          target: DeleteCloudGEOGDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
           on_success:
-            - DeleteCloudDataGEOGJob_executed
-        DeleteCloudDataGEOGJob_executed:
-          target: DeleteCloudDataGEOGJob
+            - DeleteCloudGEOGDataJob_executed
+        DeleteCloudGEOGDataJob_executed:
+          target: DeleteCloudGEOGDataJob
           activities:
             - set_state: executed
-          on_success:
-            - Network_uninstall
         Network_uninstall:
           target: PublicNetADMSVM
           activities:
@@ -2326,3 +2580,227 @@ topology_template:
           target: ADMS_VM
           activities:
             - delegate: uninstall
+    testMount:
+      steps:
+        MountGEOGDataset_create:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - MountGEOGDataset_created
+        MountGEOGDataset_created:
+          target: MountGEOGDataset
+          activities:
+            - set_state: created
+          on_success:
+            - MountGEOGDataset_refresh_token
+        MountGEOGDataset_refresh_token:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountGEOGDataset_start
+        MountGEOGDataset_start:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountGEOGDataset_started
+        MountGEOGDataset_started:
+          target: MountGEOGDataset
+          activities:
+            - set_state: started
+    testECMWF:
+      steps:
+        ECMWFData_start:
+          target: ECMWFData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ECMWFData_started
+        ECMWFData_started:
+          target: ECMWFData
+          activities:
+            - set_state: started
+    testIFS:
+      steps:
+        WPS_IFS_start:
+          target: WPS_IFS
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - WPS_IFS_started
+        WPS_IFS_started:
+          target: WPS_IFS
+          activities:
+            - set_state: started
+    testObservations:
+      steps:
+        ObservationsData_start:
+          target: ObservationsData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ObservationsData_started
+        ObservationsData_started:
+          target: ObservationsData
+          activities:
+            - set_state: started
+          on_success:
+            - ObservationsData_delete
+        ObservationsData_delete:
+          target: ObservationsData
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - ObservationsData_deleted
+        ObservationsData_deleted:
+          target: ObservationsData
+          activities:
+            - set_state: deleted
+          on_success:
+            - MoveObservationData_start
+        MoveObservationData_start:
+          target: MoveObservationData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveObservationData_started
+        MoveObservationData_started:
+          target: MoveObservationData
+          activities:
+            - set_state: started
+    testPreprocess:
+      steps:
+        GetPreprocessDatasetInfo_create:
+          target: GetPreprocessDatasetInfo
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - GetPreprocessDatasetInfo_start
+        GetPreprocessDatasetInfo_start:
+          target: GetPreprocessDatasetInfo
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetPreprocessDatasetInfo_started
+        GetPreprocessDatasetInfo_started:
+          target: GetPreprocessDatasetInfo
+          activities:
+            - set_state: started
+          on_success:
+            - FindHPCLocationsJob_submit
+        FindHPCLocationsJob_submit:
+          target: FindHPCLocationsJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindHPCLocationsJob_run
+        FindHPCLocationsJob_run:
+          target: FindHPCLocationsJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindHPCLocationsJob_executed
+        FindHPCLocationsJob_executed:
+          target: FindHPCLocationsJob
+          activities:
+            - set_state: executed
+          on_success:
+            - WRF_create
+        WRF_create:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - WRF_enable_file_transfer
+        WRF_enable_file_transfer:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - CopyToJobTask_start
+            - DDIToHPCTaskJob_create
+        CopyToJobTask_start:
+          target: CopyToJobTask
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CopyToJobTask_started
+        CopyToJobTask_started:
+          target: CopyToJobTask
+          activities:
+            - set_state: started
+          on_success:
+            - WRF_submit
+        DDIToHPCTaskJob_create:
+          target: DDIToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToHPCTaskJob_submit
+        DDIToHPCTaskJob_submit:
+          target: DDIToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToHPCTaskJob_submitted
+        DDIToHPCTaskJob_submitted:
+          target: DDIToHPCTaskJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToHPCTaskJob_run
+        DDIToHPCTaskJob_run:
+          target: DDIToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToHPCTaskJob_executed
+        DDIToHPCTaskJob_executed:
+          target: DDIToHPCTaskJob
+          activities:
+            - set_state: executed
+          on_success:
+            - WRF_submit
+        WRF_submit:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - WRF_submitted
+        WRF_submitted:
+          target: WRF
+          activities:
+            - set_state: submitted
+          on_success:
+            - WRF_run
+        WRF_run:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - WRF_executed
+        WRF_executed:
+          target: WRF
+          activities:
+            - set_state: executed
+          on_success:
+            - CreateStagingAreaWRFResultDir_start
+        CreateStagingAreaWRFResultDir_start:
+          target: CreateStagingAreaWRFResultDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaWRFResultDir_started
+        CreateStagingAreaWRFResultDir_started:
+          target: CreateStagingAreaWRFResultDir
+          activities:
+            - set_state: started

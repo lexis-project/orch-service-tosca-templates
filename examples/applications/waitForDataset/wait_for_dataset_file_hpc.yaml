@@ -54,7 +54,7 @@ topology_template:
         token: { get_input: token }
         JobSpecification:
           Name: TestJob
-          Project: "OPEN-20-47"
+          Project: "MyProject"
           ClusterId: 2
           Tasks:
             - Name: FirstTask

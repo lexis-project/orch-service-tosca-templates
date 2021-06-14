@@ -1,0 +1,34 @@
+- name: Install drops2
+  hosts: all
+  strategy: free
+  become: true
+  become_method: sudo
+  tasks:
+    - name: RedHat - install prerequisites
+      yum:
+        name: "libnetcdf-dev"
+        state: present
+        update_cache: yes
+      when: ansible_os_family == 'RedHat'
+    - name: Debian - install prerequisites
+      apt:
+        name: "libnetcdf-dev"
+        state: present
+        update_cache: yes
+      when: ansible_os_family == 'Debian'
+- name: Get orography file
+  hosts: all
+  strategy: free
+  tasks:
+    - name: Create dewetra directory
+      file:
+        path: "{{ansible_env.HOME}}/.dewetra2wrf"
+        state: directory
+        recurse: yes
+        mode: 0777
+    - name: Download orography file
+      get_url:
+        url: "https://zenodo.org/record/4607436/files/orog.nc"
+        dest: "{{ansible_env.HOME}}/.dewetra2wrf"
+        validate_certs: no
+        mode: 0755

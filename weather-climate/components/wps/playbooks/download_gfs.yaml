@@ -74,14 +74,10 @@
       uri:
         url: "https://rda.ucar.edu/cgi-bin/login"
         method: POST
-        return_content: yes
         validate_certs: no
-        body:
-          email: "{{ EMAIL_ADDRESS }}"
-          passwd: "{{ PASSWORD }}"
-          action: "login"
-        body_format: form-urlencoded
-        status_code: [200, 302]
+        follow_redirects: yes
+        body: "email={{ EMAIL_ADDRESS }}&passwd={{ PASSWORD }}&action=login"
+        status_code: 200
       register: login
     - name: Download GFS data files for the specifed start and end date
       get_url:
@@ -89,5 +85,5 @@
         dest: "{{ OUTPUT_DIRECTORY }}//{{ gfsdate[:4] }}/{{ gfsdate[4:6] }}/{{ gfsdate[6:8] }}/{{gfsStartHour}}00"
         mode: 0755
         headers:
-          Cookie: "{{ login.set_cookie }}"
+          Cookie: "{{ login.cookies_string }}"
       loop: "{{ range(0|int, nbHours|int + 1, 3)|list }}"
