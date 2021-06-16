@@ -459,7 +459,7 @@ topology_template:
     METResultsToDDIJob:
       type: org.lexis.common.ddi.nodes.CloudToDDIJob
       properties:
-        metadata: {concat: ["{\"creator\": [\"ADMS workflow\"], \"contributor\": [\"ADMS workflow\"], \"publisher\": [\"ADMS workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"", get_input: postprocessing_title_dataset_MET_results, " - ", get_input: preprocessing_start_date, "\"}"]}
+        metadata: {concat: ["{\"creator\": [\"ADMS workflow\"], \"contributor\": [\"ADMS workflow\"], \"publisher\": [\"ADMS workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"", get_input: postprocessing_title_dataset_MET_results, "\"}"]}
         token: { get_input: token }
         ddi_path: { get_input: postprocessing_ddi_path }
         source_subdirectory: "met"
@@ -570,8 +570,8 @@ topology_template:
       type: org.lexis.wp7.nodes.ADMS
       properties:
         adms_type: { get_input: postprocessing_adms_type }
-        dataset_title_adms_result: { concat: [get_input: postprocessing_title_dataset_adms_result, " - ", get_input: preprocessing_start_date ] }
-        dataset_title_ncl_result: { concat: [get_input: postprocessing_title_dataset_MET_results, " - ", get_input: preprocessing_start_date ] }
+        dataset_title_adms_result: { get_input: postprocessing_title_dataset_adms_result }
+        dataset_title_ncl_result: { get_input: postprocessing_title_dataset_MET_results }
         dataset_id_adms_urban_app: { get_input: postprocessing_dataset_id_adms_urban_app }
         dataset_id_adms_urban_static_data: { get_input: postprocessing_dataset_id_adms_urban_static_data }
         dataset_id_adms_industrial_app: { get_input: postprocessing_dataset_id_adms_industrial_app }
