@@ -177,7 +177,7 @@ echo "Looking for dataset by name: {{METEO_DATASET_NAME}}"
 $meteo_dataset_id = FindDatasetByName "{{METEO_DATASET_NAME}}" "{{ACCESS_TOKEN}}" "{{DATASET_URL}}"
 echo "Pulling meteo data set: $meteo_dataset_id"
 $meteo_data_path = PullDatasetDDI $meteo_dataset_id "{{ACCESS_TOKEN}}" "{{DATASET_URL}}" "{{DDI_PROJECT_SHORT_NAME}}"
-$met_files = Get-ChildItem -Filter "*.met" $meteo_data_path\met
+$met_files = Get-ChildItem -Filter "*.met" $meteo_data_path
 
 if ($met_files.Length -eq 0)
 {
