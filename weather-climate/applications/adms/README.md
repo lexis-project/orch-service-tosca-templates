@@ -1,6 +1,6 @@
-# ADMS Templates - Agricultural impact models
+# ADMS Templates - Air quality
 
-Templates of LEXIS workflow for Agricutural impacts.
+Templates of LEXIS workflow for Air quality.
 The [ADMS template](adms_template.yaml) provides a full worklow, while the [ADMS post-processing template](adms_postprocessing_template.yaml)
 provides a workflow using alreay computed WRF results available as a dataset in LEXIS DDI (Distributed Data Ifrastructure).
 

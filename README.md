@@ -7,7 +7,7 @@ Repository of TOSCA components and Application Templates.
   * Weather and climate:
     * [RISICO](weather-climate/applications/risico/) - Risks of wildlands fires simulations
     * [Continuum](weather-climate/applications/continuum/) - Hydrology simulations
-    * [ADMS](weather-climate/applications/adms/) - Agricultural impact models
+    * [ADMS](weather-climate/applications/adms/) - Air quality
   * Computational Fluid Dynamics:
     * [OpenFOAM](computational-fluid-dynamics/applications/openfoam) workflow
   * Remote visualization:
