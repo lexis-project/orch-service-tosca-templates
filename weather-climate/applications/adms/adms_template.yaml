@@ -36,6 +36,10 @@ topology_template:
       type: string
       description: Download IFS files from this date, format YYYYMMDDHH
       required: true
+    computation_dataset_radar_observations_data_path:
+      type: string
+      description: Dataset containing radar observations data over France for the selected date
+      required: true
     postprocessing_adms_type:
       type: string
       description: type of ADMS simulation executed, urban or industrial
@@ -102,11 +106,6 @@ topology_template:
         List of volumes to mount within the post-processing container downloading observation data.
         Use docker CLI-style syntax: /host:/container[:mode]
       default: ["/wps_data/observations:/output"]
-      required: false
-    computation_dataset_radar_observations_data_path:
-      type: string
-      description: Dataset containing radar observations data over France
-      default: project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/5ec52c36-c9e5-11eb-9aa8-0050568fc9b5/observations.tar.gz
       required: false
     computation_decrypt_dataset_radar_observations_data:
       type: boolean
@@ -487,7 +486,7 @@ topology_template:
       type: org.lexis.common.datatransfer.nodes.CopyFromJobTask
       properties:
         task_name: "WRF Generic"
-        source_files: [ "*/wrf*/auxhist*" ]
+        source_files: [ "*/wrf00/auxhist*" ]
         destination_directory: "/mnt/cloud_staging_area/adms/adms_data/DATA-WRF/"
         as_user: root
       requirements:
@@ -505,7 +504,6 @@ topology_template:
       type: org.lexis.common.datatransfer.nodes.CreateStagingAreaDirectory
       properties:
         directory: "adms_wrf_results"
-        create_timestamp_destination_subdirectory: true
       requirements:
         - mountedCloudStagingArea:
             type_requirement: mounted_staging_area
@@ -691,7 +689,6 @@ topology_template:
       type: org.lexis.common.datatransfer.nodes.CreateStagingAreaDirectory
       properties:
         directory: "adms_results"
-        create_timestamp_destination_subdirectory: true
       requirements:
         - mountedCloudStagingArea:
             type_requirement: mounted_staging_area
@@ -781,7 +778,7 @@ topology_template:
     GetPostprocessDatasetInfo:
       type: org.lexis.common.ddi.nodes.GetComputeInstanceDatasetInfo
       properties:
-        dataset_path: "/mnt/cloud_staging_area/adms/adms_data/DATA-WRF/met"
+        dataset_path: "/mnt/cloud_staging_area/adms/adms_results/met"
       requirements:
         - host:
             type_requirement: host
@@ -1433,7 +1430,6 @@ topology_template:
             - set_state: executed
           on_success:
             - DDIToCloudDockerImageJob_create
-            - DDIToCloudNCLScriptJob_create
         DDIToCloudDockerImageJob_create:
           target: DDIToCloudDockerImageJob
           operation_host: ORCHESTRATOR
@@ -1441,6 +1437,7 @@ topology_template:
             - call_operation: Standard.create
           on_success:
             - DDIToCloudDockerImageJob_submit
+            - DDIToCloudNCLScriptJob_create
         DDIToCloudDockerImageJob_submit:
           target: DDIToCloudDockerImageJob
           operation_host: ORCHESTRATOR

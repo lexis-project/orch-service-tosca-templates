@@ -503,7 +503,7 @@ topology_template:
     GetPostprocessDatasetInfo:
       type: org.lexis.common.ddi.nodes.GetComputeInstanceDatasetInfo
       properties:
-        dataset_path: "/mnt/cloud_staging_area/adms/adms_data/DATA-WRF/met"
+        dataset_path: "/mnt/cloud_staging_area/wrf_results/adms_result/met"
       requirements:
         - host:
             type_requirement: host
