@@ -628,6 +628,53 @@ node_types:
             user_name: {get_attribute: [REQ_TARGET, files_provider, user]}
             destination_directory: {get_property: [SELF, destination_directory]}
           implementation: playbooks/move_files_from_provider.yaml
+  org.lexis.common.datatransfer.nodes.ZIPUploadSFTP:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: Zip a directory and transfer the zip to a SFTP server
+    properties:
+      path:
+        type: string
+        description: Path to zip
+        required: true
+      zip_name:
+        type: string
+        description: Name of zip (will be suffixed by .zip)
+        required: true
+      sftp_server_directory:
+        type: string
+        description: Directory where to copy the zip on the SFTP server
+        required: true
+      sftp_server_ip:
+        type: string
+        description: SFTP server IP address (if not defined, no transfer will be done)
+        required: false
+      sftp_port:
+        type: integer
+        description: Path to zip
+        default: 22
+        required: false
+      user:
+        type: string
+        description: User used to connect to SFTP server
+        default: ""
+        required: false
+      password:
+        type: string
+        description: Password used to connect to SFTP server
+        default: ""
+        required: false
+    interfaces:
+      Standard:
+        start:
+          inputs:
+            PATH: {get_property: [SELF, path]}
+            ZIP_NAME: {get_property: [SELF, zip_name]}
+            SFTP_SERVER_IP: {get_property: [SELF, sftp_server_ip]}
+            SFTP_SERVER_PORT: {get_property: [SELF, sftp_port]}
+            SFTP_SERVER_DIRECTORY: {get_property: [SELF, sftp_server_directory]}
+            USER: {get_property: [SELF, user]}
+            PASSWORD: {get_property: [SELF, password]}
+          implementation: playbooks/zip_upload_sftp.yaml
 capability_types:
   org.lexis.common.datatransfer.capabilities.FileProvider:
     derived_from: tosca.capabilities.Root
