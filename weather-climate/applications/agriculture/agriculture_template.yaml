@@ -463,7 +463,7 @@ topology_template:
     CloudToDDIWRFJob:
       type: org.lexis.common.ddi.nodes.CloudToDDIJob
       properties:
-        metadata: {concat: ["{\"creator\": [\"Agriculture workflow\"], \"contributor\": [\"Agriculture workflow\"], \"publisher\": [\"Agriculture workflow\"], \"resourceType\": \"WRF result\", \"title\": \"Agriculture workflow WRF result - ", get_input: preprocessing_start_date, "\"}"]}
+        metadata: {concat: ["{\"creator\": [\"Agriculture workflow\"], \"contributor\": [\"Agriculture workflow\"], \"publisher\": [\"Agriculture workflow\"], \"resourceType\": \"Dataset\", \"title\": \"Agriculture workflow WRF result - ", get_input: preprocessing_start_date, "\"}"]}
         token: { get_input: token }
         ddi_path: { get_input: postprocessing_ddi_path }
         encrypt: {get_input: postprocessing_encrypt_wrf_dataset_result}
@@ -956,26 +956,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - WRF_disable_file_transfer
             - CloudToDDIWRFJob_create
-        WRF_disable_file_transfer:
-          target: WRF
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: custom.disable_file_transfer
-          on_success:
-            - WRF_delete
-        WRF_delete:
-          target: WRF
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.delete
-          on_success:
-            - WRF_deleted
-        WRF_deleted:
-          target: WRF
-          activities:
-            - set_state: deleted
         CloudToDDIWRFJob_create:
           target: CloudToDDIWRFJob
           operation_host: ORCHESTRATOR
@@ -1007,6 +988,18 @@ topology_template:
           target: CloudToDDIWRFJob
           activities:
             - set_state: executed
+          on_success:
+            - ZIPUploadSFTP_create
+        ZIPUploadSFTP_create:
+          target: ZIPUploadSFTP
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ZIPUploadSFTP_created
+        ZIPUploadSFTP_created:
+          target: ZIPUploadSFTP
+          activities:
+            - set_state: created
           on_success:
             - ZIPUploadSFTP_start
         ZIPUploadSFTP_start:
@@ -1076,6 +1069,26 @@ topology_template:
           target: DeleteCloudGEOGDataJob
           activities:
             - set_state: executed
+          on_success:
+            - WRF_disable_file_transfer
+        WRF_disable_file_transfer:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - WRF_delete
+        WRF_delete:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_deleted
+        WRF_deleted:
+          target: WRF
+          activities:
+            - set_state: deleted
           on_success:
             - Network_uninstall
         Network_uninstall:
@@ -1395,6 +1408,18 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - ZIPUploadSFTP_create
+        ZIPUploadSFTP_create:
+          target: ZIPUploadSFTP
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ZIPUploadSFTP_created
+        ZIPUploadSFTP_created:
+          target: ZIPUploadSFTP
+          activities:
+            - set_state: created
+          on_success:
             - ZIPUploadSFTP_start
         ZIPUploadSFTP_start:
           target: ZIPUploadSFTP
@@ -1477,6 +1502,18 @@ topology_template:
             - delegate: uninstall
     testSFTP:
       steps:
+        ZIPUploadSFTP_create:
+          target: ZIPUploadSFTP
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ZIPUploadSFTP_created
+        ZIPUploadSFTP_created:
+          target: ZIPUploadSFTP
+          activities:
+            - set_state: created
+          on_success:
+            - ZIPUploadSFTP_start
         ZIPUploadSFTP_start:
           target: ZIPUploadSFTP
           activities:
