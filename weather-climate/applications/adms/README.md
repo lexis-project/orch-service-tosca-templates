@@ -19,9 +19,9 @@ The Run workflow for the ADMS template is executing the following steps:
 * once the ECMWF data is downloaded, docker started, and the geographica input data filesystem mounted, the [WPS IFS docker container](https://github.com/meteocima/wps-da.ifs) provided by CIMA is executed
 * once the preprocessing is done, the size of results is computed, and the 
 Dynamic Allocation Module (DAM) is asked to select the best HPC infrastructure where to create a WRF computation job
-* A WRF HEAppE job is created on the selected HPC infrastructure
+* a WRF HEAppE job is created on the selected HPC infrastructure
 * pre-processing results are transferred to this WRF job
-* A DDI dataset containing weather radar reflectivity over France is transferred to this WRF job too
+* a DDI dataset containing weather radar reflectivity over France is transferred to this WRF job too
 * the job is then submitted, and the orchestrator monitors its execution until it ends
 * once the job is done, WRF results are compressed and stored in DDI
 * WRF results are also transferred to the compute instance for post-processing
@@ -32,10 +32,11 @@ Dynamic Allocation Module (DAM) is asked to select the best HPC infrastructure w
 * These MET files are then transferre to DDI
 * finally for the final step of the post-processing, the Dynamic Allocation Module (DAM)
 is asked to select the best Cloud infrastructure where to create a Windows compute instance
-* A windows compute instance is created the selected location
+* a windows compute instance is created the selected location
 * The orchestrator executes then a powershell script on this Windows instance to generate ADMS results from MET results
 and store these ADMS results in DDI
-* If a SFTP server was specified by the user, these results will also be uploaded to the SFTP server. 
+* if a SFTP server was specified by the user, these results will also be uploaded to the SFTP server
+* finally, the cloud staging area is cleaned and the cloud compute instances are released
 
 ### ADMS template input properties
 
@@ -43,6 +44,13 @@ The template expects the following input properties (mandatory inputs in **bold*
 *  **token**: OpenID Connect access token
 * **project_id**: LEXIS project identifier
 * **preprocessing_start_date**: Download IFS files from this date, format YYYYMMDDHH
+* **computation_dataset_radar_observations_data_path**: Dataset containing radar observations data over France for the selected date. Select one of the following datasets containing compressed weather radar reflectivity over France for the month corresponding to the date you specified:
+  * for 201806: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/fce2102e-cdb3-11eb-b462-0050568fc9b5/observations.tar.gz`
+  * for 201807: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/76ab841a-cdb6-11eb-afa8-0050568fc9b5/observations.tar.gz`
+  * for 201808: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/8e7646f4-cdb9-11eb-b462-0050568fc9b5/observations.tar.gz`
+  * for 201809: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/f7b2d0aa-cdba-11eb-afa8-0050568fc9b5/observations.tar.gz`
+  * for 201810: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/c270eaa6-cdbc-11eb-b462-0050568fc9b5/observations.tar.gz`
+  * for 201811: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/99774a7e-cdc0-11eb-afa8-0050568fc9b5/observations.tar.gz`
 * **postprocessing_adms_type**: type of ADMS simulation executed, `urban` or `industrial`
 * postprocessing_adms_sftp_server_ip: IP address of a SPTP server where to store results (default, no sftp server upload)
 * postprocessing_adms_sftp_port: Port of the SFTP server
@@ -57,8 +65,6 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `false`
 * preprocessing_uncompress_dataset_geographical_data: Should the input dataset be uncompressed
   * default: `true`
-* computation_dataset_radar_observations_data_path: Dataset containing radar observations data over France
-  * default: `proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/5ec52c36-c9e5-11eb-9aa8-0050568fc9b5/observations.tar.gz`
 * computation_decrypt_dataset_radar_observations_data: Should the radar observations data dataset be decrypted
   * default: `false`
 * computation_uncompress_dataset_radar_observations_data: Should the radar observations data dataset be uncompressed
