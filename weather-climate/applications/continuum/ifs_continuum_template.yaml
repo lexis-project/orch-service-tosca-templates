@@ -13,9 +13,9 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
-  - org.lexis.common.ddi-types:0.1.4
+  - org.lexis.common.ddi-types:1.0.0
   - org.lexis.common.heappe-types:1.0.6
-  - org.lexis.common.dynamic-orchestration-types:0.1.0
+  - org.lexis.common.dynamic-orchestration-types:1.0.1
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
@@ -51,7 +51,7 @@ topology_template:
     preprocessing_docker_image_observation_data:
       type: string
       description: Repository path of container downloading observation data
-      default: "laurentg/lexisdn:1.0.0"
+      default: "cimafoundation/lexis-download-docker:v1.1.1"
       required: false
     preprocessing_dataset_geographical_data_path:
       type: string
@@ -279,7 +279,7 @@ topology_template:
         cpu_share: 1.0
         shm_size: "64 GB"
         volumes: {get_input: preprocessing_observation_data_volumes}
-        docker_env_vars:  {concat: ["{\"START_DATE\": \"", get_input: preprocessing_start_date, "\", \"DOWNLOAD_TYPE\": \"WRFDAFR\", \"WEBDROPS_USER\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=user"], "\", \"WEBDROPS_PWD\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=password"], "\"}"]}
+        docker_env_vars:  {concat: ["{\"START_DATE\": \"", get_input: preprocessing_start_date, "\", \"DOWNLOAD_TYPE\": \"CONTINUUM\", \"WEBDROPS_USER\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=user"], "\", \"WEBDROPS_PWD\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=password"], "\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
@@ -498,7 +498,7 @@ topology_template:
       type: org.lexis.common.datatransfer.nodes.CopyFromJobTask
       properties:
         task_name: "WRF Generic"
-        source_files: [ "*/wrf*/auxhist*" ]
+        source_files: [ "*/wrf00/auxhist*" ]
         destination_directory:  "/continuum/datasets_hyde/dynamic_data/"
         as_user: root
       requirements:
@@ -546,7 +546,7 @@ topology_template:
     CloudToDDIWRFJob:
       type: org.lexis.common.ddi.nodes.CloudToDDIJob
       properties:
-        metadata: {concat: ["{\"creator\": [\"Continuum workflow\"], \"contributor\": [\"Continuum workflow\"], \"publisher\": [\"Continuum workflow\"], \"resourceType\": \"WRF result\", \"title\": \"Continuum Workflow WRF result - ", get_input: postprocessing_run_date, "\"}"]}
+        metadata: {concat: ["{\"creator\": [\"Continuum workflow\"], \"contributor\": [\"Continuum workflow\"], \"publisher\": [\"Continuum workflow\"], \"resourceType\": \"Dataset\", \"title\": \"Continuum Workflow WRF result - ", get_input: postprocessing_run_date, "\"}"]}
         token: { get_input: token }
         ddi_path: { get_input: postprocessing_ddi_path }
       requirements:
@@ -1554,7 +1554,7 @@ topology_template:
     CloudToDDIJob:
       type: org.lexis.common.ddi.nodes.CloudToDDIJob
       properties:
-        metadata: {concat: ["{\"creator\": [\"Continuum workflow\"], \"contributor\": [\"Continuum workflow\"], \"publisher\": [\"Continuum workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"Continuum Workflow result - ", get_input: postprocessing_run_date, "\"}"]}
+        metadata: {concat: ["{\"creator\": [\"Continuum workflow\"], \"contributor\": [\"Continuum workflow\"], \"publisher\": [\"Continuum workflow\"], \"resourceType\": \"Dataset\", \"title\": \"Continuum Workflow result - ", get_input: postprocessing_run_date, "\"}"]}
         token: { get_input: token }
         ddi_path: { get_input: postprocessing_ddi_path }
       requirements:

@@ -13,9 +13,9 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
-  - org.lexis.common.ddi-types:0.1.4
+  - org.lexis.common.ddi-types:1.0.0
   - org.lexis.common.heappe-types:1.0.6
-  - org.lexis.common.dynamic-orchestration-types:0.1.0
+  - org.lexis.common.dynamic-orchestration-types:1.0.1
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
@@ -67,7 +67,7 @@ topology_template:
     preprocessing_docker_image_observation_data:
       type: string
       description: Repository path of container downloading observation data
-      default: "laurentg/lexisdn:1.0.0"
+      default: "cimafoundation/lexis-download-docker:v1.1.1"
       required: false
     preprocessing_dataset_geographical_data_path:
       type: string
@@ -310,8 +310,7 @@ topology_template:
         cpu_share: 1.0
         shm_size: "64 GB"
         volumes: {get_input: preprocessing_observation_data_volumes}
-        # TODO: update DOWNLOAD_TYPE to LIMAGRAIN
-        docker_env_vars:  {concat: ["{\"START_DATE\": \"", get_input: preprocessing_start_date, "\", \"DOWNLOAD_TYPE\": \"WRFDAFR\", \"WEBDROPS_USER\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=user"], "\", \"WEBDROPS_PWD\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=password"], "\"}"]}
+        docker_env_vars:  {concat: ["{\"START_DATE\": \"", get_input: preprocessing_start_date, "\", \"DOWNLOAD_TYPE\": \"LIMAGRAIN\", \"WEBDROPS_USER\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=user"], "\", \"WEBDROPS_PWD\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=password"], "\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host

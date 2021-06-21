@@ -12,8 +12,8 @@ imports:
   - yorc-openstack-types:3.1.0
   - tosca-normative-types:1.0.0-ALIEN20
   - alien-base-types:3.0.0
-  - org.lexis.common.ddi-types:0.1.4
-  - org.lexis.common.dynamic-orchestration-types:0.1.0
+  - org.lexis.common.ddi-types:1.0.0
+  - org.lexis.common.dynamic-orchestration-types:1.0.1
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
   - org.lexis.common.visualization.xpra:0.1.0
 

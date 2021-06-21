@@ -13,8 +13,8 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
-  - org.lexis.common.ddi-types:0.1.4
-  - org.lexis.common.dynamic-orchestration-types:0.1.0
+  - org.lexis.common.ddi-types:1.0.0
+  - org.lexis.common.dynamic-orchestration-types:1.0.1
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
@@ -41,6 +41,21 @@ topology_template:
       type: string
       description: WRF results dataset path in DDI
       required: true
+    preprocessing_docker_image_observation_data:
+      type: string
+      description: Repository path of container downloading observation data
+      default: "cimafoundation/lexis-download-docker:v1.1.1"
+      required: false
+    preprocessing_decrypt_dataset_wrf_results:
+      type: boolean
+      description: Should the input dataset be decrypted
+      default: false
+      required: false
+    preprocessing_uncompress_dataset_wrf_results:
+      type: boolean
+      description: Should the input dataset be uncompressed
+      default: true
+      required: false
     postprocessing_dataset_continuum_static_data_path:
       type: string
       description: Continuum static data dataset path in DDI
@@ -58,6 +73,16 @@ topology_template:
       type: string
       description: "Path where to transfer the post-processing results in DDI"
       default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c"
+    postprocessing_encrypt_dataset_result:
+      type: boolean
+      description: Encrypt the result dataset
+      default: false
+      required: false
+    postprocessing_compress_dataset_result:
+      type: boolean
+      description: Compress the result dataset
+      default: true
+      required: false
   node_templates:
     # Job gathering info on the input dataset:
     # - on which locations it is available
@@ -126,6 +151,8 @@ topology_template:
       type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
         token: { get_input: token }
+        decrypt: {get_input: preprocessing_decrypt_dataset_wrf_results}
+        uncompress: {get_input: preprocessing_uncompress_dataset_wrf_results}
         ddi_dataset_path: { get_input: postprocessing_dataset_wrf_results_path }
         cloud_staging_area_directory_path: "continuum_postprocessing_wrf"
         timestamp_cloud_staging_area_directory: true
@@ -191,6 +218,8 @@ topology_template:
       properties:
         token: { get_input: token }
         ddi_dataset_path: { get_input: postprocessing_dataset_continuum_static_data_path }
+        decrypt: false
+        uncompress: false
         cloud_staging_area_directory_path: "continuum_postprocessing_hyde"
         timestamp_cloud_staging_area_directory: true
       requirements:
@@ -380,13 +409,13 @@ topology_template:
     MoveObservationContinuumData:
       type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
-        source_file:  "/continuum/downloads/*/*/*"
+        source_file:  "/continuum/downloads/*/*"
         destination: "/continuum/datasets_hyde/dynamic_data"
         as_user: "root"
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
-            node: IFSContinuumVM
+            node: ContinuumVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     Continuum_Hyde_marche:
@@ -1281,8 +1310,10 @@ topology_template:
     CloudToDDIJob:
       type: org.lexis.common.ddi.nodes.CloudToDDIJob
       properties:
-        metadata: {concat: ["{\"creator\": [\"Continuum Postprocess workflow\"], \"contributor\": [\"Continuum Postprocess workflow\"], \"publisher\": [\"Continuum Postprocess workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"Continuum Postprocess Workflow result - ", get_input: postprocessing_run_date, "\"}"]}
+        metadata: {concat: ["{\"creator\": [\"Continuum Postprocess workflow\"], \"contributor\": [\"Continuum Postprocess workflow\"], \"publisher\": [\"Continuum Postprocess workflow\"], \"resourceType\": \"Dataset\", \"title\": \"Continuum Postprocess Workflow result - ", get_input: postprocessing_run_date, "\"}"]}
         token: { get_input: token }
+        encrypt: {get_input: postprocessing_encrypt_dataset_result}
+        compress: {get_input: postprocessing_compress_dataset_result}
         ddi_path: { get_input: postprocessing_ddi_path }
       requirements:
         - cloud_area_directory_provider:
@@ -1327,6 +1358,34 @@ topology_template:
             - set_state: initial
     uninstall:
       steps:
+        DeleteCloudWRFDataJob_create:
+          target: DeleteCloudWRFDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudWRFDataJob_submit
+        DeleteCloudWRFDataJob_submit:
+          target: DeleteCloudWRFDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudContinuumStaticDataJob_create
+        DeleteCloudContinuumStaticDataJob_create:
+          target: DeleteCloudContinuumStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudContinuumStaticDataJob_submit
+        DeleteCloudContinuumStaticDataJob_submit:
+          target: DeleteCloudContinuumStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - Compute_uninstall
         Compute_uninstall:
           target: ContinuumVM
           activities:
@@ -1430,8 +1489,6 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - DDIToCloudWRFJob_create
-            - DDIToCloudContinuumStaticDataJob_create
             - ObservationsContinuum_create
         GetDDIAccess_start:
           target: GetDDIAccess
@@ -1444,8 +1501,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - DDIToCloudWRFJob_create
-            - DDIToCloudContinuumStaticDataJob_create
+            - MountWRFDataset_create
         DDIToCloudWRFJob_create:
           target: DDIToCloudWRFJob
           operation_host: ORCHESTRATOR
@@ -1485,9 +1541,6 @@ topology_template:
             - call_operation: Standard.create
           on_success:
             - MountWRFDataset_created
-            # Added to be started after MountWRFDataset_create and avoid potential
-            # yum issues
-            - MountContinuumDataset_create
         MountWRFDataset_created:
           target: MountWRFDataset
           activities:
@@ -1511,6 +1564,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
+            - MountContinuumDataset_create
             - FindWRFiles_start
         FindWRFiles_start:
           target: FindWRFiles
@@ -1652,6 +1706,7 @@ topology_template:
           activities:
             - set_state: deleted
           on_success:
+            - MountWRFDataset_create
             - MoveObservationContinuumData_start
         MoveObservationContinuumData_start:
           target: MoveObservationContinuumData
@@ -2319,7 +2374,6 @@ topology_template:
             - set_state: executed
           on_success:
             - MountWRFDataset_refresh_token_for_stop
-            - MountContinuumDataset_refresh_token_for_stop
         MountWRFDataset_refresh_token_for_stop:
           target: MountWRFDataset
           activities:
@@ -2376,7 +2430,7 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - Compute_uninstall
+            - MountContinuumDataset_refresh_token_for_stop
         MountContinuumDataset_refresh_token_for_stop:
           target: MountContinuumDataset
           activities:
@@ -2436,6 +2490,12 @@ topology_template:
             - Compute_uninstall
         Compute_uninstall:
           target: ContinuumVM
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: PublicNet
           activities:
             - delegate: uninstall
     cleanupRun:

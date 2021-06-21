@@ -13,8 +13,8 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - alien-base-types:3.0.0
   - org.lexis.common.heappe-types:1.0.6
-  - org.lexis.common.ddi-types:0.1.4
-  - org.lexis.common.dynamic-orchestration-types:0.1.0
+  - org.lexis.common.ddi-types:1.0.0
+  - org.lexis.common.dynamic-orchestration-types:1.0.1
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
   - org.lexis.common.visualization.xpra:0.1.0
 
@@ -182,7 +182,7 @@ topology_template:
         token: { get_input: token }
         encrypt: {get_input: computation_encrypt_dataset_result}
         compress: {get_input: computation_compress_dataset_result}
-        metadata: {concat: ["{\"creator\": [\"OpenFOAM workflow\"], \"contributor\": [\"OpenFOAM workflow\"], \"publisher\": [\"OpenFOAM workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"", get_input: computation_title_dataset_result, "\"}"]}
+        metadata: {concat: ["{\"creator\": [\"OpenFOAM workflow\"], \"contributor\": [\"OpenFOAM workflow\"], \"publisher\": [\"OpenFOAM workflow\"], \"resourceType\": \"Dataset\", \"title\": \"", get_input: computation_title_dataset_result, "\"}"]}
         ddi_path: { get_input: computation_ddi_project_path }
         task_name: "OpenFoamParallel"
       requirements:

@@ -12,8 +12,8 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - alien-base-types:3.0.0
   - org.lexis.common.heappe-types:1.0.6
-  - org.lexis.common.ddi-types:0.1.4
-  - org.lexis.common.dynamic-orchestration-types:0.1.0
+  - org.lexis.common.ddi-types:1.0.0
+  - org.lexis.common.dynamic-orchestration-types:1.0.1
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
 
 topology_template:
@@ -75,7 +75,7 @@ topology_template:
           - "LEXIS HPC Computation worflow"
         publisher:
           - "LEXIS HPC Computation worflow"
-        resourceType: "Workflow result"
+        resourceType: "Dataset"
         title: "LEXIS HPC Computation workflow results"
       required: false
     computation_encrypt_dataset_result:
