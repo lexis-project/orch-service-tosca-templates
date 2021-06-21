@@ -44,13 +44,13 @@ The template expects the following input properties (mandatory inputs in **bold*
 * computation_metadata_dataset_result: Metadata for the computation results dataset to create in DDI
   * default:
     * creator:
-      * `LEXIS Cloud Computation worflow`
+      * `LEXIS Cloud Computation Container worflow`
     * contributor:
-      * `LEXIS Cloud Computation worflow`
+      * `LEXIS Cloud Computation Container worflow`
     * publisher:
-      * `LEXIS Cloud Computation worflow`
-    * resourceType: `Workflow result`
-    * title: `LEXIS Cloud Computation workflow results`
+      * `LEXIS Cloud Computation Container worflow`
+    * resourceType: `Dataset`
+    * title: `LEXIS Cloud Computation Container workflow results`
 * computation_encrypt_dataset_result: Encrypt the result dataset
   * default: `false`
 * computation_compress_dataset_result: Compress the result dataset

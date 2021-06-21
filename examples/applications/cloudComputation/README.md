@@ -58,5 +58,5 @@ The template expects the following input properties (mandatory inputs in **bold*
 
 The following output attribute is provided:
 * attribute `destination_path` of component `CloudToDDIJob`: the path to the result dataset in DDI
-* attribute `stdout` of component `ExecScript`: Script stdout
-* attribute `stderr` of component `ExecScript`: Script stderr
+* attribute `stdout` of component `ExecScript`: script stdout
+* attribute `stderr` of component `ExecScript`: script stderr

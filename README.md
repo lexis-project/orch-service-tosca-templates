@@ -18,7 +18,7 @@ Repository of TOSCA components and Application Templates.
     * a pre-processing container executed on a Cloud Compute Instance
     * a computation performed on HPC using [HEAppE](https://heappe.eu)
     * data transfers using [LEXIS Data Transfer Infrastructure](https://lexis-project.eu/web/lexis-platform/data-management-layer/) APIs
-  * [Cloud Computation runnin a public Docker container](examples/applications/cloudComputationPublicContainer/) performing:
+  * [Cloud Computation running a public Docker container](examples/applications/cloudComputationPublicContainer/) performing:
     * the transfer of a input dataset from DDI
     * a computation done by a Docker Container using these inputs
     * the transfer of result files produced by this container to DDI

@@ -16,8 +16,8 @@ imports:
   - docker-types:3.0.0
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
-  - org.lexis.common.ddi-types:0.1.4
-  - org.lexis.common.dynamic-orchestration-types:0.1.0
+  - org.lexis.common.ddi-types:1.0.0
+  - org.lexis.common.dynamic-orchestration-types:1.0.1
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
 
 topology_template:
@@ -101,13 +101,13 @@ topology_template:
       description: Metadata for the computation results dataset to create in DDI
       default:
         creator:
-          - "LEXIS Cloud Computation worflow"
+          - "LEXIS Cloud Computation Container worflow"
         contributor:
-          - "LEXIS Cloud Computation worflow"
+          - "LEXIS Cloud Computation Container worflow"
         publisher:
-          - "LEXIS Cloud Computation worflow"
-        resourceType: "Workflow result"
-        title: "LEXIS Cloud Computation workflow results"
+          - "LEXIS Cloud Computation Container worflow"
+        resourceType: "Dataset"
+        title: "LEXIS Cloud Computation Conatiner workflow results"
       required: false
     computation_encrypt_dataset_result:
       type: boolean
@@ -175,7 +175,7 @@ topology_template:
         decrypt: {get_input: computation_decrypt_input_dataset}
         uncompress: {get_input: computation_uncompress_input_dataset}
         ddi_dataset_path: { get_input: computation_dataset_input_path }
-        cloud_staging_area_directory_path: "lexis_cloud_computation"
+        cloud_staging_area_directory_path: "lexis_cloud_computation_container"
         timestamp_cloud_staging_area_directory: true
       requirements:
         - sameSite:
@@ -289,7 +289,7 @@ topology_template:
     CreateStagingAreaResultDir:
       type: org.lexis.common.datatransfer.nodes.CreateStagingAreaDirectory
       properties:
-        directory: "lexis_cloud_computation_results"
+        directory: "lexis_cloud_computation_container_results"
       requirements:
         - mountedCloudStagingArea:
             type_requirement: mounted_staging_area

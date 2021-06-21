@@ -37,7 +37,7 @@ The template expects the following input properties (mandatory inputs in **bold*
       * `LEXIS HPC Computation worflow`
     * publisher:
       * `LEXIS HPC Computation worflow`
-    * resourceType: `Workflow result`
+    * resourceType: `Dataset`
     * title: `LEXIS HPC Computation workflow results`
 * computation_encrypt_dataset_result: Encrypt the result dataset
   * default: `false`

@@ -10,7 +10,7 @@ description: ADMS types
 imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - yorc-types:1.1.0
-  - org.lexis.common.ddi-types:0.1.4
+  - org.lexis.common.ddi-types:1.0.0
 node_types:
   org.lexis.wp7.nodes.ADMS:
     derived_from: tosca.nodes.SoftwareComponent
