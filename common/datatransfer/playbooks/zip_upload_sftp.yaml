@@ -1,0 +1,30 @@
+- name: Create a zip file and upload it to a SFTP server
+  hosts: all
+  strategy: free
+  become: true
+  become_method: sudo
+  tasks:
+    - meta: end_play
+      when: SFTP_SERVER_IP == ""
+    - name: Create zip
+      community.general.archive:
+        path: "{{ PATH }}"
+        format: zip
+        dest: "{{ ZIP_NAME }}.zip"
+    - name: Set destination
+      set_fact:
+        destination: "{{ USER }}@{{ SFTP_SERVER_IP }}:{{ SFTP_SERVER_DIRECTORY }}"
+      when: USER != ""
+    - name: Set destination with default user
+      set_fact:
+        destination: "{{ SFTP_SERVER_IP }}:{{ SFTP_SERVER_DIRECTORY }}"
+      when: USER == ""
+    - name: Upload zip file to SFTP server
+      expect:
+        command: "sftp -P {{ SFTP_SERVER_PORT }} {{ destination }}"
+        timeout: "{{ SFTP_TIMEOUT }}"
+        responses:
+          (.*)assword: "{{ PASSWORD }}"
+          sftp>:
+            - "put {{ ZIP_NAME }}.zip"
+            - "quit"

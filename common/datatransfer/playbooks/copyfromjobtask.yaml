@@ -52,6 +52,13 @@
       become_user: "{{ file_owner }}"
       become: true
       become_method: sudo
+    - name: "Update permissions"
+      file:
+        path: "{{ destination_directory }}"
+        recurse: yes
+        mode: 0777
+      become: true
+      become_method: sudo
     - name: Remove private key
       file:
         path: "{{ privatekeyfile.path }}"

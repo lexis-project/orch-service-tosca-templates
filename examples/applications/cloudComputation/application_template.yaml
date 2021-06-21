@@ -14,8 +14,8 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - yorc-openstack-types:3.1.0
   - docker-types:3.0.0
-  - org.lexis.common.ddi-types:0.1.4
-  - org.lexis.common.dynamic-orchestration-types:0.1.0
+  - org.lexis.common.ddi-types:1.0.0
+  - org.lexis.common.dynamic-orchestration-types:1.0.1
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
   - org.lexis.common.examples.exec:0.1.0
 
@@ -45,10 +45,40 @@ topology_template:
       type: string
       description: Dataset containing input data
       required: true
+    computation_script_content:
+      type: string
+      description: Content of the script to execute
+      required: true
+    computation_output_directory:
+      type: string
+      description: Path of the directory of results on the Compute Instance to store to DDI
+      required: true
     computation_ddi_project_path:
       type: string
       description: "Path where to transfer the computation results in DDI"
       required: true
+    computation_environment_variables:
+      type: map
+      description: Environment variables for the script
+      entry_schema:
+        type: string
+      default: {}
+      required: false
+    computation_compute_instance_image_name:
+      type: string
+      description: Name of the Openstack image for the Compute Instance to create
+      default: "Ubuntu-18.04-LTS-bionic"
+      required: false
+    computation_compute_instance_user:
+      type: string
+      description: User used to connect to the compute instance
+      default: "ubuntu"
+      required: false
+    computation_mount_point_input_dataset:
+      type: string
+      description: Directory on the compute instance where to mount the dataset
+      default: "/mnt/lexis_input"
+      required: false
     computation_decrypt_input_dataset:
       type: boolean
       description: Should the input dataset be decrypted
@@ -58,21 +88,6 @@ topology_template:
       type: boolean
       description: Should the input dataset be uncompressed
       default: false
-      required: false
-    computation_mount_point_input_dataset:
-      type: string
-      description: Directory on the compute instance where to mount the dataset
-      default: "/mnt/lexis_input"
-      required: false
-    computation_openstack_image:
-      type: string
-      description: OpenStack glance image name to use
-      default: ""
-      required: false
-    computation_output_directory:
-      type: string
-      description: Computation output directory
-      default: "/lexis/output"
       required: false
     computation_metadata_dataset_result:
       type: org.lexis.common.ddi.types.Metadata
@@ -84,7 +99,7 @@ topology_template:
           - "LEXIS Cloud Computation worflow"
         publisher:
           - "LEXIS Cloud Computation worflow"
-        resourceType: "Workflow result"
+        resourceType: "Dataset"
         title: "LEXIS Cloud Computation workflow results"
       required: false
     computation_encrypt_dataset_result:
@@ -170,7 +185,7 @@ topology_template:
     CloudComputeInstance:
       type: yorc.nodes.openstack.Compute
       properties:
-        image: {get_input: computation_openstack_image}
+        imageName: {get_input: computation_compute_instance_image_name}
         boot_volume:
           source: image
       requirements:
@@ -186,22 +201,30 @@ topology_template:
         os:
           properties:
             type: linux
+            distribution: custom
         endpoint:
           properties:
             credentials: 
-              user: ubuntu
+              user: {get_input: computation_compute_instance_user}
               token_type: key
+              keys:
+                0: "/var/yorc/.ssh/yorc.pem"
+            secure: true
+            protocol: tcp
+            network_name: PRIVATE
+            initiator: source
     # TOSCA component executing the script provided in input
     ExecScript:
-      type: org.lexis.common.examples.pi.ComputePI
+      type: org.lexis.common.examples.exec.Script
       metadata:
         task: computation
       properties:
-        decimalsNumber: { get_input: preprocessing_decimalsNumber }
+        script_content: { get_input: computation_script_content }
+        environment_variables: { get_input: computation_environment_variables }
       requirements:
         - hostedOnComputeHost:
             type_requirement: host
-            node: VirtualMachinePI
+            node: CloudComputeInstance
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
 
@@ -322,7 +345,13 @@ topology_template:
     computation_dataset_result_path:
       description: DDI path to computation results
       value: { get_attribute: [ CloudToDDIJob, destination_path ] }
-  
+    computation_script_output:
+      description: Script stdout
+      value: { get_attribute: [ ExecScript, stdout ] }
+    computation_script_error:
+      description: Script stderr
+      value: { get_attribute: [ ExecScript, stderr ] }
+
   #
   # Sequences of operations on components
   #
@@ -507,6 +536,30 @@ topology_template:
           activities:
             - set_state: started
           on_success:
+            - ExecScript_create
+        ExecScript_create:
+          target: ExecScript
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ExecScript_created
+        ExecScript_created:
+          target: ExecScript
+          activities:
+            - set_state: created
+          on_success:
+            - ExecScript_start
+        ExecScript_start:
+          target: ExecScript
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ExecScript_started
+        ExecScript_started:
+          target: ExecScript
+          activities:
+            - set_state: started
+          on_success:
             - CreateStagingAreaResultDir_start
         # Create a directory in cloud staging area and copy computation
         # results there
@@ -656,19 +709,11 @@ topology_template:
           target: Network
           activities:
             - delegate: uninstall
-          on_success:
-            - CleanupCloudStagingAreaJob_create
         CleanupCloudStagingAreaJob_create:
           target: CleanupCloudStagingAreaJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
-          on_success:
-            - CleanupCloudStagingAreaJob_created
-        CleanupCloudStagingAreaJob_created:
-          target: CleanupCloudStagingAreaJob
-          activities:
-            - set_state: created
           on_success:
             - CleanupCloudStagingAreaJob_submit
         CleanupCloudStagingAreaJob_submit:
@@ -676,12 +721,6 @@ topology_template:
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - CleanupCloudStagingAreaJob_submitted
-        CleanupCloudStagingAreaJob_submitted:
-          target: CleanupCloudStagingAreaJob
-          activities:
-            - set_state: submitted
     #
     # Test workflow to only execute a SSH-unmount
     #

@@ -9,6 +9,8 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - yorc-types:1.1.0
 
+description: "Script execution"
+
 node_types:
   org.lexis.common.examples.exec.Script:
     derived_from: tosca.nodes.SoftwareComponent

@@ -653,6 +653,11 @@ node_types:
         description: Path to zip
         default: 22
         required: false
+      sftp_timeout:
+        type: integer
+        description: Transfer timeout in seconds
+        default: 3600
+        required: false
       user:
         type: string
         description: User used to connect to SFTP server
@@ -665,6 +670,8 @@ node_types:
         required: false
     interfaces:
       Standard:
+        create:
+          implementation: playbooks/install_sftp_prerequisites.yaml
         start:
           inputs:
             PATH: {get_property: [SELF, path]}
@@ -672,6 +679,7 @@ node_types:
             SFTP_SERVER_IP: {get_property: [SELF, sftp_server_ip]}
             SFTP_SERVER_PORT: {get_property: [SELF, sftp_port]}
             SFTP_SERVER_DIRECTORY: {get_property: [SELF, sftp_server_directory]}
+            SFTP_TIMEOUT: {get_property: [SELF, sftp_timeout]}
             USER: {get_property: [SELF, user]}
             PASSWORD: {get_property: [SELF, password]}
           implementation: playbooks/zip_upload_sftp.yaml
