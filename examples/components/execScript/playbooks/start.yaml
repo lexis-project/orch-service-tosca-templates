@@ -3,7 +3,7 @@
   strategy: linear
   tasks:
     - name: Download webdrops data
-      command: /tmp/lexis_exec_script.sh
+      shell: /tmp/lexis_exec_script.sh
       environment: "{{ TOSCA_ENV_VARS_INPUT }}"
       register: execRes
     - debug: var=execRes.stdout_lines

@@ -64,6 +64,11 @@ topology_template:
         type: string
       default: {}
       required: false
+    computation_input_directory:
+      type: string
+      description: Local directory on the compute instance where the input dataset is accessible to non-root user
+      default: "/lexis_input"
+      required: false
     computation_compute_instance_image_name:
       type: string
       description: Name of the Openstack image for the Compute Instance to create
@@ -76,7 +81,7 @@ topology_template:
       required: false
     computation_mount_point_input_dataset:
       type: string
-      description: Directory on the compute instance where to mount the dataset
+      description: Directory on the compute instance where to mount the dataset (accessible to root only)
       default: "/mnt/lexis_input"
       required: false
     computation_decrypt_input_dataset:
@@ -268,7 +273,21 @@ topology_template:
     CreateComputationDirs:
       type: org.lexis.common.datatransfer.nodes.CreateDirectories
       properties:
-        directories: {concat: ["[\"", get_input: computation_mount_point_input_dataset, "\",", "\"", get_input: computation_output_directory, "\"]"]}
+        directories: {concat: ["[\"", get_input: computation_mount_point_input_dataset, "\",", "\"", get_input: computation_output_directory, "\",", "\"", get_input: computation_input_directory,"\"]"]}
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: CloudComputeInstance
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+    # Move inputs from the SSHFS mount point accessible to root, to local file system accessible to non-root
+    MoveInputData:
+      type: org.lexis.common.datatransfer.nodes.MoveFile
+      properties:
+        source_file: { concat: [get_input: computation_mount_point_input_dataset, "/*" ] }
+        destination: { get_input: computation_input_directory }
+        as_user: "root"
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -533,6 +552,18 @@ topology_template:
             - MountInputDataset_started
         MountInputDataset_started:
           target: MountInputDataset
+          activities:
+            - set_state: started
+          on_success:
+            - MoveInputData_start
+        MoveInputData_start:
+          target: MoveInputData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveInputData_started
+        MoveInputData_started:
+          target: MoveInputData
           activities:
             - set_state: started
           on_success:

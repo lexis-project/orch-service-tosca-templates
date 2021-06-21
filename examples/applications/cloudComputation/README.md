@@ -8,7 +8,8 @@ The Run workflow is:
 * asking the Dynamic Allocation Module (DAM) to select the best Cloud infrastructure to compute these input data
 * transferring the input dataset from DDI to the selected Cloud Staging Area
 * creating a Cloud Compute instance
-* SSHFS-mounting the staging area on this compute instance
+* SSHFS-mounting the staging area on this compute instance (accessible to root only)
+* Copying the content of this mounted filesystem on the local filesystem accessible as non-root, by default `/lexis_input/`
 * running the user-provided script to perform a computation on these inputs
 * copying computation results to the cloud staging area
 * transferring of these results from the cloud staging area to DDI
@@ -25,6 +26,8 @@ The template expects the following input properties (mandatory inputs in **bold*
 * **computation_ddi_project_path**: Path where to transfer the computation results in DDI
 * computation_environment_variables: Environment variables for the script
     * default: `{}`
+* computation_input_directory: Local directory on the compute instance where the input dataset is accessible to non-root user
+    * default: `/lexis_input`
 * computation_compute_instance_image_name: Name of the Openstack image for the Compute Instance to create
     * default: `Ubuntu-18.04-LTS-bionic`
 * computation_compute_instance_user: User used to connect to the compute instance
@@ -35,7 +38,7 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `false`
 * computation_uncompress_input_dataset: the input dataset be uncompressed
   * default: `false`
-* computation_mount_point_input_dataset: Directory on the compute instance where to mount the dataset
+* computation_mount_point_input_dataset: Directory on the compute instance where to mount the dataset (accessible to root only)
   * default: `/mnt/lexis_input`
 * computation_output_directory: Computation output directory
   * default: `/lexis/output`
