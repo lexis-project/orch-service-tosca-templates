@@ -13,7 +13,7 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
-  - org.lexis.common.ddi-types:1.0.0
+  - org.lexis.common.ddi-types:1.0.1
   - org.lexis.common.dynamic-orchestration-types:1.0.1
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
@@ -87,7 +87,7 @@ topology_template:
       description: Post-processing NCL script path in DDI
       default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/7fc89bf4-1d13-11eb-ae7e-0050568fc9b5"
       required: false
-    postprocessing_ddi_path:
+    postprocessing_ddi_project_path:
       type: string
       description: Path where to transfer the post-processing results in DDI
       default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c"
@@ -461,7 +461,7 @@ topology_template:
       properties:
         metadata: {concat: ["{\"creator\": [\"ADMS workflow\"], \"contributor\": [\"ADMS workflow\"], \"publisher\": [\"ADMS workflow\"], \"resourceType\": \"Dataset\", \"title\": \"", get_input: postprocessing_title_dataset_MET_results, "\"}"]}
         token: { get_input: token }
-        ddi_path: { get_input: postprocessing_ddi_path }
+        ddi_path: { get_input: postprocessing_ddi_project_path }
         source_subdirectory: "met"
       requirements:
         - cloud_area_directory_provider:
@@ -558,24 +558,48 @@ topology_template:
             node: ADMS_WIN_VM
             capability: tosca.capabilities.OperatingSystem
             relationship: org.lexis.common.ddi.relationships.SameSite
-    RefreshTargetTokens:
+    RefreshADMSRunToken:
       type: org.lexis.common.dynamic.orchestration.nodes.RefreshTargetTokens
       requirements:
         - target:
             type_requirement: target
-            node: ADMS
+            node: ADMSRun
             capability: tosca.capabilities.Node
             relationship: tosca.relationships.DependsOn
-    ADMS:
-      type: org.lexis.wp7.nodes.ADMS
+    ADMSRun:
+      type: org.lexis.wp7.nodes.ADMSRun
       properties:
         adms_type: { get_input: postprocessing_adms_type }
-        dataset_title_adms_result: { get_input: postprocessing_title_dataset_adms_result }
         dataset_title_ncl_result: { get_input: postprocessing_title_dataset_MET_results }
         dataset_id_adms_urban_app: { get_input: postprocessing_dataset_id_adms_urban_app }
         dataset_id_adms_urban_static_data: { get_input: postprocessing_dataset_id_adms_urban_static_data }
         dataset_id_adms_industrial_app: { get_input: postprocessing_dataset_id_adms_industrial_app }
         dataset_id_adms_industrial_static_data: { get_input: postprocessing_dataset_id_adms_industrial_static_data }
+        ddi_project_short_name: { get_input: postprocessing_project_short_name }
+      requirements:
+        - ddi_access:
+            type_requirement: ddi_access
+            node: GetDDIAccessWinVM
+            capability: org.lexis.common.ddi.capabilities.DDIAccess
+            relationship: org.lexis.common.ddi.relationships.DDIAccessProvider
+        - hostedOnAdmsVmHost:
+            type_requirement: host
+            node: ADMS_WIN_VM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    RefreshADMSStoreToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.RefreshTargetTokens
+      requirements:
+        - target:
+            type_requirement: target
+            node: ADMSStore
+            capability: tosca.capabilities.Node
+            relationship: tosca.relationships.DependsOn
+    ADMSStore:
+      type: org.lexis.wp7.nodes.ADMSStore
+      properties:
+        adms_type: { get_input: postprocessing_adms_type }
+        dataset_title_adms_result: { get_input: postprocessing_title_dataset_adms_result }
         adms_sftp_server_ip: { get_input: postprocessing_adms_sftp_server_ip }
         adms_sftp_port: { get_input: postprocessing_adms_sftp_port }
         adms_sftp_industrial_dir: { get_input: postprocessing_adms_sftp_industrial_dir }
@@ -599,7 +623,7 @@ topology_template:
       value: { get_attribute: [ METResultsToDDIJob, destination_path ] }
     postprocessing_dataset_adms_result_id:
       description: ID of the dataset where ADMS post-process results are stored
-      value: { get_attribute: [ ADMS, dataset_id_result ] }
+      value: { get_attribute: [ ADMSStore, dataset_id_result ] }
   workflows:
     # At deployment time, validating the input token and exchanging it
     # to get an access/refresh token for the orchestrator
@@ -1192,27 +1216,51 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - RefreshTargetTokens_start
-        RefreshTargetTokens_start:
-          target: RefreshTargetTokens
+            - RefreshADMSRunToken_start
+        RefreshADMSRunToken_start:
+          target: RefreshADMSRunToken
           activities:
             - call_operation: Standard.start
           on_success:
-            - RefreshTargetTokens_started
-        RefreshTargetTokens_started:
-          target: RefreshTargetTokens
+            - RefreshADMSRunToken_started
+        RefreshADMSRunToken_started:
+          target: RefreshADMSRunToken
           activities:
             - set_state: started
           on_success:
-            - ADMS_start
-        ADMS_start:
-          target: ADMS
+            - ADMSRun_start
+        ADMSRun_start:
+          target: ADMSRun
           activities:
             - call_operation: Standard.start
           on_success:
-            - ADMS_started
-        ADMS_started:
-          target: ADMS
+            - ADMSRun_started
+        ADMSRun_started:
+          target: ADMSRun
+          activities:
+            - set_state: started
+          on_success:
+            - RefreshADMSStoreToken_start
+        RefreshADMSStoreToken_start:
+          target: RefreshADMSStoreToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshADMSStoreToken_started
+        RefreshADMSStoreToken_started:
+          target: RefreshADMSStoreToken
+          activities:
+            - set_state: started
+          on_success:
+            - ADMSStore_start
+        ADMSStore_start:
+          target: ADMSStore
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ADMSStore_started
+        ADMSStore_started:
+          target: ADMSStore
           activities:
             - set_state: started
           on_success:
@@ -1411,69 +1459,3 @@ topology_template:
           target: PublicNetADMSVM
           activities:
             - delegate: uninstall
-    testMountLoadImage:
-      steps:
-        MountDockerImageDataset_create:
-          target: MountDockerImageDataset
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - MountDockerImageDataset_created
-        MountDockerImageDataset_created:
-          target: MountDockerImageDataset
-          activities:
-            - set_state: created
-          on_success:
-            - MountDockerImageDataset_refresh_token
-        MountDockerImageDataset_refresh_token:
-          target: MountDockerImageDataset
-          activities:
-            - call_operation: custom.refresh_token
-          on_success:
-            - MountDockerImageDataset_start
-        MountDockerImageDataset_start:
-          target: MountDockerImageDataset
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - MountDockerImageDataset_started
-        MountDockerImageDataset_started:
-          target: MountDockerImageDataset
-          activities:
-            - set_state: started
-          on_success:
-            - FindArchive_start
-        FindArchive_start:
-          target: FindArchive
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - FindArchive_started
-        FindArchive_started:
-          target: FindArchive
-          activities:
-            - set_state: started
-          on_success:
-            - ImageLoader_create
-        ImageLoader_create:
-          target: ImageLoader
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - ImageLoader_created
-        ImageLoader_created:
-          target: ImageLoader
-          activities:
-            - set_state: created
-          on_success:
-            - ImageLoader_start
-        ImageLoader_start:
-          target: ImageLoader
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - ImageLoader_started
-        ImageLoader_started:
-          target: ImageLoader
-          activities:
-            - set_state: started

@@ -83,7 +83,7 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/89ddda90-1918-11eb-b6d1-0050568fc9b5`
 * postprocessing_dataset_ncl_script: Post-processing NCL script path in DDI
   * default: project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/7fc89bf4-1d13-11eb-ae7e-0050568fc9b5
-* postprocessing_ddi_path: Path of the project where to transfer the post-processing results in DDI
+* postprocessing_ddi_project_path: Path of the project where to transfer the post-processing results in DDI
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c`
 * postprocessing_dataset_id_adms_urban_app: ID of the dataset containing the ADMSUrban.exe and corresponding files. The DDI dataset has to contain single file called adms_urban.zip
   * default: `f284db6c-2588-11eb-bbae-0050568fcecc`
@@ -149,7 +149,7 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/89ddda90-1918-11eb-b6d1-0050568fc9b5`
 * postprocessing_dataset_ncl_script: Post-processing NCL script path in DDI
   * default: project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/7fc89bf4-1d13-11eb-ae7e-0050568fc9b5
-* postprocessing_ddi_path: Path of the project where to transfer the post-processing results in DDI
+* postprocessing_ddi_project_path: Path of the project where to transfer the post-processing results in DDI
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c`
 * postprocessing_dataset_id_adms_urban_app: ID of the dataset containing the ADMSUrban.exe and corresponding files. The DDI dataset has to contain single file called adms_urban.zip
   * default: `f284db6c-2588-11eb-bbae-0050568fcecc`

@@ -10,18 +10,16 @@ description: ADMS types
 imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - yorc-types:1.1.0
-  - org.lexis.common.ddi-types:1.0.0
+  - org.lexis.common.ddi-types:1.0.1
 node_types:
-  org.lexis.wp7.nodes.ADMS:
+  org.lexis.wp7.nodes.ADMSRun:
     derived_from: tosca.nodes.SoftwareComponent
+    description: >
+      Runs an ADMS simulation
     properties:
       adms_type:
         type: string
         description: type of ADMS simulation executed, urban or industrial
-        required: true
-      dataset_title_adms_result:
-        type: string
-        description: Which will be the title of the dataset containing ADMS results
         required: true
       dataset_title_ncl_result:
         type: string
@@ -42,6 +40,48 @@ node_types:
       dataset_id_adms_industrial_static_data:
         type: string
         description: ID of the dataset containing the static data for ADMSIndustrial
+        required: true
+      ddi_project_short_name:
+        type: string
+        description: Short name of the DDI project where to store results
+        required: true
+    requirements:
+      - ddi_access:
+          capability: org.lexis.common.ddi.capabilities.DDIAccess
+          relationship: org.lexis.common.ddi.relationships.DDIAccessProvider
+          occurrences: [1, 1]
+    attributes:
+      access_token:
+        type: string
+        description: OpenID Connect access token
+    interfaces:
+      Standard:
+        #create:
+        #  implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            ADMS_TYPE: {get_property: [SELF, adms_type]}
+            ACCESS_TOKEN: {get_attribute: [SELF, access_token]}
+            METEO_DATASET_NAME: {get_property: [SELF, dataset_title_ncl_result]}
+            ADMS_URBAN_APP_DATASET: {get_property: [SELF, dataset_id_adms_urban_app]}
+            ADMS_URBAN_STATIC_DATASET: {get_property: [SELF, dataset_id_adms_urban_static_data]}
+            ADMS_INDUSTRIAL_APP_DATASET: {get_property: [SELF, dataset_id_adms_industrial_app]}
+            ADMS_INDUSTRIAL_STATIC_DATASET: {get_property: [SELF, dataset_id_adms_industrial_static_data]}
+            DATASET_URL: {get_attribute: [REQ_TARGET, ddi_access, dataset_url]}
+            DDI_PROJECT_SHORT_NAME:  {get_property: [SELF, ddi_project_short_name]}
+          implementation: playbooks/adms_run.yaml
+  org.lexis.wp7.nodes.ADMSStore:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+      Stores results of an ADMS run in DDI
+    properties:
+      adms_type:
+        type: string
+        description: type of ADMS simulation executed, urban or industrial
+        required: true
+      dataset_title_adms_result:
+        type: string
+        description: Which will be the title of the dataset containing ADMS results
         required: true
       ddi_project_short_name:
         type: string
@@ -75,9 +115,6 @@ node_types:
       access_token:
         type: string
         description: OpenID Connect access token
-      refresh_token:
-        type: string
-        description: OpenID Connect refresh token
       dataset_id_result: {get_operation_output: [SELF, Standard, start, DATASET_ID_RESULT]}
     interfaces:
       Standard:
@@ -87,12 +124,7 @@ node_types:
           inputs:
             ADMS_TYPE: {get_property: [SELF, adms_type]}
             ACCESS_TOKEN: {get_attribute: [SELF, access_token]}
-            METEO_DATASET_NAME: {get_property: [SELF, dataset_title_ncl_result]}
             ADMS_RESULT_DATASET_NAME: {get_property: [SELF, dataset_title_adms_result]}
-            ADMS_URBAN_APP_DATASET: {get_property: [SELF, dataset_id_adms_urban_app]}
-            ADMS_URBAN_STATIC_DATASET: {get_property: [SELF, dataset_id_adms_urban_static_data]}
-            ADMS_INDUSTRIAL_APP_DATASET: {get_property: [SELF, dataset_id_adms_industrial_app]}
-            ADMS_INDUSTRIAL_STATIC_DATASET: {get_property: [SELF, dataset_id_adms_industrial_static_data]}
             ADMS_SFTP_SERVER_IP: {get_property: [SELF, adms_sftp_server_ip]}
             ADMS_SFTP_PORT: {get_property: [SELF, adms_sftp_port]}
             ADMS_SFTP_USER: { get_secret: ["/secret/wp7/adms/creds", "data=user"]}
@@ -101,4 +133,4 @@ node_types:
             ADMS_SFTP_URBAN_DIR: {get_property: [SELF, adms_sftp_urban_dir]}
             DATASET_URL: {get_attribute: [REQ_TARGET, ddi_access, dataset_url]}
             DDI_PROJECT_SHORT_NAME:  {get_property: [SELF, ddi_project_short_name]}
-          implementation: playbooks/adms_run.yaml
+          implementation: playbooks/adms_store.yaml

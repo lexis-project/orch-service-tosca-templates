@@ -17,7 +17,7 @@ imports:
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.lexis.common.heappe-types:1.0.6
-  - org.lexis.common.ddi-types:1.0.0
+  - org.lexis.common.ddi-types:1.0.1
   - org.lexis.common.dynamic-orchestration-types:1.0.1
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
 
@@ -46,7 +46,7 @@ topology_template:
     preprocessing_dataset_input_path:
       type: string
       description: Dataset containing input data
-      default: "project/proj6abfa10a181f20196814dd1cd6e62723/32e5dff4-9e7d-11eb-a9c7-0050568fcecc"
+      default: "project/proj812b07ed780274387d12c665fa3a4f7f/03ecd6a8-b8c7-11eb-885c-0050568fcecc"
       required: false
     preprocessing_decrypt_input_dataset:
       type: boolean
@@ -182,7 +182,7 @@ topology_template:
     postprocessing_ddi_project_path:
       type: string
       description: "Path where to transfer the post-processing results in DDI"
-      default: "project/proj6abfa10a181f20196814dd1cd6e62723"
+      default: "project/proj812b07ed780274387d12c665fa3a4f7f"
       required: false
     postprocessing_metadata_dataset_result:
       type: org.lexis.common.ddi.types.Metadata
@@ -414,24 +414,74 @@ topology_template:
         token: {get_input: token}
         JobSpecification: { get_input: computation_heappe_job }
 
-    # Component managing the transfer of data from the cloud staging area to the
-    # HPC directory of a given job task 
-    CopyToJobTask:
-      type: org.lexis.common.datatransfer.nodes.CopyToJobTask
+    # Create a directory in staging area for HPC job inputs
+    CreateStagingAreaHPCInputDir:
+      type: org.lexis.common.datatransfer.nodes.CreateStagingAreaDirectory
       properties:
-        task_name: { get_input: computation_heappe_task_name }
-        source_directory: {get_input: preprocessing_output_directory}
+        directory: "lexis_test_hpc_inputs"
       requirements:
-        - hostedOnVirtualMachineHost:
+        - mountedCloudStagingArea:
+            type_requirement: mounted_staging_area
+            node: MountInputDataset
+            capability: org.lexis.common.ddi.capabilities.MountedStagingAreaAccess
+            relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
+        - hostedOnComputeHost:
             type_requirement: host
             node: ComputeInstance
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
+    # Stage HPC inputs in cloud staging area
+    StageHPCInputs:
+      type: org.lexis.common.datatransfer.nodes.CopyToStagingAreaDirectory
+      properties:
+        source_directory: {get_input: preprocessing_output_directory}
+      requirements:
+        - staging_area_directory:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaHPCInputDir
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ComputeInstance
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    # Transfer these inputs to the HPC job
+    CloudToHPCTaskJob:
+      type: org.lexis.common.ddi.nodes.CloudToHPCJob
+      properties:
+        token: { get_input: token }
+        task_name: { get_input: computation_heappe_task_name }
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaHPCInputDir
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
         - job:
             type_requirement: job
             node: HPCJob
             capability: org.lexis.common.heappe.capabilities.HeappeJob
             relationship: org.lexis.common.heappe.relationships.SendInputsToJob
+
+    # Component managing the transfer of data from the cloud staging area to the
+    # HPC directory of a given job task 
+#    CopyToJobTask:
+#      type: org.lexis.common.datatransfer.nodes.CopyToJobTask
+#      properties:
+#        task_name: { get_input: computation_heappe_task_name }
+#        source_directory: {get_input: preprocessing_output_directory}
+#      requirements:
+#        - hostedOnVirtualMachineHost:
+#            type_requirement: host
+#            node: ComputeInstance
+#            capability: tosca.capabilities.Container
+#            relationship: tosca.relationships.HostedOn
+#        - job:
+#            type_requirement: job
+#            node: HPCJob
+#            capability: org.lexis.common.heappe.capabilities.HeappeJob
+#            relationship: org.lexis.common.heappe.relationships.SendInputsToJob
 
     # DDI job managing the transfer of a HPC job task results to DDI
     HPCToDDIJob:
@@ -448,8 +498,48 @@ topology_template:
             type_requirement: job
             node: HPCJob
             capability: org.lexis.common.heappe.capabilities.HeappeJob
-            relationship: org.lexis.common.ddi.relationships.SendJobOutputsToDDI
+            relationship: org.lexis.common.ddi.relationships.SendJobOutputs
 
+    # Transfer HPC results to cloud staging area as well
+    HPCToCloudJob:
+      type: org.lexis.common.ddi.nodes.HPCToCloudJob
+      properties:
+        token: { get_input: token }
+        task_name: { get_input: computation_heappe_task_name }
+        cloud_staging_area_directory_path: "lexis_test_hpc_results"
+        timestamp_cloud_staging_area_directory: true
+      requirements:
+        - sameSite:
+            type_requirement: os
+            node: ComputeInstance
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
+        - job:
+            type_requirement: job
+            node: HPCJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.ddi.relationships.SendJobOutputs
+    MountHPCResultsDataset:
+      type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
+      properties:
+        token: { get_input: token }
+        mount_point_directory: "/mnt/lexis_test_hpc_results"
+      requirements:
+        - ddi_access:
+            type_requirement: ddi_access
+            node: GetDDIAccess
+            capability: org.lexis.common.ddi.capabilities.DDIAccess
+            relationship: org.lexis.common.ddi.relationships.DDIAccessProvider
+        - data_transfer:
+            type_requirement: data_transfer
+            node: HPCToCloudJob
+            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ComputeInstance
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
     # Create directories expected by the postprocessing container
     CreatePostProcessDirs:
       type: org.lexis.common.datatransfer.nodes.CreateDirectories
@@ -461,25 +551,38 @@ topology_template:
             node: ComputeInstance
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
-
-    # Component copying the HPC job task results to the compute instance
-    CopyFromJobTask:
-      type: org.lexis.common.datatransfer.nodes.CopyFromJobTask
+    # Move HPC results to the directory expected by the post-processing
+    MoveHPCResults:
+      type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
-        task_name: { get_input: computation_heappe_task_name }
-        source_files: { get_input: computation_result_files_to_postprocess }
-        destination_directory: { get_input: postprocessing_input_directory }
+        source_file:  "/mnt/lexis_test_hpc_results/*"
+        destination: { get_input: postprocessing_output_directory }
+        as_user: "root"
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
             node: ComputeInstance
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
-        - job:
-            type_requirement: job
-            node: HPCJob
-            capability: org.lexis.common.heappe.capabilities.HeappeJob
-            relationship: org.lexis.common.heappe.relationships.GetResultsFromJob
+
+    # Component copying the HPC job task results to the compute instance
+#    CopyFromJobTask:
+#      type: org.lexis.common.datatransfer.nodes.CopyFromJobTask
+#      properties:
+#        task_name: { get_input: computation_heappe_task_name }
+#        source_files: { get_input: computation_result_files_to_postprocess }
+#        destination_directory: { get_input: postprocessing_input_directory }
+#      requirements:
+#        - hostedOnVirtualMachineHost:
+#            type_requirement: host
+#            node: ComputeInstance
+#            capability: tosca.capabilities.Container
+#            relationship: tosca.relationships.HostedOn
+#        - job:
+#            type_requirement: job
+#            node: HPCJob
+#            capability: org.lexis.common.heappe.capabilities.HeappeJob
+#            relationship: org.lexis.common.heappe.relationships.GetResultsFromJob
 
     # Postprocessing docker container
     PostprocessingContainer:
@@ -553,8 +656,8 @@ topology_template:
             capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
             relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
 
-    # DDI job cleaning up the cloud staging area
-    CleanupCloudStagingAreaJob:
+    # DDI job cleaning up the cloud staging area containing inputs
+    CleanupCloudStagingAreaInputsJob:
       type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
       properties:
         token: {get_input: token}
@@ -562,6 +665,18 @@ topology_template:
         - cloud_area_dataset_provider:
             type_requirement: cloud_area_dataset_provider
             node: DDIToCloudInputDatasetJob
+            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
+
+    # DDI job cleaning up the cloud staging area containing HPC results
+    CleanupCloudStagingAreaHPCJob:
+      type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
+      properties:
+        token: {get_input: token}
+      requirements:
+        - cloud_area_dataset_provider:
+            type_requirement: cloud_area_dataset_provider
+            node: HPCToCloudJob
             capability: org.lexis.common.ddi.capabilities.DataTransferCloud
             relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
 
@@ -843,18 +958,65 @@ topology_template:
           activities:
             - call_operation: custom.enable_file_transfer
           on_success:
-            - CopyToJobTask_start
-        # Copy input files to this job
-        CopyToJobTask_start:
-          target: CopyToJobTask
+            - CreateStagingAreaHPCInputDir_start
+        # Create a directory in cloud staging area and copy HPC inputs there
+        CreateStagingAreaHPCInputDir_start:
+          target: CreateStagingAreaHPCInputDir
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyToJobTask_started
-        CopyToJobTask_started:
-          target: CopyToJobTask
+            - CreateStagingAreaHPCInputDir_started
+        CreateStagingAreaHPCInputDir_started:
+          target: CreateStagingAreaHPCInputDir
           activities:
             - set_state: started
+          on_success:
+            - StageHPCInputs_start
+        # Stage HPC inputs to cloud staging area
+        StageHPCInputs_start:
+          target: StageHPCInputs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - StageHPCInputs_started
+        StageHPCInputs_started:
+          target: StageHPCInputs
+          activities:
+            - set_state: started
+          on_success:
+            - CloudToHPCTaskJob_create
+        # Transfer HPC inputs from Cloud staging area to HPC
+        CloudToHPCTaskJob_create:
+          target: CloudToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CloudToHPCTaskJob_submit
+        CloudToHPCTaskJob_submit:
+          target: CloudToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CloudToHPCTaskJob_submitted
+        CloudToHPCTaskJob_submitted:
+          target: CloudToHPCTaskJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CloudToHPCTaskJob_run
+        CloudToHPCTaskJob_run:
+          target: CloudToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CloudToHPCTaskJob_executed
+        CloudToHPCTaskJob_executed:
+          target: CloudToHPCTaskJob
+          activities:
+            - set_state: executed
           on_success:
             - HPCJob_submit
         # Submit and run the job
@@ -883,8 +1045,42 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - HPCToDDIJob_create
+            - HPCToCloudJob_create
             - CreatePostProcessDirs_start
+        # Transfer HPC results from HPC to Cloud staging area
+        HPCToCloudJob_create:
+          target: HPCToCloudJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - HPCToCloudJob_submit
+        HPCToCloudJob_submit:
+          target: HPCToCloudJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - HPCToCloudJob_submitted
+        HPCToCloudJob_submitted:
+          target: HPCToCloudJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - HPCToCloudJob_run
+        HPCToCloudJob_run:
+          target: HPCToCloudJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - HPCToCloudJob_executed
+        HPCToCloudJob_executed:
+          target: HPCToCloudJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountHPCResultsDataset_refresh_token
         # Create directories needed by the post-processing
         CreatePostProcessDirs_start:
           target: CreatePostProcessDirs
@@ -897,21 +1093,38 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - CopyFromJobTask_start
-        # Copy files from the HPC job on the Cloud Compute Instance
-        CopyFromJobTask_start:
-          target: CopyFromJobTask
+            - MountHPCResultsDataset_refresh_token
+        MountHPCResultsDataset_refresh_token:
+          target: MountHPCResultsDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountHPCResultsDataset_start
+        MountHPCResultsDataset_start:
+          target: MountHPCResultsDataset
           activities:
             - call_operation: Standard.start
           on_success:
-            - CopyFromJobTask_started
-        CopyFromJobTask_started:
-          target: CopyFromJobTask
+            - MountHPCResultsDataset_started
+        MountHPCResultsDataset_started:
+          target: MountHPCResultsDataset
+          activities:
+            - set_state: started
+          on_success:
+            - MoveHPCResults_start
+            - HPCToDDIJob_create
+        MoveHPCResults_start:
+          target: MoveHPCResults
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveHPCResults_started
+        MoveHPCResults_started:
+          target: MoveHPCResults
           activities:
             - set_state: started
           on_success:
             - PostprocessingContainer_create
-            - HPCJob_disable_file_transfer
         # Transfer HPC job results to DDI
         HPCToDDIJob_create:
           target: HPCToDDIJob
@@ -945,25 +1158,7 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - HPCJob_disable_file_transfer
-        HPCJob_disable_file_transfer:
-          target: HPCJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: custom.disable_file_transfer
-          on_success:
-            - HPCJob_delete
-        HPCJob_delete:
-          target: HPCJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.delete
-          on_success:
-            - HPCJob_deleted
-        HPCJob_deleted:
-          target: HPCJob
-          activities:
-            - set_state: deleted
+            - MountInputDataset_refresh_token_before_stop
         # Create and run the post-processing container
         PostprocessingContainer_create:
           target: PostprocessingContainer
@@ -1043,13 +1238,13 @@ topology_template:
             - set_state: executed
           on_success:
             - MountInputDataset_refresh_token_before_stop
+        # Cleanup of ssh access to cloud staging area
         MountInputDataset_refresh_token_before_stop:
           target: MountInputDataset
           activities:
             - call_operation: custom.refresh_token
           on_success:
             - MountInputDataset_stop
-        # Cleanup of ssh access to cloud staging area
         MountInputDataset_stop:
           target: MountInputDataset
           activities:
@@ -1061,45 +1256,124 @@ topology_template:
           activities:
             - set_state: stopped
           on_success:
-            - CleanupCloudStagingAreaJob_create
-        # Cleanup of cloud staging area files created by this workflow
-        CleanupCloudStagingAreaJob_create:
-          target: CleanupCloudStagingAreaJob
+            - CleanupCloudStagingAreaInputsJob_create
+        # Cleanup of cloud staging area input files
+        CleanupCloudStagingAreaInputsJob_create:
+          target: CleanupCloudStagingAreaInputsJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
           on_success:
-            - CleanupCloudStagingAreaJob_created
-        CleanupCloudStagingAreaJob_created:
-          target: CleanupCloudStagingAreaJob
+            - CleanupCloudStagingAreaInputsJob_created
+        CleanupCloudStagingAreaInputsJob_created:
+          target: CleanupCloudStagingAreaInputsJob
           activities:
             - set_state: created
           on_success:
-            - CleanupCloudStagingAreaJob_submit
-        CleanupCloudStagingAreaJob_submit:
-          target: CleanupCloudStagingAreaJob
+            - CleanupCloudStagingAreaInputsJob_submit
+        CleanupCloudStagingAreaInputsJob_submit:
+          target: CleanupCloudStagingAreaInputsJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
-            - CleanupCloudStagingAreaJob_submitted
-        CleanupCloudStagingAreaJob_submitted:
-          target: CleanupCloudStagingAreaJob
+            - CleanupCloudStagingAreaInputsJob_submitted
+        CleanupCloudStagingAreaInputsJob_submitted:
+          target: CleanupCloudStagingAreaInputsJob
           activities:
             - set_state: submitted
           on_success:
-            - CleanupCloudStagingAreaJob_run
-        CleanupCloudStagingAreaJob_run:
-          target: CleanupCloudStagingAreaJob
+            - CleanupCloudStagingAreaInputsJob_run
+        CleanupCloudStagingAreaInputsJob_run:
+          target: CleanupCloudStagingAreaInputsJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
           on_success:
-            - CleanupCloudStagingAreaJob_executed
-        CleanupCloudStagingAreaJob_executed:
-          target: CleanupCloudStagingAreaJob
+            - CleanupCloudStagingAreaInputsJob_executed
+        CleanupCloudStagingAreaInputsJob_executed:
+          target: CleanupCloudStagingAreaInputsJob
           activities:
             - set_state: executed
+          on_success:
+            - MountHPCResultsDataset_refresh_token_before_stop
+        MountHPCResultsDataset_refresh_token_before_stop:
+          target: MountHPCResultsDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountHPCResultsDataset_stop
+        # Cleanup of ssh access to cloud staging area
+        MountHPCResultsDataset_stop:
+          target: MountHPCResultsDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountHPCResultsDataset_stopped
+        MountHPCResultsDataset_stopped:
+          target: MountHPCResultsDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - CleanupCloudStagingAreaHPCJob_create
+        # Cleanup of cloud staging area HOC job result files
+        CleanupCloudStagingAreaHPCJob_create:
+          target: CleanupCloudStagingAreaHPCJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CleanupCloudStagingAreaHPCJob_created
+        CleanupCloudStagingAreaHPCJob_created:
+          target: CleanupCloudStagingAreaHPCJob
+          activities:
+            - set_state: created
+          on_success:
+            - CleanupCloudStagingAreaHPCJob_submit
+        CleanupCloudStagingAreaHPCJob_submit:
+          target: CleanupCloudStagingAreaHPCJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CleanupCloudStagingAreaHPCJob_submitted
+        CleanupCloudStagingAreaHPCJob_submitted:
+          target: CleanupCloudStagingAreaHPCJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CleanupCloudStagingAreaHPCJob_run
+        CleanupCloudStagingAreaHPCJob_run:
+          target: CleanupCloudStagingAreaHPCJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CleanupCloudStagingAreaHPCJob_executed
+        CleanupCloudStagingAreaHPCJob_executed:
+          target: CleanupCloudStagingAreaHPCJob
+          activities:
+            - set_state: executed
+          on_success:
+            - HPCJob_disable_file_transfer
+        HPCJob_disable_file_transfer:
+          target: HPCJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - HPCJob_delete
+        HPCJob_delete:
+          target: HPCJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - HPCJob_deleted
+        HPCJob_deleted:
+          target: HPCJob
+          activities:
+            - set_state: deleted
           on_success:
             - ComputeInstance_uninstall
         # Delete Cloud Compute Instance
@@ -1131,105 +1405,32 @@ topology_template:
           target: Network
           activities:
             - delegate: uninstall
-          on_success:
-            - CleanupCloudStagingAreaJob_create
-        CleanupCloudStagingAreaJob_create:
-          target: CleanupCloudStagingAreaJob
+        CleanupCloudStagingAreaInputsJob_create:
+          target: CleanupCloudStagingAreaInputsJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
           on_success:
-            - CleanupCloudStagingAreaJob_created
-        CleanupCloudStagingAreaJob_created:
-          target: CleanupCloudStagingAreaJob
-          activities:
-            - set_state: created
-          on_success:
-            - CleanupCloudStagingAreaJob_submit
-        CleanupCloudStagingAreaJob_submit:
-          target: CleanupCloudStagingAreaJob
+            - CleanupCloudStagingAreaInputsJob_submit
+        CleanupCloudStagingAreaInputsJob_submit:
+          target: CleanupCloudStagingAreaInputsJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
-            - CleanupCloudStagingAreaJob_submitted
-        CleanupCloudStagingAreaJob_submitted:
-          target: CleanupCloudStagingAreaJob
-          activities:
-            - set_state: submitted
-    #
-    # Test workflow to only execute a SSH-unmount
-    #
-    cleanupMountPoint:
-      steps:
-        MountInputDataset_refresh_token:
-          target: MountInputDataset
-          activities:
-            - call_operation: custom.refresh_token
-          on_success:
-            - MountInputDataset_stop
-        MountInputDataset_stop:
-          target: MountInputDataset
-          activities:
-            - call_operation: Standard.stop
-          on_success:
-            - MountInputDataset_stopped
-        MountInputDataset_stopped:
-          target: MountInputDataset
-          activities:
-            - set_state: stopped
-    #
-    # Test workflow to only execute the cloud staging area cleanup
-    #
-    cleanupStagingArea:
-      steps:
-        CleanupCloudStagingAreaJob_create:
-          target: CleanupCloudStagingAreaJob
+            - CleanupCloudStagingAreaHPCJob_create
+        CleanupCloudStagingAreaHPCJob_create:
+          target: CleanupCloudStagingAreaHPCJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
           on_success:
-            - CleanupCloudStagingAreaJob_created
-        CleanupCloudStagingAreaJob_created:
-          target: CleanupCloudStagingAreaJob
-          activities:
-            - set_state: created
-          on_success:
-            - CleanupCloudStagingAreaJob_submit
-        CleanupCloudStagingAreaJob_submit:
-          target: CleanupCloudStagingAreaJob
+            - CleanupCloudStagingAreaHPCJob_submit
+        CleanupCloudStagingAreaHPCJob_submit:
+          target: CleanupCloudStagingAreaHPCJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - CleanupCloudStagingAreaJob_submitted
-        CleanupCloudStagingAreaJob_submitted:
-          target: CleanupCloudStagingAreaJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - CleanupCloudStagingAreaJob_run
-        CleanupCloudStagingAreaJob_run:
-          target: CleanupCloudStagingAreaJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - CleanupCloudStagingAreaJob_executed
-        CleanupCloudStagingAreaJob_executed:
-          target: CleanupCloudStagingAreaJob
-          activities:
-            - set_state: executed
-    #
-    # Test workflow to only execute the disabling of file transfer and job deletion
-    #
-    cleanupHPC:
-      steps:
-        HPCJob_disable_file_transfer:
-          target: HPCJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: custom.disable_file_transfer
           on_success:
             - HPCJob_delete
         HPCJob_delete:
@@ -1237,238 +1438,56 @@ topology_template:
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.delete
-          on_success:
-            - HPCJob_deleted
-        HPCJob_deleted:
-          target: HPCJob
-          activities:
-            - set_state: deleted
-    #
-    # Test workflow to only execute the preprocessing
-    #
-    testPreprocessing:
+    testStageHPCInput:
       steps:
-        # Submit DDI job to get info on dataset (DDI location where it is available, size...)
-        InputDatasetInfoJob_submit:
-          target: InputDatasetInfoJob
-          operation_host: ORCHESTRATOR
+        StageHPCInputs_start:
+          target: StageHPCInputs
           activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+            - call_operation: Standard.start
           on_success:
-            - InputDatasetInfoJob_run
-        InputDatasetInfoJob_run:
-          target: InputDatasetInfoJob
-          operation_host: ORCHESTRATOR
+            - StageHPCInputs_started
+        StageHPCInputs_started:
+          target: StageHPCInputs
           activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - InputDatasetInfoJob_executed
-        InputDatasetInfoJob_executed:
-          target: InputDatasetInfoJob
-          activities:
-            - set_state: executed
-          on_success:
-            - FindCloudLocation_submit
-        # Submit the computation to find the best location from these inputs
-        FindCloudLocation_submit:
-          target: FindCloudLocation
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - FindCloudLocation_run
-        FindCloudLocation_run:
-          target: FindCloudLocation
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - FindCloudLocation_executed
-        FindCloudLocation_executed:
-          target: FindCloudLocation
-          activities:
-            - set_state: executed
-          on_success:
-            - DDIToCloudInputDatasetJob_create
-            - Network_install
-        # Transfer the input dataset to cloud staging area
-        DDIToCloudInputDatasetJob_create:
-          target: DDIToCloudInputDatasetJob
+            - set_state: started
+
+    testCloudToHPC:
+      steps:
+        CloudToHPCTaskJob_create:
+          target: CloudToHPCTaskJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
           on_success:
-            - DDIToCloudInputDatasetJob_submit
-        DDIToCloudInputDatasetJob_submit:
-          target: DDIToCloudInputDatasetJob
+            - CloudToHPCTaskJob_submit
+        CloudToHPCTaskJob_submit:
+          target: CloudToHPCTaskJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
-            - DDIToCloudInputDatasetJob_submitted
-        DDIToCloudInputDatasetJob_submitted:
-          target: DDIToCloudInputDatasetJob
+            - CloudToHPCTaskJob_submitted
+        CloudToHPCTaskJob_submitted:
+          target: CloudToHPCTaskJob
           activities:
             - set_state: submitted
           on_success:
-            - DDIToCloudInputDatasetJob_run
-        DDIToCloudInputDatasetJob_run:
-          target: DDIToCloudInputDatasetJob
+            - CloudToHPCTaskJob_run
+        CloudToHPCTaskJob_run:
+          target: CloudToHPCTaskJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
           on_success:
-            - DDIToCloudInputDatasetJob_executed
-        DDIToCloudInputDatasetJob_executed:
-          target: DDIToCloudInputDatasetJob
+            - CloudToHPCTaskJob_executed
+        CloudToHPCTaskJob_executed:
+          target: CloudToHPCTaskJob
           activities:
             - set_state: executed
-          on_success:
-            - MountInputDataset_create
-        # Get a floating IP address for the Cloud Compute instance
-        Network_install:
-          target: Network
-          activities:
-            - delegate: install
-          on_success:
-            - ComputeInstance_install
-        # Create the compute instance
-        ComputeInstance_install:
-          target: ComputeInstance
-          activities:
-            - delegate: install
-          on_success:
-            - GetDDIAccess_start
-            - CreatePreProcessDirs_start
-        # Get details on DDI needed to mount cloud staging area filesystems on
-        # the Compute instance
-        GetDDIAccess_start:
-          target: GetDDIAccess
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - GetDDIAccess_started
-        GetDDIAccess_started:
-          target: GetDDIAccess
-          activities:
-            - set_state: started
-          on_success:
-            - MountInputDataset_create
-        # Create directories needed by the pre-processing container
-        CreatePreProcessDirs_start:
-          target: CreatePreProcessDirs
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CreatePreProcessDirs_started
-        CreatePreProcessDirs_started:
-          target: CreatePreProcessDirs
-          activities:
-            - set_state: started
-          on_success:
-            - MountInputDataset_create
-        # Mount the cloud staging are on the Cloud compute instance
-        MountInputDataset_create:
-          target: MountInputDataset
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - MountInputDataset_created
-        MountInputDataset_created:
-          target: MountInputDataset
-          activities:
-            - set_state: created
-          on_success:
-            - MountInputDataset_refresh_token
-        MountInputDataset_refresh_token:
-          target: MountInputDataset
-          activities:
-            - call_operation: custom.refresh_token
-          on_success:
-            - MountInputDataset_start
-        MountInputDataset_start:
-          target: MountInputDataset
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - MountInputDataset_started
-        MountInputDataset_started:
-          target: MountInputDataset
-          activities:
-            - set_state: started
-          on_success:
-            - Docker_create
-        # Install Docker
-        Docker_create:
-          target: Docker
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - Docker_configure
-        Docker_configure:
-          target: Docker
-          activities:
-            - call_operation: Standard.configure
-          on_success:
-            - Docker_start
-        Docker_start:
-          target: Docker
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - Docker_started
-        Docker_started:
-          target: Docker
-          activities:
-            - set_state: started
-          on_success:
-            - PreprocessingContainer_create
-        # Create and run the pre-processing container
-        PreprocessingContainer_create:
-          target: PreprocessingContainer
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - PreprocessingContainer_start
-        PreprocessingContainer_start:
-          target: PreprocessingContainer
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - PreprocessingContainer_started
-        PreprocessingContainer_started:
-          target: PreprocessingContainer
-          activities:
-            - set_state: started
-    #
-    # Test workflow to only execute the computation
-    #
-    testComputation:
+
+
+    testHPCSubmit:
       steps:
-        HPCJob_create:
-          target: HPCJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - HPCJob_enable_file_transfer
-        HPCJob_enable_file_transfer:
-          target: HPCJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: custom.enable_file_transfer
-          on_success:
-            - CopyToJobTask_start
-        CopyToJobTask_start:
-          target: CopyToJobTask
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CopyToJobTask_started
-        CopyToJobTask_started:
-          target: CopyToJobTask
-          activities:
-            - set_state: started
-          on_success:
-            - HPCJob_submit
         HPCJob_submit:
           target: HPCJob
           operation_host: ORCHESTRATOR
@@ -1493,230 +1512,69 @@ topology_template:
           target: HPCJob
           activities:
             - set_state: executed
-          on_success:
-            - HPCToDDIJob_create
-        HPCToDDIJob_create:
-          target: HPCToDDIJob
+
+    testHPCToCloud:
+      steps:
+        HPCToCloudJob_create:
+          target: HPCToCloudJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
           on_success:
-            - HPCToDDIJob_submit
-        HPCToDDIJob_submit:
-          target: HPCToDDIJob
+            - HPCToCloudJob_submit
+        HPCToCloudJob_submit:
+          target: HPCToCloudJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
-            - HPCToDDIJob_submitted
-        HPCToDDIJob_submitted:
-          target: HPCToDDIJob
+            - HPCToCloudJob_submitted
+        HPCToCloudJob_submitted:
+          target: HPCToCloudJob
           activities:
             - set_state: submitted
           on_success:
-            - HPCToDDIJob_run
-        HPCToDDIJob_run:
-          target: HPCToDDIJob
+            - HPCToCloudJob_run
+        HPCToCloudJob_run:
+          target: HPCToCloudJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
           on_success:
-            - HPCToDDIJob_executed
-        HPCToDDIJob_executed:
-          target: HPCToDDIJob
+            - HPCToCloudJob_executed
+        HPCToCloudJob_executed:
+          target: HPCToCloudJob
           activities:
             - set_state: executed
-    #
-    # Test workflow to only execute the postprocessing
-    #
-    testPostprocessing:
+
+    testMountHPCRes:
       steps:
-        CreatePostProcessDirs_start:
-          target: CreatePostProcessDirs
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CreatePostProcessDirs_started
-        CreatePostProcessDirs_started:
-          target: CreatePostProcessDirs
-          activities:
-            - set_state: started
-          on_success:
-            - CopyFromJobTask_start
-        CopyFromJobTask_start:
-          target: CopyFromJobTask
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CopyFromJobTask_started
-        CopyFromJobTask_started:
-          target: CopyFromJobTask
-          activities:
-            - set_state: started
-          on_success:
-            - PostprocessingContainer_create
-            - HPCJob_disable_file_transfer
-        HPCJob_disable_file_transfer:
-          target: HPCJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: custom.disable_file_transfer
-          on_success:
-            - HPCJob_delete
-        HPCJob_delete:
-          target: HPCJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.delete
-          on_success:
-            - HPCJob_deleted
-        HPCJob_deleted:
-          target: HPCJob
-          activities:
-            - set_state: deleted
-        PostprocessingContainer_create:
-          target: PostprocessingContainer
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - PostprocessingContainer_start
-        PostprocessingContainer_start:
-          target: PostprocessingContainer
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - PostprocessingContainer_started
-        PostprocessingContainer_started:
-          target: PostprocessingContainer
-          activities:
-            - set_state: started
-          on_success:
-            - CreateStagingAreaResultDir_start
-        CreateStagingAreaResultDir_start:
-          target: CreateStagingAreaResultDir
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CreateStagingAreaResultDir_started
-        CreateStagingAreaResultDir_started:
-          target: CreateStagingAreaResultDir
-          activities:
-            - set_state: started
-          on_success:
-            - StagePostProcessingResults_start
-        StagePostProcessingResults_start:
-          target: StagePostProcessingResults
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - StagePostProcessingResults_started
-        StagePostProcessingResults_started:
-          target: StagePostProcessingResults
-          activities:
-            - set_state: started
-          on_success:
-            - CloudToDDIJob_create
-        CloudToDDIJob_create:
-          target: CloudToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - CloudToDDIJob_submit
-        CloudToDDIJob_submit:
-          target: CloudToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - CloudToDDIJob_submitted
-        CloudToDDIJob_submitted:
-          target: CloudToDDIJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - CloudToDDIJob_run
-        CloudToDDIJob_run:
-          target: CloudToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - CloudToDDIJob_executed
-        CloudToDDIJob_executed:
-          target: CloudToDDIJob
-          activities:
-            - set_state: executed
-    #
-    # Test workflow to only execute the postprocessing cleanup
-    #
-    testPostprocessCleanup:
-      steps:
-        MountInputDataset_refresh_token:
-          target: MountInputDataset
+        MountHPCResultsDataset_refresh_token:
+          target: MountHPCResultsDataset
           activities:
             - call_operation: custom.refresh_token
           on_success:
-            - MountInputDataset_stop
-        MountInputDataset_stop:
-          target: MountInputDataset
+            - MountHPCResultsDataset_start
+        MountHPCResultsDataset_start:
+          target: MountHPCResultsDataset
           activities:
-            - call_operation: Standard.stop
+            - call_operation: Standard.start
           on_success:
-            - MountInputDataset_stopped
-        MountInputDataset_stopped:
-          target: MountInputDataset
+            - MountHPCResultsDataset_started
+        MountHPCResultsDataset_started:
+          target: MountHPCResultsDataset
           activities:
-            - set_state: stopped
-          on_success:
-            - CleanupCloudStagingAreaJob_create
-        CleanupCloudStagingAreaJob_create:
-          target: CleanupCloudStagingAreaJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - CleanupCloudStagingAreaJob_created
-        CleanupCloudStagingAreaJob_created:
-          target: CleanupCloudStagingAreaJob
-          activities:
-            - set_state: created
-          on_success:
-            - CleanupCloudStagingAreaJob_submit
-        CleanupCloudStagingAreaJob_submit:
-          target: CleanupCloudStagingAreaJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - CleanupCloudStagingAreaJob_submitted
-        CleanupCloudStagingAreaJob_submitted:
-          target: CleanupCloudStagingAreaJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - CleanupCloudStagingAreaJob_run
-        CleanupCloudStagingAreaJob_run:
-          target: CleanupCloudStagingAreaJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - CleanupCloudStagingAreaJob_executed
-        CleanupCloudStagingAreaJob_executed:
-          target: CleanupCloudStagingAreaJob
-          activities:
-            - set_state: executed
-          on_success:
-            - ComputeInstance_uninstall
-        ComputeInstance_uninstall:
-          target: ComputeInstance
-          activities:
-            - delegate: uninstall
-          on_success:
-            - Network_uninstall
-        Network_uninstall:
-          target: Network
-          activities:
-            - delegate: uninstall
+            - set_state: started
 
+    testMoveHPCRes:
+      steps:
+        MoveHPCResults_start:
+          target: MoveHPCResults
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveHPCResults_started
+        MoveHPCResults_started:
+          target: MoveHPCResults
+          activities:
+            - set_state: started

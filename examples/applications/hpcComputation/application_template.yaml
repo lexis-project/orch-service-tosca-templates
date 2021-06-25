@@ -12,7 +12,7 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - alien-base-types:3.0.0
   - org.lexis.common.heappe-types:1.0.6
-  - org.lexis.common.ddi-types:1.0.0
+  - org.lexis.common.ddi-types:1.0.1
   - org.lexis.common.dynamic-orchestration-types:1.0.1
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
 
@@ -170,7 +170,7 @@ topology_template:
             type_requirement: job
             node: HEAppEJob
             capability: org.lexis.common.heappe.capabilities.HeappeJob
-            relationship: org.lexis.common.ddi.relationships.SendJobOutputsToDDI
+            relationship: org.lexis.common.ddi.relationships.SendJobOutputs
   outputs:
     computation_dataset_result_path:
       description: DDI path to computation results

@@ -51,7 +51,7 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `laurentg/fp_framework_hyde:1.0.5`
 * postprocessing_hmc_image: HMC post-processing container repository path
   * default: `laurentg/fp_framework_hmc:1.0.5`
-* postprocessing_ddi_path: Path where to transfer the post-processing results in DDI
+* postprocessing_ddi_project_path: Path where to transfer the post-processing results in DDI
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c`
 * postprocessing_encrypt_dataset_result: Encrypt the result dataset
   * default: `false`

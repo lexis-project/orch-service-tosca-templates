@@ -9,7 +9,7 @@ description: Data transfer types
 
 imports:
   - org.lexis.common.heappe-types:1.0.6
-  - org.lexis.common.ddi-types:1.0.0
+  - org.lexis.common.ddi-types:1.0.1
   - org.ystia.docker.images:3.0.0-SNAPSHOT
   - yorc-types:1.1.0
 node_types:
