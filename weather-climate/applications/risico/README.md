@@ -22,6 +22,7 @@ Dynamic Allocation Module (DAM) is asked to select the best HPC infrastructure w
 * WRF results are also transferred to the compute instance for post-processing
 * then, a [RISICO container](https://github.com/cima-lexis/risico-docker) provided by CIMA is executed
 * results are then transferred from the cloud staging area to DDI
+* if a Dewetra SFTP server was specified by the user, the results will also be uploaded to Dewetra SFTP server
 * finally, the cloud staging area is cleaned and the cloud compute instance is released
 
 ## Input properties
@@ -49,6 +50,7 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `false`
 * postprocessing_compress_dataset_result: Compress the result dataset
   * default: `false`
+* postprocessing_dewetra_sftp_server_ip: IP address of a Dewetra SPTP server where to store results (default, no sftp server upload)
 
 ## Ouput attribute
 

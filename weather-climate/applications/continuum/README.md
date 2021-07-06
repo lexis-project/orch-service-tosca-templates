@@ -26,6 +26,7 @@ these are containers build from a [Flood Proofs virtualization repository](https
 * then, 17 containers run (one per Italian region) to run the Continuum hydrological model using the data previously collected,
 these are containers build from the same [Flood Proofs virtualization repository](https://github.com/c-hydro/fp-docker) provided by CIMA
 * results are then transferred from the cloud staging area to DDI
+* if a Dewetra SFTP server was specified by the user, the results will also be uploaded to Dewetra SFTP server
 * finally, the cloud staging area is cleaned and the cloud compute instance is released
 
 ## Input properties
@@ -57,6 +58,7 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `false`
 * postprocessing_compress_dataset_result: Compress the result dataset
   * default: `true`
+* postprocessing_dewetra_sftp_server_ip: IP address of a Dewetra SPTP server where to store results (default, no sftp server upload)
 
 ## Ouput attribute
 
