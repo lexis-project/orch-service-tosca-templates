@@ -1,0 +1,54 @@
+tosca_definitions_version: alien_dsl_3_0_0
+
+metadata:
+  template_name: org.lexis.wp7.dewetra
+  template_version: 0.1.0
+  template_author: lexis
+
+description: Dewetra types
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - yorc-types:1.1.0
+node_types:
+  org.lexis.wp7.nodes.DewetraUpload:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: Upload results to Dewetra
+    properties:
+      start_date:
+        type: string
+        description: Updload results computed for this date, format YYYYMMDDHH
+        required: true
+      computation_type:
+        type: string
+        description: Type of computation, RISICO, CONTINUUM, ADMS or LIMAGRAIN
+        required: true
+      wrf_results_dir:
+        type: string
+        description: Path to WRF results directory
+        required: true
+      postprocessing_results_dir:
+        type: string
+        description: Path to postprocessing results directory (it not set, no post-processing results will be uploaded)
+        required: false
+        default: ""
+      sftp_server_ip:
+        type: string
+        description: SFTP server IP address (if not defined, no transfer will be done)
+        required: false
+      sftp_port:
+        type: integer
+        description: Path to zip
+        default: 22
+        required: false
+    interfaces:
+      Standard:
+        start:
+          inputs:
+            START_DATE: {get_property: [SELF, start_date]}
+            COMPUTATION_TYPE: {get_property: [SELF, computation_type]}
+            SFTP_SERVER_IP: {get_property: [SELF, sftp_server_ip]}
+            SFTP_SERVER_PORT: {get_property: [SELF, sftp_port]}
+            USER: { get_secret: ["/secret/wp7/dewetra/creds", "data=user"]}
+            KEY: { get_secret: ["/secret/wp7/dewetra/creds", "data=key"]}
+          implementation: playbooks/upload_results.yaml

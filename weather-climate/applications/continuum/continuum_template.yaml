@@ -20,6 +20,7 @@ imports:
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
   - org.lexis.wp7.wps:0.1.1-SNAPSHOT
+  - org.lexis.wp7.dewetra:0.1.0
 
 topology_template:
   inputs:
@@ -81,6 +82,11 @@ topology_template:
         List of volumes to mount within the post-processing container downloading observation data.
         Use docker CLI-style syntax: /host:/container[:mode]
       default: ["/wps_data/observations:/output"]
+    postprocessing_dewetra_sftp_server_ip:
+        type: string
+        description: IP address of a Dewetra SPTP server where to store results (default, no sftp server upload)
+        required: false
+        default: ""
     postprocessing_dataset_continuum_static_data_path:
       type: string
       description: Continuum static data dataset path in DDI
@@ -173,6 +179,16 @@ topology_template:
             protocol: tcp
             network_name: PRIVATE
             initiator: source
+    # At the end of the workflow, the Cloud instance token should be refreshed
+    # before attempting to uninstall the compute instance
+    RefreshVMToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.RefreshTargetTokens
+      requirements:
+        - target:
+            type_requirement: target
+            node: ContinuumVM
+            capability: tosca.capabilities.Node
+            relationship: tosca.relationships.DependsOn
     GetDDIAccess:
       type: org.lexis.common.ddi.nodes.DDIAccess
       requirements:
@@ -375,23 +391,6 @@ topology_template:
               StandardErrorFile: "stderr"
               ProgressFile: "stdprog"
               LogFile: "stdlog"
-    # copy the content of /wps_data/output: inputs and observations subdirs
-#    CopyToJobTask:
-#      type: org.lexis.common.datatransfer.nodes.CopyToJobTask
-#      properties:
-#        task_name: "WRF Generic"
-#        source_directory: /wps_data/output
-#      requirements:
-#        - hostedOnVirtualMachineHost:
-#            type_requirement: host
-#            node: ContinuumVM
-#            capability: tosca.capabilities.Container
-#            relationship: tosca.relationships.HostedOn
-#        - job:
-#            type_requirement: job
-#            node: WRF
-#            capability: org.lexis.common.heappe.capabilities.HeappeJob
-#            relationship: org.lexis.common.heappe.relationships.SendInputsToJob
     # Create a directory in staging area for WRF inputs
     CreateStagingAreaWRFInputDir:
       type: org.lexis.common.datatransfer.nodes.CreateStagingAreaDirectory
@@ -536,6 +535,7 @@ topology_template:
       properties:
         token: { get_input: token }
         task_name: "WRF Generic"
+        source_subdirectory: "results"
         cloud_staging_area_directory_path: "continuum_wrf_results"
         timestamp_cloud_staging_area_directory: true
       requirements:
@@ -570,11 +570,24 @@ topology_template:
             node: ContinuumVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
-    # Move only the WRF results needed by post-processing
-    MoveWRFResults:
+    # Move only the WRF auxhist results needed by post-processing
+    MoveWRFAuxhistResults:
       type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
         source_file:  "/mnt/cloud_staging_area/wrf_results/*/wrf00/auxhist*"
+        destination: "/continuum/datasets_hyde/dynamic_data/"
+        as_user: "root"
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    # Move the WRF lexis result to be uploaded to dewetra
+    MoveWRFLexisResult:
+      type: org.lexis.common.datatransfer.nodes.MoveFile
+      properties:
+        source_file:  "/mnt/cloud_staging_area/wrf_results/dewetra/lexis*"
         destination: "/continuum/datasets_hyde/dynamic_data/"
         as_user: "root"
       requirements:
@@ -595,75 +608,13 @@ topology_template:
         compress: {get_input: postprocessing_compress_dataset_result}
         ddi_path: { get_input: postprocessing_ddi_project_path }
         task_name: "WRF Generic"
+        source_subdirectory: "results"
       requirements:
         - job:
             type_requirement: job
             node: WRF
             capability: org.lexis.common.heappe.capabilities.HeappeJob
             relationship: org.lexis.common.ddi.relationships.SendJobOutputs
-#    CopyFromJobTask:
-#      type: org.lexis.common.datatransfer.nodes.CopyFromJobTask
-#      properties:
-#        task_name: "WRF Generic"
-#        source_files: [ "*/wrf00/auxhist*" ]
-#        destination_directory:  "/continuum/datasets_hyde/dynamic_data/"
-#        as_user: root
-#      requirements:
-#        - hostedOnVirtualMachineHost:
-#            type_requirement: host
-#            node: ContinuumVM
-#            capability: tosca.capabilities.Container
-#            relationship: tosca.relationships.HostedOn
-#        - job:
-#            type_requirement: job
-#            node: WRF
-#            capability: org.lexis.common.heappe.capabilities.HeappeJob
-#            relationship: org.lexis.common.heappe.relationships.GetResultsFromJob
-#    CreateStagingAreaWRFResultDir:
-#      type: org.lexis.common.datatransfer.nodes.CreateStagingAreaDirectory
-#      properties:
-#        directory: "wrf"
-#      requirements:
-#        - mountedCloudStagingArea:
-#            type_requirement: mounted_staging_area
-#            node: MountGEOGDataset
-#            capability: org.lexis.common.ddi.capabilities.MountedStagingAreaAccess
-#            relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
-#        - hostedOnComputeHost:
-#            type_requirement: host
-#            node: ContinuumVM
-#            capability: tosca.capabilities.Container
-#            relationship: tosca.relationships.HostedOn
-#    StageWRFResults:
-#      type: org.lexis.common.datatransfer.nodes.CopyFilesToStagingAreaDirectory
-#      properties:
-#        source_directory: "/continuum/datasets_hyde/dynamic_data/"
-#        source_files: [ "auxhist*" ]
-#      requirements:
-#        - staging_area_directory:
-#            type_requirement: cloud_area_directory_provider
-#            node: CreateStagingAreaWRFResultDir
-#            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
-#            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
-#        - hostedOnComputeHost:
-#            type_requirement: host
-#            node: ContinuumVM
-#            capability: tosca.capabilities.Container
-#            relationship: tosca.relationships.HostedOn
-#    CloudToDDIWRFJob:
-#      type: org.lexis.common.ddi.nodes.CloudToDDIJob
-#      properties:
-#        metadata: {concat: ["{\"creator\": [\"Continuum workflow\"], \"contributor\": [\"Continuum workflow\"], \"publisher\": [\"Continuum workflow\"], \"resourceType\": \"Dataset\", \"title\": \"Continuum Workflow WRF result - ", get_input: postprocessing_run_date, "\"}"]}
-#        token: { get_input: token }
-#        ddi_path: { get_input: postprocessing_ddi_project_path }
-#        encrypt: {get_input: postprocessing_encrypt_dataset_result}
-#        compress: {get_input: postprocessing_compress_dataset_result}
-#      requirements:
-#        - cloud_area_directory_provider:
-#            type_requirement: cloud_area_directory_provider
-#            node: CreateStagingAreaWRFResultDir
-#            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
-#            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
     DDIToCloudContinuumStaticDataJob:
       type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
@@ -1648,6 +1599,20 @@ topology_template:
             node: CreateStagingAreaResultDir
             capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
             relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
+    DewetraUpload:
+      type: org.lexis.wp7.nodes.DewetraUpload
+      properties:
+        start_date: { get_input: preprocessing_start_date }
+        computation_type: CONTINUUM
+        wrf_results_dir: "/continuum/datasets_hyde/dynamic_data"
+        postprocessing_results_dir: "/continuum/datasets_hmc/dynamic_data/destination"
+        sftp_server_ip: { get_input: postprocessing_dewetra_sftp_server_ip }
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
     DeleteCloudWRFDataJob:
       type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
       properties:
@@ -1755,6 +1720,20 @@ topology_template:
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.delete
+          on_success:
+            - RefreshVMToken_start
+        RefreshVMToken_start:
+          target: RefreshVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
+          on_success:
+            - Compute_uninstall
         Compute_uninstall:
           target: ContinuumVM
           activities:
@@ -2178,7 +2157,6 @@ topology_template:
             - set_state: submitted
           on_success:
             - HPCToCloudWRFJob_run
-            - DDIToCloudContinuumStaticDataJob_create
         HPCToCloudWRFJob_run:
           target: HPCToCloudWRFJob
           operation_host: ORCHESTRATOR
@@ -2209,54 +2187,32 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - MoveWRFResults_start
-            - HPCToDDIJob_create
-        MoveWRFResults_start:
-          target: MoveWRFResults
+            - DDIToCloudContinuumStaticDataJob_create
+            - MoveWRFAuxhistResults_start
+        MoveWRFAuxhistResults_start:
+          target: MoveWRFAuxhistResults
           activities:
             - call_operation: Standard.start
           on_success:
-            - MoveWRFResults_started
-        MoveWRFResults_started:
-          target: MoveWRFResults
+            - MoveWRFAuxhistResults_started
+        MoveWRFAuxhistResults_started:
+          target: MoveWRFAuxhistResults
+          activities:
+            - set_state: started
+          on_success:
+            - MoveWRFLexisResult_start
+        MoveWRFLexisResult_start:
+          target: MoveWRFLexisResult
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveWRFLexisResult_started
+        MoveWRFLexisResult_started:
+          target: MoveWRFLexisResult
           activities:
             - set_state: started
           on_success:
             - MountContinuumDataset_refresh_token
-        # Transfer HPC job results to DDI
-        HPCToDDIJob_create:
-          target: HPCToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - HPCToDDIJob_submit
-        HPCToDDIJob_submit:
-          target: HPCToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - HPCToDDIJob_submitted
-        HPCToDDIJob_submitted:
-          target: HPCToDDIJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - HPCToDDIJob_run
-        HPCToDDIJob_run:
-          target: HPCToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - HPCToDDIJob_executed
-        HPCToDDIJob_executed:
-          target: HPCToDDIJob
-          activities:
-            - set_state: executed
-          on_success:
-            - MountGEOGDataset_refresh_token_for_stop
         CreatePostProcessHydeDirs_start:
           target: CreatePostProcessHydeDirs
           activities:
@@ -2319,6 +2275,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
+            - HPCToDDIJob_create
             - FindContinuumStaticDataFiles_start
         FindContinuumStaticDataFiles_start:
           target: FindContinuumStaticDataFiles
@@ -2357,6 +2314,40 @@ topology_template:
           on_success:
             - CreatePostProcessHMCDirs_start
             - Continuum_Hyde_marche_create
+        # Transfer HPC job results to DDI
+        HPCToDDIJob_create:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - HPCToDDIJob_submit
+        HPCToDDIJob_submit:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - HPCToDDIJob_submitted
+        HPCToDDIJob_submitted:
+          target: HPCToDDIJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - HPCToDDIJob_run
+        HPCToDDIJob_run:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - HPCToDDIJob_executed
+        HPCToDDIJob_executed:
+          target: HPCToDDIJob
+          activities:
+            - set_state: executed
+          on_success:
+            - CloudToDDIJob_create
         CreatePostProcessHMCDirs_start:
           target: CreatePostProcessHMCDirs
           activities:
@@ -2374,7 +2365,6 @@ topology_template:
           activities:
             - call_operation: Standard.create
           on_success:
-            - Continuum_Hyde_po_start
             - Continuum_Hyde_adige_start
             - Continuum_Hyde_basilicata_start
             - Continuum_Hyde_calabria_start
@@ -2383,6 +2373,7 @@ topology_template:
             - Continuum_Hyde_lazio_start
             - Continuum_Hyde_liguria_start
             - Continuum_Hyde_marche_start
+            - Continuum_Hyde_po_start
         Continuum_Hyde_marche_start:
           target: Continuum_Hyde_marche
           activities:
@@ -2394,14 +2385,6 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - Continuum_Hyde_liri_start
-            - Continuum_Hyde_puglia_start
-            - Continuum_Hyde_romagna_start
-            - Continuum_Hyde_sardegna_start
-            - Continuum_Hyde_sicilia_start
-            - Continuum_Hyde_tevere_start
-            - Continuum_Hyde_toscana_start
-            - Continuum_Hyde_volturno_start
             - Move_Hyde_Results_start
         Continuum_Hyde_po_start:
           target: Continuum_Hyde_po
@@ -2414,6 +2397,14 @@ topology_template:
           activities:
             - set_state: started
           on_success:
+            - Continuum_Hyde_liri_start
+            - Continuum_Hyde_puglia_start
+            - Continuum_Hyde_romagna_start
+            - Continuum_Hyde_sardegna_start
+            - Continuum_Hyde_sicilia_start
+            - Continuum_Hyde_tevere_start
+            - Continuum_Hyde_toscana_start
+            - Continuum_Hyde_volturno_start
             - Move_Hyde_Results_start
         Continuum_Hyde_adige_start:
           target: Continuum_Hyde_adige
@@ -2427,14 +2418,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-            - Continuum_Hyde_liri_start
-            - Continuum_Hyde_puglia_start
-            - Continuum_Hyde_romagna_start
-            - Continuum_Hyde_sardegna_start
-            - Continuum_Hyde_sicilia_start
-            - Continuum_Hyde_tevere_start
-            - Continuum_Hyde_toscana_start
-            - Continuum_Hyde_volturno_start
         Continuum_Hyde_basilicata_start:
           target: Continuum_Hyde_basilicata
           activities:
@@ -2447,14 +2430,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-            - Continuum_Hyde_liri_start
-            - Continuum_Hyde_puglia_start
-            - Continuum_Hyde_romagna_start
-            - Continuum_Hyde_sardegna_start
-            - Continuum_Hyde_sicilia_start
-            - Continuum_Hyde_tevere_start
-            - Continuum_Hyde_toscana_start
-            - Continuum_Hyde_volturno_start
         Continuum_Hyde_calabria_start:
           target: Continuum_Hyde_calabria
           activities:
@@ -2467,14 +2442,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-            - Continuum_Hyde_liri_start
-            - Continuum_Hyde_puglia_start
-            - Continuum_Hyde_romagna_start
-            - Continuum_Hyde_sardegna_start
-            - Continuum_Hyde_sicilia_start
-            - Continuum_Hyde_tevere_start
-            - Continuum_Hyde_toscana_start
-            - Continuum_Hyde_volturno_start
         Continuum_Hyde_fvg_start:
           target: Continuum_Hyde_fvg
           activities:
@@ -2487,14 +2454,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-            - Continuum_Hyde_liri_start
-            - Continuum_Hyde_puglia_start
-            - Continuum_Hyde_romagna_start
-            - Continuum_Hyde_sardegna_start
-            - Continuum_Hyde_sicilia_start
-            - Continuum_Hyde_tevere_start
-            - Continuum_Hyde_toscana_start
-            - Continuum_Hyde_volturno_start
         Continuum_Hyde_gargano_start:
           target: Continuum_Hyde_gargano
           activities:
@@ -2507,14 +2466,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-            - Continuum_Hyde_liri_start
-            - Continuum_Hyde_puglia_start
-            - Continuum_Hyde_romagna_start
-            - Continuum_Hyde_sardegna_start
-            - Continuum_Hyde_sicilia_start
-            - Continuum_Hyde_tevere_start
-            - Continuum_Hyde_toscana_start
-            - Continuum_Hyde_volturno_start
         Continuum_Hyde_lazio_start:
           target: Continuum_Hyde_lazio
           activities:
@@ -2527,14 +2478,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-            - Continuum_Hyde_liri_start
-            - Continuum_Hyde_puglia_start
-            - Continuum_Hyde_romagna_start
-            - Continuum_Hyde_sardegna_start
-            - Continuum_Hyde_sicilia_start
-            - Continuum_Hyde_tevere_start
-            - Continuum_Hyde_toscana_start
-            - Continuum_Hyde_volturno_start
         Continuum_Hyde_liguria_start:
           target: Continuum_Hyde_liguria
           activities:
@@ -2547,14 +2490,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-            - Continuum_Hyde_liri_start
-            - Continuum_Hyde_puglia_start
-            - Continuum_Hyde_romagna_start
-            - Continuum_Hyde_sardegna_start
-            - Continuum_Hyde_sicilia_start
-            - Continuum_Hyde_tevere_start
-            - Continuum_Hyde_toscana_start
-            - Continuum_Hyde_volturno_start
         Continuum_Hyde_liri_start:
           target: Continuum_Hyde_liri
           activities:
@@ -2669,7 +2604,6 @@ topology_template:
             - call_operation: Standard.create
           on_success:
             - Continuum_HMC_marche_start
-            - Continuum_HMC_po_start
             - Continuum_HMC_adige_start
             - Continuum_HMC_basilicata_start
             - Continuum_HMC_calabria_start
@@ -2677,12 +2611,18 @@ topology_template:
             - Continuum_HMC_gargano_start
             - Continuum_HMC_lazio_start
             - Continuum_HMC_liguria_start
+            - Continuum_HMC_po_start
         Continuum_HMC_marche_start:
           target: Continuum_HMC_marche
           activities:
             - call_operation: Standard.start
           on_success:
             - Continuum_HMC_marche_started
+        Continuum_HMC_marche_started:
+          target: Continuum_HMC_marche
+          activities:
+            - set_state: started
+          on_success:
             - Continuum_HMC_liri_start
             - Continuum_HMC_puglia_start
             - Continuum_HMC_romagna_start
@@ -2692,11 +2632,6 @@ topology_template:
             - Continuum_HMC_tevere_start
             - Continuum_HMC_toscana_start
             - Continuum_HMC_volturno_start
-        Continuum_HMC_marche_started:
-          target: Continuum_HMC_marche
-          activities:
-            - set_state: started
-          on_success:
             - CreateStagingAreaResultDir_start
         Continuum_HMC_po_start:
           target: Continuum_HMC_po
@@ -2716,15 +2651,6 @@ topology_template:
             - call_operation: Standard.start
           on_success:
             - Continuum_HMC_adige_started
-            - Continuum_HMC_liri_start
-            - Continuum_HMC_puglia_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_sardegna_start
-            - Continuum_HMC_sicilia_start
-            - Continuum_HMC_tevere_start
-            - Continuum_HMC_toscana_start
-            - Continuum_HMC_volturno_start
         Continuum_HMC_adige_started:
           target: Continuum_HMC_adige
           activities:
@@ -2737,15 +2663,6 @@ topology_template:
             - call_operation: Standard.start
           on_success:
             - Continuum_HMC_basilicata_started
-            - Continuum_HMC_liri_start
-            - Continuum_HMC_puglia_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_sardegna_start
-            - Continuum_HMC_sicilia_start
-            - Continuum_HMC_tevere_start
-            - Continuum_HMC_toscana_start
-            - Continuum_HMC_volturno_start
         Continuum_HMC_basilicata_started:
           target: Continuum_HMC_basilicata
           activities:
@@ -2758,15 +2675,6 @@ topology_template:
             - call_operation: Standard.start
           on_success:
             - Continuum_HMC_calabria_started
-            - Continuum_HMC_liri_start
-            - Continuum_HMC_puglia_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_sardegna_start
-            - Continuum_HMC_sicilia_start
-            - Continuum_HMC_tevere_start
-            - Continuum_HMC_toscana_start
-            - Continuum_HMC_volturno_start
         Continuum_HMC_calabria_started:
           target: Continuum_HMC_calabria
           activities:
@@ -2779,15 +2687,6 @@ topology_template:
             - call_operation: Standard.start
           on_success:
             - Continuum_HMC_fvg_started
-            - Continuum_HMC_liri_start
-            - Continuum_HMC_puglia_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_sardegna_start
-            - Continuum_HMC_sicilia_start
-            - Continuum_HMC_tevere_start
-            - Continuum_HMC_toscana_start
-            - Continuum_HMC_volturno_start
         Continuum_HMC_fvg_started:
           target: Continuum_HMC_fvg
           activities:
@@ -2800,15 +2699,6 @@ topology_template:
             - call_operation: Standard.start
           on_success:
             - Continuum_HMC_gargano_started
-            - Continuum_HMC_liri_start
-            - Continuum_HMC_puglia_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_sardegna_start
-            - Continuum_HMC_sicilia_start
-            - Continuum_HMC_tevere_start
-            - Continuum_HMC_toscana_start
-            - Continuum_HMC_volturno_start
         Continuum_HMC_gargano_started:
           target: Continuum_HMC_gargano
           activities:
@@ -2821,15 +2711,6 @@ topology_template:
             - call_operation: Standard.start
           on_success:
             - Continuum_HMC_lazio_started
-            - Continuum_HMC_liri_start
-            - Continuum_HMC_puglia_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_sardegna_start
-            - Continuum_HMC_sicilia_start
-            - Continuum_HMC_tevere_start
-            - Continuum_HMC_toscana_start
-            - Continuum_HMC_volturno_start
         Continuum_HMC_lazio_started:
           target: Continuum_HMC_lazio
           activities:
@@ -2842,15 +2723,6 @@ topology_template:
             - call_operation: Standard.start
           on_success:
             - Continuum_HMC_liguria_started
-            - Continuum_HMC_liri_start
-            - Continuum_HMC_puglia_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_sardegna_start
-            - Continuum_HMC_sicilia_start
-            - Continuum_HMC_tevere_start
-            - Continuum_HMC_toscana_start
-            - Continuum_HMC_volturno_start
         Continuum_HMC_liguria_started:
           target: Continuum_HMC_liguria
           activities:
@@ -3009,6 +2881,18 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - DewetraUpload_start
+        DewetraUpload_start:
+          target: DewetraUpload
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - DewetraUpload_started
+        DewetraUpload_started:
+          target: DewetraUpload
+          activities:
+            - set_state: started
+          on_success:
             - MountGEOGDataset_refresh_token_for_stop
         MountGEOGDataset_refresh_token_for_stop:
           target: MountGEOGDataset
@@ -3090,7 +2974,6 @@ topology_template:
             - set_state: submitted
           on_success:
             - DeleteCloudGEOGDataJob_run
-            - DeleteCloudWRFDataJob_create
         DeleteCloudGEOGDataJob_run:
           target: DeleteCloudGEOGDataJob
           operation_host: ORCHESTRATOR
@@ -3103,7 +2986,7 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - WRF_disable_file_transfer
+            - DeleteCloudWRFDataJob_create
         DeleteCloudWRFDataJob_create:
           target: DeleteCloudWRFDataJob
           operation_host: ORCHESTRATOR
@@ -3130,7 +3013,6 @@ topology_template:
             - set_state: submitted
           on_success:
             - DeleteCloudWRFDataJob_run
-            - DeleteCloudContinuumStaticDataJob_create
         DeleteCloudWRFDataJob_run:
           target: DeleteCloudWRFDataJob
           operation_host: ORCHESTRATOR
@@ -3143,7 +3025,7 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - WRF_disable_file_transfer
+            - DeleteCloudContinuumStaticDataJob_create
         DeleteCloudContinuumStaticDataJob_create:
           target: DeleteCloudContinuumStaticDataJob
           operation_host: ORCHESTRATOR
@@ -3201,6 +3083,1084 @@ topology_template:
           target: WRF
           activities:
             - set_state: deleted
+          on_success:
+            - RefreshVMToken_start
+        RefreshVMToken_start:
+          target: RefreshVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
+          on_success:
+            - Compute_uninstall
+        Compute_uninstall:
+          target: ContinuumVM
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: PublicNet
+          activities:
+            - delegate: uninstall
+    testPostJobCreation:
+      steps:
+        WRF_enable_file_transfer:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - CreateStagingAreaWRFInputDir_start
+        # Create a directory in cloud staging area and copy HPC inputs there
+        CreateStagingAreaWRFInputDir_start:
+          target: CreateStagingAreaWRFInputDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaWRFInputDir_started
+        CreateStagingAreaWRFInputDir_started:
+          target: CreateStagingAreaWRFInputDir
+          activities:
+            - set_state: started
+          on_success:
+            - StageWRFInputs_start
+        # Stage HPC inputs to cloud staging area
+        StageWRFInputs_start:
+          target: StageWRFInputs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - StageWRFInputs_started
+        StageWRFInputs_started:
+          target: StageWRFInputs
+          activities:
+            - set_state: started
+          on_success:
+            - CloudToHPCTaskJob_create
+        # Transfer HPC inputs from Cloud staging area to HPC
+        CloudToHPCTaskJob_create:
+          target: CloudToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CloudToHPCTaskJob_submit
+        CloudToHPCTaskJob_submit:
+          target: CloudToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CloudToHPCTaskJob_submitted
+        CloudToHPCTaskJob_submitted:
+          target: CloudToHPCTaskJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CloudToHPCTaskJob_run
+        CloudToHPCTaskJob_run:
+          target: CloudToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CloudToHPCTaskJob_executed
+        CloudToHPCTaskJob_executed:
+          target: CloudToHPCTaskJob
+          activities:
+            - set_state: executed
+          on_success:
+            - WRF_submit
+        WRF_submit:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - WRF_submitted
+        WRF_submitted:
+          target: WRF
+          activities:
+            - set_state: submitted
+          on_success:
+            - WRF_run
+        WRF_run:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - WRF_executed
+        WRF_executed:
+          target: WRF
+          activities:
+            - set_state: executed
+    testPostProcess:
+      steps:
+        # Transfer HPC results from HPC to Cloud staging area
+        HPCToCloudWRFJob_create:
+          target: HPCToCloudWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - HPCToCloudWRFJob_submit
+        HPCToCloudWRFJob_submit:
+          target: HPCToCloudWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - HPCToCloudWRFJob_submitted
+        HPCToCloudWRFJob_submitted:
+          target: HPCToCloudWRFJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - HPCToCloudWRFJob_run
+        HPCToCloudWRFJob_run:
+          target: HPCToCloudWRFJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - HPCToCloudWRFJob_executed
+        HPCToCloudWRFJob_executed:
+          target: HPCToCloudWRFJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountWRFDataset_refresh_token
+        MountWRFDataset_refresh_token:
+          target: MountWRFDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountWRFDataset_start
+        MountWRFDataset_start:
+          target: MountWRFDataset
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountWRFDataset_started
+        MountWRFDataset_started:
+          target: MountWRFDataset
+          activities:
+            - set_state: started
+          on_success:
+            - DDIToCloudContinuumStaticDataJob_create
+            - MoveWRFAuxhistResults_start
+        MoveWRFAuxhistResults_start:
+          target: MoveWRFAuxhistResults
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveWRFAuxhistResults_started
+        MoveWRFAuxhistResults_started:
+          target: MoveWRFAuxhistResults
+          activities:
+            - set_state: started
+          on_success:
+            - MoveWRFLexisResult_start
+        MoveWRFLexisResult_start:
+          target: MoveWRFLexisResult
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveWRFLexisResult_started
+        MoveWRFLexisResult_started:
+          target: MoveWRFLexisResult
+          activities:
+            - set_state: started
+          on_success:
+            - MountContinuumDataset_refresh_token
+        CreatePostProcessHydeDirs_start:
+          target: CreatePostProcessHydeDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreatePostProcessHydeDirs_started
+        CreatePostProcessHydeDirs_started:
+          target: CreatePostProcessHydeDirs
+          activities:
+            - set_state: started
+          on_success:
+            - MoveObservationContinuumData_start
+        DDIToCloudContinuumStaticDataJob_create:
+          target: DDIToCloudContinuumStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToCloudContinuumStaticDataJob_submit
+        DDIToCloudContinuumStaticDataJob_submit:
+          target: DDIToCloudContinuumStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToCloudContinuumStaticDataJob_submitted
+        DDIToCloudContinuumStaticDataJob_submitted:
+          target: DDIToCloudContinuumStaticDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToCloudContinuumStaticDataJob_run
+        DDIToCloudContinuumStaticDataJob_run:
+          target: DDIToCloudContinuumStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToCloudContinuumStaticDataJob_executed
+        DDIToCloudContinuumStaticDataJob_executed:
+          target: DDIToCloudContinuumStaticDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountContinuumDataset_refresh_token
+        MountContinuumDataset_refresh_token:
+          target: MountContinuumDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountContinuumDataset_start
+        MountContinuumDataset_start:
+          target: MountContinuumDataset
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountContinuumDataset_started
+        MountContinuumDataset_started:
+          target: MountContinuumDataset
+          activities:
+            - set_state: started
+          on_success:
+            - HPCToDDIJob_create
+            - FindContinuumStaticDataFiles_start
+        FindContinuumStaticDataFiles_start:
+          target: FindContinuumStaticDataFiles
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - FindContinuumStaticDataFiles_started
+        FindContinuumStaticDataFiles_started:
+          target: FindContinuumStaticDataFiles
+          activities:
+            - set_state: started
+          on_success:
+            - MoveContinuumStaticDataFiles_start
+        MoveContinuumStaticDataFiles_start:
+          target: MoveContinuumStaticDataFiles
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveContinuumStaticDataFiles_started
+        MoveContinuumStaticDataFiles_started:
+          target: MoveContinuumStaticDataFiles
+          activities:
+            - set_state: started
+          on_success:
+            - Continuum_Hyde_marche_create
+        MoveObservationContinuumData_start:
+          target: MoveObservationContinuumData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveObservationContinuumData_started
+        MoveObservationContinuumData_started:
+          target: MoveObservationContinuumData
+          activities:
+            - set_state: started
+          on_success:
+            - CreatePostProcessHMCDirs_start
+            - Continuum_Hyde_marche_create
+        # Transfer HPC job results to DDI
+        HPCToDDIJob_create:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - HPCToDDIJob_submit
+        HPCToDDIJob_submit:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - HPCToDDIJob_submitted
+        HPCToDDIJob_submitted:
+          target: HPCToDDIJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - HPCToDDIJob_run
+        HPCToDDIJob_run:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - HPCToDDIJob_executed
+        HPCToDDIJob_executed:
+          target: HPCToDDIJob
+          activities:
+            - set_state: executed
+          on_success:
+            - CloudToDDIJob_create
+        CreatePostProcessHMCDirs_start:
+          target: CreatePostProcessHMCDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreatePostProcessHMCDirs_started
+        CreatePostProcessHMCDirs_started:
+          target: CreatePostProcessHMCDirs
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_marche_create:
+          target: Continuum_Hyde_marche
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_Hyde_adige_start
+            - Continuum_Hyde_basilicata_start
+            - Continuum_Hyde_calabria_start
+            - Continuum_Hyde_fvg_start
+            - Continuum_Hyde_gargano_start
+            - Continuum_Hyde_lazio_start
+            - Continuum_Hyde_liguria_start
+            - Continuum_Hyde_marche_start
+            - Continuum_Hyde_po_start
+        Continuum_Hyde_marche_start:
+          target: Continuum_Hyde_marche
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_marche_started
+        Continuum_Hyde_marche_started:
+          target: Continuum_Hyde_marche
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_po_start:
+          target: Continuum_Hyde_po
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_po_started
+        Continuum_Hyde_po_started:
+          target: Continuum_Hyde_po
+          activities:
+            - set_state: started
+          on_success:
+            - Continuum_Hyde_liri_start
+            - Continuum_Hyde_puglia_start
+            - Continuum_Hyde_romagna_start
+            - Continuum_Hyde_sardegna_start
+            - Continuum_Hyde_sicilia_start
+            - Continuum_Hyde_tevere_start
+            - Continuum_Hyde_toscana_start
+            - Continuum_Hyde_volturno_start
+            - Move_Hyde_Results_start
+        Continuum_Hyde_adige_start:
+          target: Continuum_Hyde_adige
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_adige_started
+        Continuum_Hyde_adige_started:
+          target: Continuum_Hyde_adige
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_basilicata_start:
+          target: Continuum_Hyde_basilicata
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_basilicata_started
+        Continuum_Hyde_basilicata_started:
+          target: Continuum_Hyde_basilicata
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_calabria_start:
+          target: Continuum_Hyde_calabria
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_calabria_started
+        Continuum_Hyde_calabria_started:
+          target: Continuum_Hyde_calabria
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_fvg_start:
+          target: Continuum_Hyde_fvg
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_fvg_started
+        Continuum_Hyde_fvg_started:
+          target: Continuum_Hyde_fvg
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_gargano_start:
+          target: Continuum_Hyde_gargano
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_gargano_started
+        Continuum_Hyde_gargano_started:
+          target: Continuum_Hyde_gargano
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_lazio_start:
+          target: Continuum_Hyde_lazio
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_lazio_started
+        Continuum_Hyde_lazio_started:
+          target: Continuum_Hyde_lazio
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_liguria_start:
+          target: Continuum_Hyde_liguria
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_liguria_started
+        Continuum_Hyde_liguria_started:
+          target: Continuum_Hyde_liguria
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_liri_start:
+          target: Continuum_Hyde_liri
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_liri_started
+        Continuum_Hyde_liri_started:
+          target: Continuum_Hyde_liri
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_puglia_start:
+          target: Continuum_Hyde_puglia
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_puglia_started
+        Continuum_Hyde_puglia_started:
+          target: Continuum_Hyde_puglia
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_romagna_start:
+          target: Continuum_Hyde_romagna
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_romagna_started
+        Continuum_Hyde_romagna_started:
+          target: Continuum_Hyde_romagna
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_sardegna_start:
+          target: Continuum_Hyde_sardegna
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_sardegna_started
+        Continuum_Hyde_sardegna_started:
+          target: Continuum_Hyde_sardegna
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_sicilia_start:
+          target: Continuum_Hyde_sicilia
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_sicilia_started
+        Continuum_Hyde_sicilia_started:
+          target: Continuum_Hyde_sicilia
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_tevere_start:
+          target: Continuum_Hyde_tevere
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_tevere_started
+        Continuum_Hyde_tevere_started:
+          target: Continuum_Hyde_tevere
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_toscana_start:
+          target: Continuum_Hyde_toscana
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_toscana_started
+        Continuum_Hyde_toscana_started:
+          target: Continuum_Hyde_toscana
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Continuum_Hyde_volturno_start:
+          target: Continuum_Hyde_volturno
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_Hyde_volturno_started
+        Continuum_Hyde_volturno_started:
+          target: Continuum_Hyde_volturno
+          activities:
+            - set_state: started
+          on_success:
+            - Move_Hyde_Results_start
+        Move_Hyde_Results_start:
+          target: Move_Hyde_Results
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Move_Hyde_Results_started
+        Move_Hyde_Results_started:
+          target: Move_Hyde_Results
+          activities:
+            - set_state: started
+          on_success:
+            - Continuum_HMC_marche_create
+        Continuum_HMC_marche_create:
+          target: Continuum_HMC_marche
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Continuum_HMC_marche_start
+            - Continuum_HMC_adige_start
+            - Continuum_HMC_basilicata_start
+            - Continuum_HMC_calabria_start
+            - Continuum_HMC_fvg_start
+            - Continuum_HMC_gargano_start
+            - Continuum_HMC_lazio_start
+            - Continuum_HMC_liguria_start
+            - Continuum_HMC_po_start
+        Continuum_HMC_marche_start:
+          target: Continuum_HMC_marche
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_marche_started
+        Continuum_HMC_marche_started:
+          target: Continuum_HMC_marche
+          activities:
+            - set_state: started
+          on_success:
+            - Continuum_HMC_liri_start
+            - Continuum_HMC_puglia_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_romagna_start
+            - Continuum_HMC_sardegna_start
+            - Continuum_HMC_sicilia_start
+            - Continuum_HMC_tevere_start
+            - Continuum_HMC_toscana_start
+            - Continuum_HMC_volturno_start
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_po_start:
+          target: Continuum_HMC_po
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_po_started
+        Continuum_HMC_po_started:
+          target: Continuum_HMC_po
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_adige_start:
+          target: Continuum_HMC_adige
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_adige_started
+        Continuum_HMC_adige_started:
+          target: Continuum_HMC_adige
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_basilicata_start:
+          target: Continuum_HMC_basilicata
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_basilicata_started
+        Continuum_HMC_basilicata_started:
+          target: Continuum_HMC_basilicata
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_calabria_start:
+          target: Continuum_HMC_calabria
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_calabria_started
+        Continuum_HMC_calabria_started:
+          target: Continuum_HMC_calabria
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_fvg_start:
+          target: Continuum_HMC_fvg
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_fvg_started
+        Continuum_HMC_fvg_started:
+          target: Continuum_HMC_fvg
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_gargano_start:
+          target: Continuum_HMC_gargano
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_gargano_started
+        Continuum_HMC_gargano_started:
+          target: Continuum_HMC_gargano
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_lazio_start:
+          target: Continuum_HMC_lazio
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_lazio_started
+        Continuum_HMC_lazio_started:
+          target: Continuum_HMC_lazio
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_liguria_start:
+          target: Continuum_HMC_liguria
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_liguria_started
+        Continuum_HMC_liguria_started:
+          target: Continuum_HMC_liguria
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_liri_start:
+          target: Continuum_HMC_liri
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_liri_started
+        Continuum_HMC_liri_started:
+          target: Continuum_HMC_liri
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_puglia_start:
+          target: Continuum_HMC_puglia
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_puglia_started
+        Continuum_HMC_puglia_started:
+          target: Continuum_HMC_puglia
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_romagna_start:
+          target: Continuum_HMC_romagna
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_romagna_started
+        Continuum_HMC_romagna_started:
+          target: Continuum_HMC_romagna
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_sardegna_start:
+          target: Continuum_HMC_sardegna
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_sardegna_started
+        Continuum_HMC_sardegna_started:
+          target: Continuum_HMC_sardegna
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_sicilia_start:
+          target: Continuum_HMC_sicilia
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_sicilia_started
+        Continuum_HMC_sicilia_started:
+          target: Continuum_HMC_sicilia
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_tevere_start:
+          target: Continuum_HMC_tevere
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_tevere_started
+        Continuum_HMC_tevere_started:
+          target: Continuum_HMC_tevere
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_toscana_start:
+          target: Continuum_HMC_toscana
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_toscana_started
+        Continuum_HMC_toscana_started:
+          target: Continuum_HMC_toscana
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        Continuum_HMC_volturno_start:
+          target: Continuum_HMC_volturno
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Continuum_HMC_volturno_started
+        Continuum_HMC_volturno_started:
+          target: Continuum_HMC_volturno
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        CreateStagingAreaResultDir_start:
+          target: CreateStagingAreaResultDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaResultDir_started
+        CreateStagingAreaResultDir_started:
+          target: CreateStagingAreaResultDir
+          activities:
+            - set_state: started
+          on_success:
+            - MoveContinuumResults_start
+        MoveContinuumResults_start:
+          target: MoveContinuumResults
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveContinuumResults_started
+        MoveContinuumResults_started:
+          target: MoveContinuumResults
+          activities:
+            - set_state: started
+          on_success:
+            - CloudToDDIJob_create
+        CloudToDDIJob_create:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CloudToDDIJob_submit
+        CloudToDDIJob_submit:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CloudToDDIJob_submitted
+        CloudToDDIJob_submitted:
+          target: CloudToDDIJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CloudToDDIJob_run
+        CloudToDDIJob_run:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CloudToDDIJob_executed
+        CloudToDDIJob_executed:
+          target: CloudToDDIJob
+          activities:
+            - set_state: executed
+          on_success:
+            - DewetraUpload_start
+        DewetraUpload_start:
+          target: DewetraUpload
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - DewetraUpload_started
+        DewetraUpload_started:
+          target: DewetraUpload
+          activities:
+            - set_state: started
+          on_success:
+            - MountGEOGDataset_refresh_token_for_stop
+        MountGEOGDataset_refresh_token_for_stop:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountGEOGDataset_stop
+        MountGEOGDataset_stop:
+          target: MountGEOGDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountGEOGDataset_stopped
+        MountGEOGDataset_stopped:
+          target: MountGEOGDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - MountWRFDataset_refresh_token_for_stop
+        MountWRFDataset_refresh_token_for_stop:
+          target: MountWRFDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountWRFDataset_stop
+        MountWRFDataset_stop:
+          target: MountWRFDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountWRFDataset_stopped
+        MountWRFDataset_stopped:
+          target: MountWRFDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - MountContinuumDataset_refresh_token_for_stop
+        MountContinuumDataset_refresh_token_for_stop:
+          target: MountContinuumDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountContinuumDataset_stop
+        MountContinuumDataset_stop:
+          target: MountContinuumDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountContinuumDataset_stopped
+        MountContinuumDataset_stopped:
+          target: MountContinuumDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - DeleteCloudGEOGDataJob_create
+        DeleteCloudGEOGDataJob_create:
+          target: DeleteCloudGEOGDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudGEOGDataJob_created
+        DeleteCloudGEOGDataJob_created:
+          target: DeleteCloudGEOGDataJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudGEOGDataJob_submit
+        DeleteCloudGEOGDataJob_submit:
+          target: DeleteCloudGEOGDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudGEOGDataJob_submitted
+        DeleteCloudGEOGDataJob_submitted:
+          target: DeleteCloudGEOGDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudGEOGDataJob_run
+        DeleteCloudGEOGDataJob_run:
+          target: DeleteCloudGEOGDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudGEOGDataJob_executed
+        DeleteCloudGEOGDataJob_executed:
+          target: DeleteCloudGEOGDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - DeleteCloudWRFDataJob_create
+        DeleteCloudWRFDataJob_create:
+          target: DeleteCloudWRFDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudWRFDataJob_created
+        DeleteCloudWRFDataJob_created:
+          target: DeleteCloudWRFDataJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudWRFDataJob_submit
+        DeleteCloudWRFDataJob_submit:
+          target: DeleteCloudWRFDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudWRFDataJob_submitted
+        DeleteCloudWRFDataJob_submitted:
+          target: DeleteCloudWRFDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudWRFDataJob_run
+        DeleteCloudWRFDataJob_run:
+          target: DeleteCloudWRFDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudWRFDataJob_executed
+        DeleteCloudWRFDataJob_executed:
+          target: DeleteCloudWRFDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - DeleteCloudContinuumStaticDataJob_create
+        DeleteCloudContinuumStaticDataJob_create:
+          target: DeleteCloudContinuumStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudContinuumStaticDataJob_created
+        DeleteCloudContinuumStaticDataJob_created:
+          target: DeleteCloudContinuumStaticDataJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudContinuumStaticDataJob_submit
+        DeleteCloudContinuumStaticDataJob_submit:
+          target: DeleteCloudContinuumStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudContinuumStaticDataJob_submitted
+        DeleteCloudContinuumStaticDataJob_submitted:
+          target: DeleteCloudContinuumStaticDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudContinuumStaticDataJob_run
+        DeleteCloudContinuumStaticDataJob_run:
+          target: DeleteCloudContinuumStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudContinuumStaticDataJob_executed
+        DeleteCloudContinuumStaticDataJob_executed:
+          target: DeleteCloudContinuumStaticDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - WRF_disable_file_transfer
+        WRF_disable_file_transfer:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - WRF_delete
+        WRF_delete:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - WRF_deleted
+        WRF_deleted:
+          target: WRF
+          activities:
+            - set_state: deleted
+          on_success:
+            - RefreshVMToken_start
+        RefreshVMToken_start:
+          target: RefreshVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
           on_success:
             - Compute_uninstall
         Compute_uninstall:

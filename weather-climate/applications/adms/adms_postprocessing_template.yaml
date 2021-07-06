@@ -188,6 +188,16 @@ topology_template:
             protocol: tcp
             network_name: PRIVATE
             initiator: source
+    # At the end of the workflow, the Cloud instance token should be refreshed
+    # before attempting to uninstall the compute instance
+    RefreshADMSVMToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.RefreshTargetTokens
+      requirements:
+        - target:
+            type_requirement: target
+            node: ADMS_VM
+            capability: tosca.capabilities.Node
+            relationship: tosca.relationships.DependsOn
     Docker:
       type: org.ystia.docker.ansible.nodes.Docker
       requirements:
@@ -550,6 +560,16 @@ topology_template:
         os:
           properties:
             type: "windows"
+    # At the end of the workflow, the Cloud instance token should be refreshed
+    # before attempting to uninstall the compute instance
+    RefreshADMSWinVMToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.RefreshTargetTokens
+      requirements:
+        - target:
+            type_requirement: target
+            node: ADMS_WIN_VM
+            capability: tosca.capabilities.Node
+            relationship: tosca.relationships.DependsOn
     GetDDIAccessWinVM:
       type: org.lexis.common.ddi.nodes.DDIAccess
       requirements:
@@ -681,6 +701,20 @@ topology_template:
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - RefreshADMSVMToken_start
+        RefreshADMSVMToken_start:
+          target: RefreshADMSVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshADMSVMToken_started
+        RefreshADMSVMToken_started:
+          target: RefreshADMSVMToken
+          activities:
+            - set_state: started
+          on_success:
+            - Compute_uninstall
         Compute_uninstall:
           target: ADMS_VM
           activities:
@@ -691,6 +725,20 @@ topology_template:
           target: PublicNetADMSVM
           activities:
             - delegate: uninstall
+          on_success:
+            - RefreshADMSWinVMToken_start
+        RefreshADMSWinVMToken_start:
+          target: RefreshADMSWinVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshADMSWinVMToken_started
+        RefreshADMSWinVMToken_started:
+          target: RefreshADMSWinVMToken
+          activities:
+            - set_state: started
+          on_success:
+            - WindowsCompute_uninstall
         WindowsCompute_uninstall:
           target: ADMS_WIN_VM
           activities:
@@ -742,9 +790,7 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - DDIToCloudWRFJob_create
             - DDIToCloudDockerImageJob_create
-            - DDIToCloudNCLScriptJob_create
             - Network_install
         # Get a floating IP address for the Cloud Compute instance
         Network_install:
@@ -858,6 +904,7 @@ topology_template:
             - call_operation: custom.refresh_token
           on_success:
             - MountDockerImageDataset_start
+            - DDIToCloudNCLScriptJob_create
         MountDockerImageDataset_start:
           target: MountDockerImageDataset
           activities:
@@ -869,7 +916,6 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - MountNCLScriptDataset_create
             - FindArchive_start
         FindArchive_start:
           target: FindArchive
@@ -957,6 +1003,7 @@ topology_template:
           activities:
             - call_operation: custom.refresh_token
           on_success:
+            - DDIToCloudWRFJob_create
             - MountNCLScriptDataset_start
         MountNCLScriptDataset_start:
           target: MountNCLScriptDataset
@@ -969,7 +1016,6 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - MountWRFDataset_create
             - FindNCLScript_start
         FindNCLScript_start:
           target: FindNCLScript
@@ -1264,8 +1310,19 @@ topology_template:
           activities:
             - set_state: started
           on_success:
+            - RefreshADMSWinVMToken_start
+        RefreshADMSWinVMToken_start:
+          target: RefreshADMSWinVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshADMSWinVMToken_started
+        RefreshADMSWinVMToken_started:
+          target: RefreshADMSWinVMToken
+          activities:
+            - set_state: started
+          on_success:
             - WindowsCompute_uninstall
-            - MountDockerImageDataset_refresh_token_for_stop
         WindowsCompute_uninstall:
           target: ADMS_WIN_VM
           activities:
@@ -1277,7 +1334,7 @@ topology_template:
           activities:
             - delegate: uninstall
           on_success:
-            - Compute_uninstall
+            - MountDockerImageDataset_refresh_token_for_stop
         MountDockerImageDataset_refresh_token_for_stop:
           target: MountDockerImageDataset
           activities:
@@ -1447,6 +1504,18 @@ topology_template:
           target: DeleteCloudDataWRFJob
           activities:
             - set_state: executed
+          on_success:
+            - RefreshADMSVMToken_start
+        RefreshADMSVMToken_start:
+          target: RefreshADMSVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshADMSVMToken_started
+        RefreshADMSVMToken_started:
+          target: RefreshADMSVMToken
+          activities:
+            - set_state: started
           on_success:
             - Compute_uninstall
         Compute_uninstall:

@@ -20,6 +20,7 @@ imports:
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
   - org.lexis.wp7.wps:0.1.1-SNAPSHOT
+  - org.lexis.wp7.dewetra:0.1.0
 
 topology_template:
   inputs:
@@ -54,6 +55,11 @@ topology_template:
         description: Absolute path to directory on SPTP server where to store results
         required: false
         default: "/limagrain"
+    postprocessing_dewetra_sftp_server_ip:
+        type: string
+        description: IP address of a Dewetra SPTP server where to store results (default, no sftp server upload)
+        required: false
+        default: ""
     postprocessing_project_short_name:
       type: string
       description: "DDI project short name"
@@ -197,6 +203,16 @@ topology_template:
             protocol: tcp
             network_name: PRIVATE
             initiator: source
+    # At the end of the workflow, the Cloud instance token should be refreshed
+    # before attempting to uninstall the compute instance
+    RefreshVMToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.RefreshTargetTokens
+      requirements:
+        - target:
+            type_requirement: target
+            node: AgriVM
+            capability: tosca.capabilities.Node
+            relationship: tosca.relationships.DependsOn
     GetDDIAccess:
       type: org.lexis.common.ddi.nodes.DDIAccess
       requirements:
@@ -440,23 +456,6 @@ topology_template:
             node: WRF
             capability: org.lexis.common.heappe.capabilities.HeappeJob
             relationship: org.lexis.common.heappe.relationships.SendInputsToJob
-    # copy the content of /wps_data/output: inputs and observations subdirs
- #   CopyToJobTask:
- #     type: org.lexis.common.datatransfer.nodes.CopyToJobTask
- #     properties:
- #       task_name: "WRF Generic"
- #       source_directory: /wps_data/output
- #     requirements:
- #       - hostedOnVirtualMachineHost:
- #           type_requirement: host
- #           node: AgriVM
- #           capability: tosca.capabilities.Container
- #           relationship: tosca.relationships.HostedOn
- #       - job:
- #           type_requirement: job
- #           node: WRF
- #           capability: org.lexis.common.heappe.capabilities.HeappeJob
- #           relationship: org.lexis.common.heappe.relationships.SendInputsToJob
     # Transfer the input dataset to the job task input directory
     DDIToHPCTaskJob:
       type: org.lexis.common.ddi.nodes.DDIToHPCTaskJob
@@ -480,6 +479,7 @@ topology_template:
       properties:
         token: { get_input: token }
         task_name: "WRF Generic"
+        source_subdirectory: "results"
         cloud_staging_area_directory_path: "agriculture_wrf_results"
         timestamp_cloud_staging_area_directory: true
       requirements:
@@ -524,8 +524,8 @@ topology_template:
             node: AgriVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
-    # Move only the WRF results needed by post-processing
-    MoveWRFResults:
+    # Move only the WRF auxhist results needed by post-processing
+    MoveWRFAuxhistResults:
       type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
         source_file:  "/mnt/cloud_staging_area/wrf_results/*/wrf00/auxhist*"
@@ -535,6 +535,19 @@ topology_template:
         - hostedOnVirtualMachineHost:
             type_requirement: host
             node: AgriVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    # Move the WRF lexis result to be uploaded to dewetra
+    MoveWRFLexisResult:
+      type: org.lexis.common.datatransfer.nodes.MoveFile
+      properties:
+        source_file:  "/mnt/cloud_staging_area/wrf_results/dewetra/lexis*"
+        destination: "/mnt/cloud_staging_area/agriculture/agriculture_wrf_results/wrf/"
+        as_user: "root"
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: ContinuumVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     # Transfer HEAppE WRF job results to DDI
@@ -549,59 +562,13 @@ topology_template:
         compress: {get_input: postprocessing_compress_wrf_dataset_result}
         ddi_path: { get_input: postprocessing_ddi_project_path }
         task_name: "WRF Generic"
+        source_subdirectory: "results"
       requirements:
         - job:
             type_requirement: job
             node: WRF
             capability: org.lexis.common.heappe.capabilities.HeappeJob
             relationship: org.lexis.common.ddi.relationships.SendJobOutputs
-#    CreateStagingAreaWRFResultDir:
-#      type: org.lexis.common.datatransfer.nodes.CreateStagingAreaDirectory
-#      properties:
-#        directory: "agriculture_wrf_results"
-#      requirements:
-#        - mountedCloudStagingArea:
-#            type_requirement: mounted_staging_area
-#            node: MountGEOGDataset
-#            capability: org.lexis.common.ddi.capabilities.MountedStagingAreaAccess
-#            relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
-#        - hostedOnComputeHost:
-#            type_requirement: host
-#            node: AgriVM
-#            capability: tosca.capabilities.Container
-#            relationship: tosca.relationships.HostedOn
-#    CopyFromJobTask:
-#      type: org.lexis.common.datatransfer.nodes.CopyFromJobTask
-#      properties:
-#        task_name: "WRF Generic"
-#        source_files: [ "*/wrf00/auxhist*" ]
-#        destination_directory: "/mnt/cloud_staging_area/agriculture/agriculture_wrf_results/wrf/"
-#        as_user: root
-#      requirements:
-#        - hostedOnVirtualMachineHost:
-#            type_requirement: host
-#            node: AgriVM
-#            capability: tosca.capabilities.Container
-#            relationship: tosca.relationships.HostedOn
-#        - job:
-#            type_requirement: job
-#            node: WRF
-#            capability: org.lexis.common.heappe.capabilities.HeappeJob
-#            relationship: org.lexis.common.heappe.relationships.GetResultsFromJob
-#    CloudToDDIWRFJob:
-#      type: org.lexis.common.ddi.nodes.CloudToDDIJob
-#      properties:
-#        metadata: {concat: ["{\"creator\": [\"Agriculture workflow\"], \"contributor\": [\"Agriculture workflow\"], \"publisher\": [\"Agriculture workflow\"], \"resourceType\": \"Dataset\", \"title\": \"Agriculture workflow WRF result - ", get_input: preprocessing_start_date, "\"}"]}
-#        token: { get_input: token }
-#        ddi_path: { get_input: postprocessing_ddi_project_path }
-#        encrypt: {get_input: postprocessing_encrypt_wrf_dataset_result}
-#        compress: {get_input: postprocessing_compress_wrf_dataset_result}
-#      requirements:
-#        - cloud_area_directory_provider:
-#            type_requirement: cloud_area_directory_provider
-#            node: CreateStagingAreaWRFResultDir
-#            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
-#            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
     ZIPUploadSFTP:
       type: org.lexis.common.datatransfer.nodes.ZIPUploadSFTP
       properties:
@@ -614,6 +581,19 @@ topology_template:
         password: { get_secret: ["/secret/wp7/adms/creds", "data=password"]}
       requirements:
         - hostedOnAgriVmHost:
+            type_requirement: host
+            node: AgriVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    DewetraUpload:
+      type: org.lexis.wp7.nodes.DewetraUpload
+      properties:
+        start_date: { get_input: preprocessing_start_date }
+        computation_type: ADMS
+        wrf_results_dir: "/mnt/cloud_staging_area/agriculture/agriculture_wrf_results/wrf"
+        sftp_server_ip: { get_input: postprocessing_dewetra_sftp_server_ip }
+      requirements:
+        - hostedOnComputeHost:
             type_requirement: host
             node: AgriVM
             capability: tosca.capabilities.Container
@@ -692,6 +672,20 @@ topology_template:
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.delete
+          on_success:
+            - RefreshVMToken_start
+        RefreshVMToken_start:
+          target: RefreshVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
+          on_success:
+            - Compute_uninstall
         Compute_uninstall:
           target: AgriVM
           activities:
@@ -1105,7 +1099,7 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - WRF_submit
+            - CloudToHPCTaskJob_create
         WRF_submit:
           target: WRF
           operation_host: ORCHESTRATOR
@@ -1196,16 +1190,28 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - MoveWRFResults_start
+            - MoveWRFAuxhistResults_start
             - HPCToDDIJob_create
-        MoveWRFResults_start:
-          target: MoveWRFResults
+        MoveWRFAuxhistResults_start:
+          target: MoveWRFAuxhistResults
           activities:
             - call_operation: Standard.start
           on_success:
-            - MoveWRFResults_started
-        MoveWRFResults_started:
-          target: MoveWRFResults
+            - MoveWRFAuxhistResults_started
+        MoveWRFAuxhistResults_started:
+          target: MoveWRFAuxhistResults
+          activities:
+            - set_state: started
+          on_success:
+            - MoveWRFLexisResult_start
+        MoveWRFLexisResult_start:
+          target: MoveWRFLexisResult
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveWRFLexisResult_started
+        MoveWRFLexisResult_started:
+          target: MoveWRFLexisResult
           activities:
             - set_state: started
           on_success:
@@ -1264,6 +1270,18 @@ topology_template:
             - ZIPUploadSFTP_started
         ZIPUploadSFTP_started:
           target: ZIPUploadSFTP
+          activities:
+            - set_state: started
+          on_success:
+            - DewetraUpload_start
+        DewetraUpload_start:
+          target: DewetraUpload
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - DewetraUpload_started
+        DewetraUpload_started:
+          target: DewetraUpload
           activities:
             - set_state: started
           on_success:
@@ -1402,14 +1420,27 @@ topology_template:
           activities:
             - set_state: deleted
           on_success:
-            - Network_uninstall
-        Network_uninstall:
-          target: PublicNetAgriVM
+            - RefreshVMToken_start
+        RefreshVMToken_start:
+          target: RefreshVMToken
           activities:
-            - delegate: uninstall
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
           on_success:
             - Compute_uninstall
         Compute_uninstall:
           target: AgriVM
           activities:
             - delegate: uninstall
+          on_success:
+            - Compute_uninstall
+        Network_uninstall:
+          target: PublicNetAgriVM
+          activities:
+            - delegate: uninstall
+          on_success:
