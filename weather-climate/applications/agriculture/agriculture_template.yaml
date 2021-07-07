@@ -528,7 +528,7 @@ topology_template:
     MoveWRFAuxhistResults:
       type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
-        source_file:  "/mnt/cloud_staging_area/wrf_results/*/wrf00/auxhist*"
+        source_file:  "/mnt/cloud_staging_area/wrf_results/*/aux/*/auxhist*"
         destination: "/mnt/cloud_staging_area/agriculture/agriculture_wrf_results/wrf/"
         as_user: "root"
       requirements:
@@ -541,7 +541,7 @@ topology_template:
     MoveWRFLexisResult:
       type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
-        source_file:  "/mnt/cloud_staging_area/wrf_results/dewetra/lexis*"
+        source_file:  "/mnt/cloud_staging_area/wrf_results/*/dewetra/lexis*"
         destination: "/mnt/cloud_staging_area/agriculture/agriculture_wrf_results/wrf/"
         as_user: "root"
       requirements:

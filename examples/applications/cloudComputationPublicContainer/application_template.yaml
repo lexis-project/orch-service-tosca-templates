@@ -205,6 +205,17 @@ topology_template:
           properties:
             type: linux
 
+    # At the end of the workflow, the Cloud instance token should be refreshed
+    # before attempting to uninstall the compute instance
+    RefreshVMToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.RefreshTargetTokens
+      requirements:
+        - target:
+            type_requirement: target
+            node: CloudComputeInstance
+            capability: tosca.capabilities.Node
+            relationship: tosca.relationships.DependsOn
+
     # Component retrieving access details to the DDI REST APIs from the compute
     # instance where it running
     # Needed by component MountInputDataset below
@@ -690,6 +701,18 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - RefreshVMToken_start
+        RefreshVMToken_start:
+          target: RefreshVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
+          on_success:
             - CloudComputeInstance_uninstall
         # Delete Cloud Compute Instance
         CloudComputeInstance_uninstall:
@@ -710,6 +733,32 @@ topology_template:
     #
     uninstall:
       steps:
+        CleanupCloudStagingAreaJob_create:
+          target: CleanupCloudStagingAreaJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CleanupCloudStagingAreaJob_submit
+        CleanupCloudStagingAreaJob_submit:
+          target: CleanupCloudStagingAreaJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - RefreshVMToken_start
+        RefreshVMToken_start:
+          target: RefreshVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
+          on_success:
+            - CloudComputeInstance_uninstall
         CloudComputeInstance_uninstall:
           target: CloudComputeInstance
           activities:
@@ -720,32 +769,6 @@ topology_template:
           target: Network
           activities:
             - delegate: uninstall
-          on_success:
-            - CleanupCloudStagingAreaJob_create
-        CleanupCloudStagingAreaJob_create:
-          target: CleanupCloudStagingAreaJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - CleanupCloudStagingAreaJob_created
-        CleanupCloudStagingAreaJob_created:
-          target: CleanupCloudStagingAreaJob
-          activities:
-            - set_state: created
-          on_success:
-            - CleanupCloudStagingAreaJob_submit
-        CleanupCloudStagingAreaJob_submit:
-          target: CleanupCloudStagingAreaJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - CleanupCloudStagingAreaJob_submitted
-        CleanupCloudStagingAreaJob_submitted:
-          target: CleanupCloudStagingAreaJob
-          activities:
-            - set_state: submitted
     #
     # Test workflow to only execute a SSH-unmount
     #

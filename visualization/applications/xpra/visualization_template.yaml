@@ -148,6 +148,17 @@ topology_template:
             network_name: PRIVATE
             initiator: source
 
+    # At the end of the workflow, the Cloud instance token should be refreshed
+    # before attempting to uninstall the compute instance
+    RefreshVMToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.RefreshTargetTokens
+      requirements:
+        - target:
+            type_requirement: target
+            node: CloudComputeInstance
+            capability: tosca.capabilities.Node
+            relationship: tosca.relationships.DependsOn
+
     # Transfer the dataset from DDI to Cloud staging area
     DDIToCloudDatasetJob:
       type: org.lexis.common.ddi.nodes.DDIToCloudJob
@@ -497,6 +508,18 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - RefreshVMToken_start
+        RefreshVMToken_start:
+          target: RefreshVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
+          on_success:
             - Compute_uninstall
         # Job is done, releasing resources
         Compute_uninstall:
@@ -559,6 +582,32 @@ topology_template:
     # Uninstall workflow releases resources if ever the Run workflow failed before
     uninstall:
       steps:
+        DeleteCloudDataJob_create:
+          target: DeleteCloudDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudDataJob_submit
+        DeleteCloudDataJob_submit:
+          target: DeleteCloudDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - RefreshVMToken_start
+        RefreshVMToken_start:
+          target: RefreshVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
+          on_success:
+            - Compute_uninstall
         Compute_uninstall:
           target: VisualizationVM
           activities:

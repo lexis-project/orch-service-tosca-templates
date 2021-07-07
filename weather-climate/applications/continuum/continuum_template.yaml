@@ -443,7 +443,7 @@ topology_template:
       type: org.lexis.common.datatransfer.nodes.CreateDirectories
       properties:
         directories:
-          - continuum/datasets_hyde/static_data
+          - /continuum/datasets_hyde/static_data
           - /continuum/datasets_hyde/dynamic_data
           - /continuum/datasets_hyde/docker_data/marche
           - /continuum/datasets_hyde/docker_data/liguria
@@ -574,7 +574,7 @@ topology_template:
     MoveWRFAuxhistResults:
       type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
-        source_file:  "/mnt/cloud_staging_area/wrf_results/*/wrf00/auxhist*"
+        source_file:  "/mnt/cloud_staging_area/wrf_results/*/aux/*/auxhist*"
         destination: "/continuum/datasets_hyde/dynamic_data/"
         as_user: "root"
       requirements:
@@ -587,7 +587,7 @@ topology_template:
     MoveWRFLexisResult:
       type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
-        source_file:  "/mnt/cloud_staging_area/wrf_results/dewetra/lexis*"
+        source_file:  "/mnt/cloud_staging_area/wrf_results/*/dewetra/lexis*"
         destination: "/continuum/datasets_hyde/dynamic_data/"
         as_user: "root"
       requirements:
@@ -685,7 +685,7 @@ topology_template:
     MoveObservationContinuumData:
       type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
-        source_file:  "/wps_data/output/observations/*"
+        source_file:  "/wps_data/output/observations/*/*"
         destination: "/continuum/datasets_hyde/dynamic_data"
         as_user: "root"
       requirements:

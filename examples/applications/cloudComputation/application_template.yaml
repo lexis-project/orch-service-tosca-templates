@@ -218,6 +218,16 @@ topology_template:
             protocol: tcp
             network_name: PRIVATE
             initiator: source
+    # At the end of the workflow, the Cloud instance token should be refreshed
+    # before attempting to uninstall the compute instance
+    RefreshVMToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.RefreshTargetTokens
+      requirements:
+        - target:
+            type_requirement: target
+            node: CloudComputeInstance
+            capability: tosca.capabilities.Node
+            relationship: tosca.relationships.DependsOn
     # TOSCA component executing the script provided in input
     ExecScript:
       type: org.lexis.common.examples.exec.Script
@@ -389,20 +399,6 @@ topology_template:
           target: ValidateExchangeToken
           activities:
             - set_state: started
-    testCompute:
-      steps:
-        # Get a floating IP address for the Cloud Compute instance
-        Network_install:
-          target: Network
-          activities:
-            - delegate: install
-          on_success:
-            - CloudComputeInstance_install
-        # Create the compute instance
-        CloudComputeInstance_install:
-          target: CloudComputeInstance
-          activities:
-            - delegate: install 
     #
     # Workflow executed by LEXIS Portal
     #
@@ -710,6 +706,18 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - RefreshVMToken_start
+        RefreshVMToken_start:
+          target: RefreshVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
+          on_success:
             - CloudComputeInstance_uninstall
         # Delete Cloud Compute Instance
         CloudComputeInstance_uninstall:
@@ -730,16 +738,6 @@ topology_template:
     #
     uninstall:
       steps:
-        CloudComputeInstance_uninstall:
-          target: CloudComputeInstance
-          activities:
-            - delegate: uninstall
-          on_success:
-            - Network_uninstall
-        Network_uninstall:
-          target: Network
-          activities:
-            - delegate: uninstall
         CleanupCloudStagingAreaJob_create:
           target: CleanupCloudStagingAreaJob
           operation_host: ORCHESTRATOR
@@ -752,6 +750,30 @@ topology_template:
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - RefreshVMToken_start
+        RefreshVMToken_start:
+          target: RefreshVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
+          on_success:
+            - CloudComputeInstance_uninstall
+        CloudComputeInstance_uninstall:
+          target: CloudComputeInstance
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: Network
+          activities:
+            - delegate: uninstall
     #
     # Test workflow to only execute a SSH-unmount
     #

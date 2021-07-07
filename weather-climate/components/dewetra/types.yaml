@@ -51,4 +51,6 @@ node_types:
             SFTP_SERVER_PORT: {get_property: [SELF, sftp_port]}
             USER: { get_secret: ["/secret/wp7/dewetra/creds", "data=user"]}
             KEY: { get_secret: ["/secret/wp7/dewetra/creds", "data=key"]}
+            WRF_RESULTS_DIR: {get_property: [SELF, wrf_results_dir]}
+            POSTPROCESSING_RESULTS_DIR: {get_property: [SELF, postprocessing_results_dir]}
           implementation: playbooks/upload_results.yaml

@@ -8,15 +8,15 @@
       when: SFTP_SERVER_IP == ""
     - name: "Create directory for key"
       file:
-        path: "{{ ansible_env.HOME }}/.ssh }}"
+        path: "{{ ansible_env.HOME }}/.ssh"
         state: directory
     - name: Add key content
       copy:
         content: "{{ KEY }}"
-        dest: "{{ ansible_env.HOME }}/.ssh/id_rsa }}"
+        dest: "{{ ansible_env.HOME }}/.ssh/id_rsa"
     - name: Change file ownership
       file:
-        path: "{{ ansible_env.HOME }}/.ssh/id_rsa }}"
+        path: "{{ ansible_env.HOME }}/.ssh/id_rsa"
         mode: '0400'
     - name: Compute year, month, day, hours yyyymmddhh and init variables
       set_fact:
@@ -31,7 +31,7 @@
       when: COMPUTATION_TYPE == "ADMS" or COMPUTATION_TYPE == "LIMAGRAIN"
     - name: Get WRF destination root directory for Italy
       set_fact:
-        wrfRootDir: data/WRF_DA_FRA_LEXIS
+        wrfRootDir: data/WRF_DA_ITA_LEXIS
       when: COMPUTATION_TYPE != "ADMS" and COMPUTATION_TYPE != "LIMAGRAIN"
     - name: Get post-processing results dir for Continuum
       set_fact:
@@ -43,11 +43,11 @@
       when: COMPUTATION_TYPE == "RISICO"
 
     - name: "Renaming a file result produced by WRF with the name expected by dewetra"
-      shell: "mv {{ wrf_results_dir }}/lexis* {{ wrf_results_dir }}/rg_wrf-{{ startyear }}{{ startmonth }}{{ startDay }}{{ startHour }}00_{{ startHour }}UTC.nc"
+      shell: "mv {{ WRF_RESULTS_DIR }}/lexis* {{ WRF_RESULTS_DIR }}/rg_wrf-{{ startyear }}{{ startmonth }}{{ startDay }}{{ startHour }}00_{{ startHour }}UTC.nc"
 
     - name: Create batch file to store WRF results
       blockinfile:
-        path: lexis_store_wrf_results
+        path: "{{ ansible_env.HOME }}/lexis_store_wrf_results"
         create: yes
         block: |
           cd {{ wrfRootDir }}
@@ -59,8 +59,7 @@
           cd {{ startDay }}
           -mkdir {{ startHour }}00
           cd {{ startHour }}00
-          lcd {{ wrf_results_dir }}
-          put auxhist*
+          lcd {{ WRF_RESULTS_DIR }}
           put rg*
     - name: Set destination
       set_fact:
@@ -71,14 +70,14 @@
         destination: "{{ SFTP_SERVER_IP }}"
       when: USER == ""
     - name: Upload WRF results to SFTP server
-      command: "sftp -b lexis_store_wrf_results -P {{ SFTP_SERVER_PORT }} {{ destination }}"
+      command: "sftp -oStrictHostKeyChecking=no -b {{ ansible_env.HOME }}/lexis_store_wrf_results -P {{ SFTP_SERVER_PORT }} {{ destination }}"
 
     - meta: end_play
-      when: postprocessing_results_dir == ""
+      when: POSTPROCESSING_RESULTS_DIR == ""
 
     - name: Create batch file to store RISICO results
       blockinfile:
-        path: lexis_store_risico_results
+        path: "{{ ansible_env.HOME }}/lexis_store_risico_results"
         create: yes
         block: |
           cd {{ resultsRootDir }}
@@ -90,11 +89,11 @@
           cd {{ startDay }}
           -mkdir {{ startHour }}00
           cd {{ startHour }}00
-          lcd {{ postprocessing_results_dir }}
+          lcd {{ POSTPROCESSING_RESULTS_DIR }}
           put risico*
       when: COMPUTATION_TYPE == "RISICO"
     - name: Upload risico results to SFTP server
-      command: "sftp -b lexis_store_risico_results -P {{ SFTP_SERVER_PORT }} {{ destination }}"
+      command: "sftp -oStrictHostKeyChecking=no -b {{ ansible_env.HOME }}/lexis_store_risico_results -P {{ SFTP_SERVER_PORT }} {{ destination }}"
       when: COMPUTATION_TYPE == "RISICO"
 
     - meta: end_play
@@ -102,7 +101,7 @@
 
     - name: Create batch file to create Continuum directories
       blockinfile:
-        path: lexis_create_continuum_dirs
+        path: "{{ ansible_env.HOME }}/lexis_create_continuum_dirs"
         create: yes
         block: |
           cd {{ resultsRootDir }}
@@ -112,17 +111,17 @@
           cd {{ startmonth }}
           -mkdir {{ startDay }}
     - name: Create directories in SFTP server
-      command: "sftp -b lexis_create_continuum_dirs -P {{ SFTP_SERVER_PORT }} {{ destination }}"
+      command: "sftp -oStrictHostKeyChecking=no -b {{ ansible_env.HOME }}/lexis_create_continuum_dirs -P {{ SFTP_SERVER_PORT }} {{ destination }}"
 
     - name: Get all regions
       find:
-        path: "postprocessing_results_dir"
+        path: "POSTPROCESSING_RESULTS_DIR"
         file_type: directory
         recurse: no
       register: regions
     - name: Create batch file to strp region results
       blockinfile:
-        path: lexis_store_continuum_{{ item | basename }}_results
+        path: "{{ ansible_env.HOME }}/lexis_store_continuum_{{ item | basename }}_results"
         create: yes
         block: |
           cd {{ resultsRootDir }}/{{ startyear }}/{{ startmonth }}{{ startDay }}
@@ -130,7 +129,7 @@
           cd {{ item | basename }}
           -mkdir gridded
           cd gridded
-          lcd {{ postprocessing_results_dir }}/{ item | basename }}/gridded/{{ startyear }}/{{ startmonth }}{{ startDay }}
+          lcd {{ POSTPROCESSING_RESULTS_DIR }}/{ item | basename }}/gridded/{{ startyear }}/{{ startmonth }}{{ startDay }}
           put hmc*
           cd ..
           -mkdir point
@@ -144,5 +143,5 @@
           put h*
       with_items: "{{ regions.files | map(attribute='path') | list }}"
     - name: Store results SFTP server
-      command: "sftp -b lexis_store_continuum_{{ item | basename }}_results -P {{ SFTP_SERVER_PORT }} {{ destination }}"
+      command: "sftp -oStrictHostKeyChecking=no -b {{ ansible_env.HOME }}/lexis_store_continuum_{{ item | basename }}_results -P {{ SFTP_SERVER_PORT }} {{ destination }}"
       with_items: "{{ regions.files | map(attribute='path') | list }}"

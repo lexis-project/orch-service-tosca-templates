@@ -273,6 +273,17 @@ topology_template:
           properties:
             type: linux
 
+    # At the end of the workflow, the Cloud instance token should be refreshed
+    # before attempting to uninstall the compute instance
+    RefreshVMToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.RefreshTargetTokens
+      requirements:
+        - target:
+            type_requirement: target
+            node: ComputeInstance
+            capability: tosca.capabilities.Node
+            relationship: tosca.relationships.DependsOn
+
     # Find the best cloud location depending on the input dataset and needed cloud resources
     FindCloudLocation:
       type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
@@ -464,25 +475,6 @@ topology_template:
             capability: org.lexis.common.heappe.capabilities.HeappeJob
             relationship: org.lexis.common.heappe.relationships.SendInputsToJob
 
-    # Component managing the transfer of data from the cloud staging area to the
-    # HPC directory of a given job task 
-#    CopyToJobTask:
-#      type: org.lexis.common.datatransfer.nodes.CopyToJobTask
-#      properties:
-#        task_name: { get_input: computation_heappe_task_name }
-#        source_directory: {get_input: preprocessing_output_directory}
-#      requirements:
-#        - hostedOnVirtualMachineHost:
-#            type_requirement: host
-#            node: ComputeInstance
-#            capability: tosca.capabilities.Container
-#            relationship: tosca.relationships.HostedOn
-#        - job:
-#            type_requirement: job
-#            node: HPCJob
-#            capability: org.lexis.common.heappe.capabilities.HeappeJob
-#            relationship: org.lexis.common.heappe.relationships.SendInputsToJob
-
     # DDI job managing the transfer of a HPC job task results to DDI
     HPCToDDIJob:
       type: org.lexis.common.ddi.nodes.HPCToDDIJob
@@ -555,7 +547,7 @@ topology_template:
     MoveHPCResults:
       type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
-        source_file:  "/mnt/lexis_test_hpc_results/*"
+        source_file:  "/mnt/lexis_test_hpc_results/*/*"
         destination: { get_input: postprocessing_output_directory }
         as_user: "root"
       requirements:
@@ -564,25 +556,6 @@ topology_template:
             node: ComputeInstance
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
-
-    # Component copying the HPC job task results to the compute instance
-#    CopyFromJobTask:
-#      type: org.lexis.common.datatransfer.nodes.CopyFromJobTask
-#      properties:
-#        task_name: { get_input: computation_heappe_task_name }
-#        source_files: { get_input: computation_result_files_to_postprocess }
-#        destination_directory: { get_input: postprocessing_input_directory }
-#      requirements:
-#        - hostedOnVirtualMachineHost:
-#            type_requirement: host
-#            node: ComputeInstance
-#            capability: tosca.capabilities.Container
-#            relationship: tosca.relationships.HostedOn
-#        - job:
-#            type_requirement: job
-#            node: HPCJob
-#            capability: org.lexis.common.heappe.capabilities.HeappeJob
-#            relationship: org.lexis.common.heappe.relationships.GetResultsFromJob
 
     # Postprocessing docker container
     PostprocessingContainer:
@@ -1375,6 +1348,18 @@ topology_template:
           activities:
             - set_state: deleted
           on_success:
+            - RefreshVMToken_start
+        RefreshVMToken_start:
+          target: RefreshVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
+          on_success:
             - ComputeInstance_uninstall
         # Delete Cloud Compute Instance
         ComputeInstance_uninstall:
@@ -1395,16 +1380,6 @@ topology_template:
     #
     uninstall:
       steps:
-        ComputeInstance_uninstall:
-          target: ComputeInstance
-          activities:
-            - delegate: uninstall
-          on_success:
-            - Network_uninstall
-        Network_uninstall:
-          target: Network
-          activities:
-            - delegate: uninstall
         CleanupCloudStagingAreaInputsJob_create:
           target: CleanupCloudStagingAreaInputsJob
           operation_host: ORCHESTRATOR
@@ -1438,6 +1413,30 @@ topology_template:
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.delete
+          on_success:
+            - RefreshVMToken_start
+        RefreshVMToken_start:
+          target: RefreshVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
+          on_success:
+            - ComputeInstance_uninstall
+        ComputeInstance_uninstall:
+          target: ComputeInstance
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: Network
+          activities:
+            - delegate: uninstall
     testStageHPCInput:
       steps:
         StageHPCInputs_start:
