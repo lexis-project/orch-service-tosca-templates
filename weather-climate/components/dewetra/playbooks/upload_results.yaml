@@ -115,7 +115,7 @@
 
     - name: Get all regions
       find:
-        path: "POSTPROCESSING_RESULTS_DIR"
+        path: "{{ POSTPROCESSING_RESULTS_DIR }}"
         file_type: directory
         recurse: no
       register: regions
@@ -124,17 +124,17 @@
         path: "{{ ansible_env.HOME }}/lexis_store_continuum_{{ item | basename }}_results"
         create: yes
         block: |
-          cd {{ resultsRootDir }}/{{ startyear }}/{{ startmonth }}{{ startDay }}
+          cd {{ resultsRootDir }}/{{ startyear }}/{{ startmonth }}/{{ startDay }}
           -mkdir {{ item | basename }}
           cd {{ item | basename }}
           -mkdir gridded
           cd gridded
-          lcd {{ POSTPROCESSING_RESULTS_DIR }}/{ item | basename }}/gridded/{{ startyear }}/{{ startmonth }}{{ startDay }}
+          lcd {{ POSTPROCESSING_RESULTS_DIR }}/{{ item | basename }}/gridded/{{ startyear }}/{{ startmonth }}/{{ startDay }}
           put hmc*
           cd ..
           -mkdir point
           cd point
-          lcd ../../../../point/{{ startyear }}/{{ startmonth }}{{ startDay }}
+          lcd ../../../../point/{{ startyear }}/{{ startmonth }}/{{ startDay }}
           put hmc*
           cd ..
           -mkdir time_series
