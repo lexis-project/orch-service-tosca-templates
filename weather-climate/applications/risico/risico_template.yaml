@@ -86,7 +86,7 @@ topology_template:
     postprocessing_image:
       type: string
       description: Post-processing container repository path
-      default: "laurentg/risico:0.3.1"
+      default: "laurentg/risico:1.0.0"
       required: false
     postprocessing_ddi_project_path:
       type: string
