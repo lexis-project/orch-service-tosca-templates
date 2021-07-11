@@ -72,7 +72,7 @@ topology_template:
     computation_compute_instance_image_name:
       type: string
       description: Name of the Openstack image for the Compute Instance to create
-      default: "Ubuntu-18.04-LTS-bionic"
+      default: "Ubuntu-18.04"
       required: false
     computation_compute_instance_user:
       type: string
