@@ -90,7 +90,7 @@
           -mkdir {{ startHour }}00
           cd {{ startHour }}00
           lcd {{ POSTPROCESSING_RESULTS_DIR }}
-          put risico*
+          put *
       when: COMPUTATION_TYPE == "RISICO"
     - name: Upload risico results to SFTP server
       command: "sftp -oStrictHostKeyChecking=no -b {{ ansible_env.HOME }}/lexis_store_risico_results -P {{ SFTP_SERVER_PORT }} {{ destination }}"
