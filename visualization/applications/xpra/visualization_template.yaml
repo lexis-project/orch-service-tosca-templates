@@ -155,7 +155,7 @@ topology_template:
       requirements:
         - target:
             type_requirement: target
-            node: CloudComputeInstance
+            node: VisualizationVM
             capability: tosca.capabilities.Node
             relationship: tosca.relationships.DependsOn
 
