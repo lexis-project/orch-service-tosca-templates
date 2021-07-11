@@ -811,5 +811,3 @@ topology_template:
           target: PublicNet
           activities:
             - delegate: uninstall
-          on_success:
-            - OpenFOAMJob_delete
