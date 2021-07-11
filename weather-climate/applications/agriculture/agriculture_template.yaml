@@ -547,7 +547,7 @@ topology_template:
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
-            node: ContinuumVM
+            node: AgriVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     # Transfer HEAppE WRF job results to DDI
@@ -1342,7 +1342,6 @@ topology_template:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
             - DeleteCloudGEOGDataJob_submitted
-            - DeleteCloudWRFDataJob_create
         DeleteCloudGEOGDataJob_submitted:
           target: DeleteCloudGEOGDataJob
           activities:
@@ -1361,7 +1360,7 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - WRF_disable_file_transfer
+            - DeleteCloudWRFDataJob_create
         DeleteCloudWRFDataJob_create:
           target: DeleteCloudWRFDataJob
           operation_host: ORCHESTRATOR
@@ -1438,9 +1437,8 @@ topology_template:
           activities:
             - delegate: uninstall
           on_success:
-            - Compute_uninstall
+            - Network_uninstall
         Network_uninstall:
           target: PublicNetAgriVM
           activities:
             - delegate: uninstall
-          on_success:
