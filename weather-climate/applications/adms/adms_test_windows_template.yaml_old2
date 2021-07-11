@@ -1,0 +1,55 @@
+tosca_definitions_version: alien_dsl_3_0_0
+
+metadata:
+  template_name: org.lexis.wp7.ADMSWindowsTestTemplate
+  template_version: 0.1.0-SNAPSHOT
+  template_author: lexisadmin
+
+description: "Basic ADMS Test"
+
+imports:
+  - yorc-types:1.1.0
+  - yorc-openstack-types:3.1.0
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien-base-types:3.0.0
+
+topology_template:
+  inputs:
+    metadata:
+      description: Compute Instance metadata
+      type: map
+      entry_schema:
+        type: string
+      required: true
+  node_templates:
+    PublicNet:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+    ADMS_VM:
+      type: yorc.nodes.openstack.Compute
+      properties:
+        boot_volume:
+          source: image
+        metadata: { get_input: metadata }
+      requirements:
+        - networkNetworkConnection:
+            type_requirement: network
+            node: PublicNet
+            capability: tosca.capabilities.Connectivity
+            relationship: tosca.relationships.Network
+      capabilities:
+        endpoint:
+          properties:
+            credentials: 
+              user: Admin
+              keys: 
+                0: "/var/yorc/.ssh/yorc.pem"
+              token_type: password
+            secure: true
+            protocol: tcp
+            network_name: PRIVATE
+            initiator: source
+        os:
+          properties:
+            type: "windows_adms"
