@@ -29,7 +29,7 @@ The template expects the following input properties (mandatory inputs in **bold*
 * computation_input_directory: Local directory on the compute instance where the input dataset is accessible to non-root user
     * default: `/lexis_input`
 * computation_compute_instance_image_name: Name of the Openstack image for the Compute Instance to create
-    * default: `Ubuntu-18.04-LTS-bionic`
+    * default: `Ubuntu-18.04`
 * computation_compute_instance_user: User used to connect to the compute instance
     * default: `ubuntu`
 * computation_mount_point_input_dataset: Directory on the compute instance where to mount the dataset

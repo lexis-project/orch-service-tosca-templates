@@ -13,11 +13,12 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
-  - org.lexis.common.ddi-types:1.0.0
+  - org.lexis.common.ddi-types:1.0.1
   - org.lexis.common.dynamic-orchestration-types:1.0.1
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
+  - org.lexis.wp7.dewetra:0.1.0
 
 topology_template:
   inputs:
@@ -56,6 +57,11 @@ topology_template:
       description: Should the input dataset be uncompressed
       default: true
       required: false
+    postprocessing_dewetra_sftp_server_ip:
+        type: string
+        description: IP address of a Dewetra SPTP server where to store results (default, no sftp server upload)
+        required: false
+        default: ""
     postprocessing_dataset_continuum_static_data_path:
       type: string
       description: Continuum static data dataset path in DDI
@@ -69,7 +75,7 @@ topology_template:
       type: string
       description: HMC post-processing container repository path
       default: "laurentg/fp_framework_hmc:1.0.5"
-    postprocessing_ddi_path:
+    postprocessing_ddi_project_path:
       type: string
       description: "Path where to transfer the post-processing results in DDI"
       default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c"
@@ -139,6 +145,16 @@ topology_template:
             protocol: tcp
             network_name: PRIVATE
             initiator: source
+    # At the end of the workflow, the Cloud instance token should be refreshed
+    # before attempting to uninstall the compute instance
+    RefreshVMToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.RefreshTargetTokens
+      requirements:
+        - target:
+            type_requirement: target
+            node: ContinuumVM
+            capability: tosca.capabilities.Node
+            relationship: tosca.relationships.DependsOn
     GetDDIAccess:
       type: org.lexis.common.ddi.nodes.DDIAccess
       requirements:
@@ -186,7 +202,7 @@ topology_template:
     FindWRFiles:
       type: org.lexis.common.datatransfer.nodes.FindFilesInStagingAreaDirectory
       properties:
-        shell_patterns: ["auxhist*"]
+        shell_patterns: ["auxhist*", "lexis*"]
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
@@ -409,7 +425,7 @@ topology_template:
     MoveObservationContinuumData:
       type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
-        source_file:  "/continuum/downloads/*/*"
+        source_file:  "/continuum/downloads/*/*/*"
         destination: "/continuum/datasets_hyde/dynamic_data"
         as_user: "root"
       requirements:
@@ -1314,13 +1330,27 @@ topology_template:
         token: { get_input: token }
         encrypt: {get_input: postprocessing_encrypt_dataset_result}
         compress: {get_input: postprocessing_compress_dataset_result}
-        ddi_path: { get_input: postprocessing_ddi_path }
+        ddi_path: { get_input: postprocessing_ddi_project_path }
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
             node: CreateStagingAreaResultDir
             capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
             relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
+    DewetraUpload:
+      type: org.lexis.wp7.nodes.DewetraUpload
+      properties:
+        start_date: { get_input: preprocessing_start_date }
+        computation_type: CONTINUUM
+        wrf_results_dir: "/continuum/datasets_hyde/dynamic_data"
+        postprocessing_results_dir: "/continuum/datasets_hmc/dynamic_data/destination"
+        sftp_server_ip: { get_input: postprocessing_dewetra_sftp_server_ip }
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
     DeleteCloudWRFDataJob:
       type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
       properties:
@@ -1385,6 +1415,18 @@ topology_template:
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
+            - RefreshVMToken_start
+        RefreshVMToken_start:
+          target: RefreshVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
+          on_success:
             - Compute_uninstall
         Compute_uninstall:
           target: ContinuumVM
@@ -1438,7 +1480,6 @@ topology_template:
             - set_state: executed
           on_success:
             - DDIToCloudWRFJob_create
-            - DDIToCloudContinuumStaticDataJob_create
             - Network_install
         # Get a floating IP address for the Cloud Compute instance
         Network_install:
@@ -1521,6 +1562,7 @@ topology_template:
           activities:
             - set_state: submitted
           on_success:
+            - DDIToCloudContinuumStaticDataJob_create
             - DDIToCloudWRFJob_run
         DDIToCloudWRFJob_run:
           target: DDIToCloudWRFJob
@@ -1738,7 +1780,6 @@ topology_template:
           activities:
             - call_operation: Standard.create
           on_success:
-            - Continuum_Hyde_po_start
             - Continuum_Hyde_adige_start
             - Continuum_Hyde_basilicata_start
             - Continuum_Hyde_calabria_start
@@ -1747,6 +1788,7 @@ topology_template:
             - Continuum_Hyde_lazio_start
             - Continuum_Hyde_liguria_start
             - Continuum_Hyde_marche_start
+            - Continuum_Hyde_po_start
         Continuum_Hyde_marche_start:
           target: Continuum_Hyde_marche
           activities:
@@ -1758,14 +1800,6 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - Continuum_Hyde_liri_start
-            - Continuum_Hyde_puglia_start
-            - Continuum_Hyde_romagna_start
-            - Continuum_Hyde_sardegna_start
-            - Continuum_Hyde_sicilia_start
-            - Continuum_Hyde_tevere_start
-            - Continuum_Hyde_toscana_start
-            - Continuum_Hyde_volturno_start
             - Move_Hyde_Results_start
         Continuum_Hyde_po_start:
           target: Continuum_Hyde_po
@@ -1778,6 +1812,14 @@ topology_template:
           activities:
             - set_state: started
           on_success:
+            - Continuum_Hyde_liri_start
+            - Continuum_Hyde_puglia_start
+            - Continuum_Hyde_romagna_start
+            - Continuum_Hyde_sardegna_start
+            - Continuum_Hyde_sicilia_start
+            - Continuum_Hyde_tevere_start
+            - Continuum_Hyde_toscana_start
+            - Continuum_Hyde_volturno_start
             - Move_Hyde_Results_start
         Continuum_Hyde_adige_start:
           target: Continuum_Hyde_adige
@@ -1791,14 +1833,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-            - Continuum_Hyde_liri_start
-            - Continuum_Hyde_puglia_start
-            - Continuum_Hyde_romagna_start
-            - Continuum_Hyde_sardegna_start
-            - Continuum_Hyde_sicilia_start
-            - Continuum_Hyde_tevere_start
-            - Continuum_Hyde_toscana_start
-            - Continuum_Hyde_volturno_start
         Continuum_Hyde_basilicata_start:
           target: Continuum_Hyde_basilicata
           activities:
@@ -1811,14 +1845,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-            - Continuum_Hyde_liri_start
-            - Continuum_Hyde_puglia_start
-            - Continuum_Hyde_romagna_start
-            - Continuum_Hyde_sardegna_start
-            - Continuum_Hyde_sicilia_start
-            - Continuum_Hyde_tevere_start
-            - Continuum_Hyde_toscana_start
-            - Continuum_Hyde_volturno_start
         Continuum_Hyde_calabria_start:
           target: Continuum_Hyde_calabria
           activities:
@@ -1831,14 +1857,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-            - Continuum_Hyde_liri_start
-            - Continuum_Hyde_puglia_start
-            - Continuum_Hyde_romagna_start
-            - Continuum_Hyde_sardegna_start
-            - Continuum_Hyde_sicilia_start
-            - Continuum_Hyde_tevere_start
-            - Continuum_Hyde_toscana_start
-            - Continuum_Hyde_volturno_start
         Continuum_Hyde_fvg_start:
           target: Continuum_Hyde_fvg
           activities:
@@ -1851,14 +1869,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-            - Continuum_Hyde_liri_start
-            - Continuum_Hyde_puglia_start
-            - Continuum_Hyde_romagna_start
-            - Continuum_Hyde_sardegna_start
-            - Continuum_Hyde_sicilia_start
-            - Continuum_Hyde_tevere_start
-            - Continuum_Hyde_toscana_start
-            - Continuum_Hyde_volturno_start
         Continuum_Hyde_gargano_start:
           target: Continuum_Hyde_gargano
           activities:
@@ -1871,14 +1881,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-            - Continuum_Hyde_liri_start
-            - Continuum_Hyde_puglia_start
-            - Continuum_Hyde_romagna_start
-            - Continuum_Hyde_sardegna_start
-            - Continuum_Hyde_sicilia_start
-            - Continuum_Hyde_tevere_start
-            - Continuum_Hyde_toscana_start
-            - Continuum_Hyde_volturno_start
         Continuum_Hyde_lazio_start:
           target: Continuum_Hyde_lazio
           activities:
@@ -1891,14 +1893,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-            - Continuum_Hyde_liri_start
-            - Continuum_Hyde_puglia_start
-            - Continuum_Hyde_romagna_start
-            - Continuum_Hyde_sardegna_start
-            - Continuum_Hyde_sicilia_start
-            - Continuum_Hyde_tevere_start
-            - Continuum_Hyde_toscana_start
-            - Continuum_Hyde_volturno_start
         Continuum_Hyde_liguria_start:
           target: Continuum_Hyde_liguria
           activities:
@@ -1911,14 +1905,6 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
-            - Continuum_Hyde_liri_start
-            - Continuum_Hyde_puglia_start
-            - Continuum_Hyde_romagna_start
-            - Continuum_Hyde_sardegna_start
-            - Continuum_Hyde_sicilia_start
-            - Continuum_Hyde_tevere_start
-            - Continuum_Hyde_toscana_start
-            - Continuum_Hyde_volturno_start
         Continuum_Hyde_liri_start:
           target: Continuum_Hyde_liri
           activities:
@@ -2033,7 +2019,6 @@ topology_template:
             - call_operation: Standard.create
           on_success:
             - Continuum_HMC_marche_start
-            - Continuum_HMC_po_start
             - Continuum_HMC_adige_start
             - Continuum_HMC_basilicata_start
             - Continuum_HMC_calabria_start
@@ -2041,12 +2026,18 @@ topology_template:
             - Continuum_HMC_gargano_start
             - Continuum_HMC_lazio_start
             - Continuum_HMC_liguria_start
+            - Continuum_HMC_po_start
         Continuum_HMC_marche_start:
           target: Continuum_HMC_marche
           activities:
             - call_operation: Standard.start
           on_success:
             - Continuum_HMC_marche_started
+        Continuum_HMC_marche_started:
+          target: Continuum_HMC_marche
+          activities:
+            - set_state: started
+          on_success:
             - Continuum_HMC_liri_start
             - Continuum_HMC_puglia_start
             - Continuum_HMC_romagna_start
@@ -2056,11 +2047,6 @@ topology_template:
             - Continuum_HMC_tevere_start
             - Continuum_HMC_toscana_start
             - Continuum_HMC_volturno_start
-        Continuum_HMC_marche_started:
-          target: Continuum_HMC_marche
-          activities:
-            - set_state: started
-          on_success:
             - CreateStagingAreaResultDir_start
         Continuum_HMC_po_start:
           target: Continuum_HMC_po
@@ -2080,15 +2066,6 @@ topology_template:
             - call_operation: Standard.start
           on_success:
             - Continuum_HMC_adige_started
-            - Continuum_HMC_liri_start
-            - Continuum_HMC_puglia_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_sardegna_start
-            - Continuum_HMC_sicilia_start
-            - Continuum_HMC_tevere_start
-            - Continuum_HMC_toscana_start
-            - Continuum_HMC_volturno_start
         Continuum_HMC_adige_started:
           target: Continuum_HMC_adige
           activities:
@@ -2101,15 +2078,6 @@ topology_template:
             - call_operation: Standard.start
           on_success:
             - Continuum_HMC_basilicata_started
-            - Continuum_HMC_liri_start
-            - Continuum_HMC_puglia_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_sardegna_start
-            - Continuum_HMC_sicilia_start
-            - Continuum_HMC_tevere_start
-            - Continuum_HMC_toscana_start
-            - Continuum_HMC_volturno_start
         Continuum_HMC_basilicata_started:
           target: Continuum_HMC_basilicata
           activities:
@@ -2122,15 +2090,6 @@ topology_template:
             - call_operation: Standard.start
           on_success:
             - Continuum_HMC_calabria_started
-            - Continuum_HMC_liri_start
-            - Continuum_HMC_puglia_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_sardegna_start
-            - Continuum_HMC_sicilia_start
-            - Continuum_HMC_tevere_start
-            - Continuum_HMC_toscana_start
-            - Continuum_HMC_volturno_start
         Continuum_HMC_calabria_started:
           target: Continuum_HMC_calabria
           activities:
@@ -2143,15 +2102,6 @@ topology_template:
             - call_operation: Standard.start
           on_success:
             - Continuum_HMC_fvg_started
-            - Continuum_HMC_liri_start
-            - Continuum_HMC_puglia_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_sardegna_start
-            - Continuum_HMC_sicilia_start
-            - Continuum_HMC_tevere_start
-            - Continuum_HMC_toscana_start
-            - Continuum_HMC_volturno_start
         Continuum_HMC_fvg_started:
           target: Continuum_HMC_fvg
           activities:
@@ -2164,15 +2114,6 @@ topology_template:
             - call_operation: Standard.start
           on_success:
             - Continuum_HMC_gargano_started
-            - Continuum_HMC_liri_start
-            - Continuum_HMC_puglia_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_sardegna_start
-            - Continuum_HMC_sicilia_start
-            - Continuum_HMC_tevere_start
-            - Continuum_HMC_toscana_start
-            - Continuum_HMC_volturno_start
         Continuum_HMC_gargano_started:
           target: Continuum_HMC_gargano
           activities:
@@ -2185,15 +2126,6 @@ topology_template:
             - call_operation: Standard.start
           on_success:
             - Continuum_HMC_lazio_started
-            - Continuum_HMC_liri_start
-            - Continuum_HMC_puglia_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_sardegna_start
-            - Continuum_HMC_sicilia_start
-            - Continuum_HMC_tevere_start
-            - Continuum_HMC_toscana_start
-            - Continuum_HMC_volturno_start
         Continuum_HMC_lazio_started:
           target: Continuum_HMC_lazio
           activities:
@@ -2206,15 +2138,6 @@ topology_template:
             - call_operation: Standard.start
           on_success:
             - Continuum_HMC_liguria_started
-            - Continuum_HMC_liri_start
-            - Continuum_HMC_puglia_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_romagna_start
-            - Continuum_HMC_sardegna_start
-            - Continuum_HMC_sicilia_start
-            - Continuum_HMC_tevere_start
-            - Continuum_HMC_toscana_start
-            - Continuum_HMC_volturno_start
         Continuum_HMC_liguria_started:
           target: Continuum_HMC_liguria
           activities:
@@ -2373,6 +2296,18 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - DewetraUpload_start
+        DewetraUpload_start:
+          target: DewetraUpload
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - DewetraUpload_started
+        DewetraUpload_started:
+          target: DewetraUpload
+          activities:
+            - set_state: started
+          on_success:
             - MountWRFDataset_refresh_token_for_stop
         MountWRFDataset_refresh_token_for_stop:
           target: MountWRFDataset
@@ -2487,6 +2422,18 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - RefreshVMToken_start
+        RefreshVMToken_start:
+          target: RefreshVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
+          on_success:
             - Compute_uninstall
         Compute_uninstall:
           target: ContinuumVM
@@ -2556,7 +2503,7 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - Compute_uninstall
+            - MountContinuumDataset_refresh_token
         MountContinuumDataset_refresh_token:
           target: MountContinuumDataset
           activities:
@@ -2613,6 +2560,18 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - RefreshVMToken_start
+        RefreshVMToken_start:
+          target: RefreshVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
+          on_success:
             - Compute_uninstall
         Compute_uninstall:
           target: ContinuumVM
@@ -2620,6 +2579,18 @@ topology_template:
             - delegate: uninstall
     testComputeUninstall:
       steps:
+        RefreshVMToken_start:
+          target: RefreshVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
+          on_success:
+            - Compute_uninstall
         Compute_uninstall:
           target: ContinuumVM
           activities:
@@ -2987,3 +2958,27 @@ topology_template:
           target: CloudToDDIJob
           activities:
             - set_state: executed
+          on_success:
+            - DewetraUpload_start
+        DewetraUpload_start:
+          target: DewetraUpload
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - DewetraUpload_started
+        DewetraUpload_started:
+          target: DewetraUpload
+          activities:
+            - set_state: started
+    RunUpload:
+      steps:
+        DewetraUpload_start:
+          target: DewetraUpload
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - DewetraUpload_started
+        DewetraUpload_started:
+          target: DewetraUpload
+          activities:
+            - set_state: started

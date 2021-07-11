@@ -55,7 +55,7 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `false`
 * computation_uncompress_dataset_radar_observations_data: Should the radar observations data dataset be uncompressed
   * default: `true`
-* postprocessing_ddi_path: Path of the project where to transfer the post-processing results in DDI
+* postprocessing_ddi_project_path: Path of the project where to transfer the post-processing results in DDI
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c`
 * postprocessing_encrypt_wrf_dataset_result: Encrypt the WRF result dataset
   * default: `false`

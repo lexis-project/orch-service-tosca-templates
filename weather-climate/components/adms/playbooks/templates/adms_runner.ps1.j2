@@ -7,19 +7,12 @@
 # ADMS_TYPE:                      Type of ADMS simulation executed, urban or industrial
 # ACCESS_TOKEN:                   OpenID Connect access token
 # METEO_DATASET_NAME:             Title of the dataset containing NCL results
-# ADMS_RESULT_DATASET_NAME:       Which will be the title of the dataset containing ADMS results
 # ADMS_URBAN_APP_DATASET:         ID of the dataset containing the ADMSUrban.exe and corresponding files.
 #                                 The DDI dataset has to contain single file called adms_urban.zip
 # ADMS_URBAN_STATIC_DATASET:      ID of the dataset containing the static data for ADMSUrban
 # ADMS_INDUSTRIAL_APP_DATASET:    ID of the dataset containing the ADMSIndustrial.exe and corresponding files.
 #                                 The DDI dataset has to contain single file called adms_industrial.zip
 # ADMS_INDUSTRIAL_STATIC_DATASET: ID of the dataset containing the static data for ADMSIndustrial
-# ADMS_SFTP_SERVER_IP:            IP address of a SPTP server where to store results (can be empty)
-# ADMS_SFTP_PORT:                 Port of the SFTP server
-# ADMS_SFTP_USER:                 SFTP account used to upload results (can be empty)
-# ADMS_SFTP_PASSWORD:             SFTP account password (can be empty)
-# ADMS_SFTP_INDUSTRIAL_DIR:       SFTP destination directory for the industrial case
-# ADMS_SFTP_URBAN_DIR:            SFTP destination directory for the urban case
 # DATASET_URL:                    REST Endpoint of the DDI dataset API
 # DDI_PROJECT_SHORT_NAME:         Short Name of the DDI Project (wp7)
 
@@ -37,9 +30,6 @@
 # Main: upl
 # Static: fac, asp, bgd, csv, uai
 # Dynamic: bgd, met,
-
-# Result dataset ID
-$global:result_dataset_id = ""
 
 ####
 # FUNCTIONS
@@ -98,32 +88,6 @@ Get-ChildItem -Directory $path
 
 }
 
-# Upload results to the DDI
-function UploadResults($file, $name, $token, $dataset_url, $ddi_project_short_name)
-{
-# Encode file
-$header_auth = @{Authorization="Bearer $token"}
-$file_enc = [Convert]::ToBase64String((Get-Content -Path $file -Encoding Byte))
-
-# Create JSON body
-$meta = @{contributor=@("ADMS Workflow");creator=@("ADMS Workflow");owner=@("ADMS Workflow");publicationYear="2020";publisher=@("ADMS Workflow");resourceType="Workflow result";title="$name"}
-$body = @{push_method="directupload";name="adms_run_result.zip";access="project";project="$ddi_project_short_name";metadata=$meta;file="$file_enc"} | ConvertTo-Json
-
-# Upload
-try
-{
-    $response = Invoke-RestMethod -ContentType "application/json" -Method Post -Uri "$dataset_url" -Headers $header_auth -Body $body
-}
-catch [System.Net.WebException]
-{
-    "Unable to upload dataset:  $_"
-    exit
-}
-$response
-$global:result_dataset_id = ($response | where { $_.status -eq "201" }).internalID
-echo "Result dataset ID: $global:result_dataset_id"
-}
-
 ####
 # PARAMETERS
 ####
@@ -136,13 +100,11 @@ $app_dataset = "{{ADMS_URBAN_APP_DATASET}}"
 $app_bin = "ADMSUrbanModel.exe"
 $app_static_dataset = "{{ADMS_URBAN_STATIC_DATASET}}"
 $app_suffix = "*.upl"
-$sftp_dest_dir = "{{ADMS_SFTP_URBAN_DIR}}"
 {% elif ADMS_TYPE == "industrial" %}
 $app_dataset = "{{ADMS_INDUSTRIAL_APP_DATASET}}"
 $app_bin = "ADMSModel.exe"
 $app_static_dataset = "{{ADMS_INDUSTRIAL_STATIC_DATASET}}"
 $app_suffix = "*.apl"
-$sftp_dest_dir = "{{ADMS_SFTP_INDUSTRIAL_DIR}}"
 {% else %}
 echo "Unknown ADMS type, check adms_type value";
 {% endif %}
@@ -201,46 +163,6 @@ Start-Process -Wait -FilePath "$app_path/$app_bin" -ArgumentList "/E2",$_.FullNa
 
 # Compress the results
 Compress-Archive -Path $static_data_path -DestinationPath C:\adms\results.zip
-
-# Upload them
-UploadResults C:\adms\results.zip "{{ADMS_RESULT_DATASET_NAME}}" "{{ACCESS_TOKEN}}" "{{DATASET_URL}}" "{{DDI_PROJECT_SHORT_NAME}}"
-
-{% if ADMS_SFTP_SERVER_IP != "" %}
-# Rename result file before storing it to the SFTP server
-$file_ext = ".zip"
-$newfilename = "result-dataset-$global:result_dataset_id$file_ext"
-echo "Renaming results file as: " $newfilename
-Rename-Item -Path "C:\adms\results.zip" -NewName "$newfilename"
-
-echo "Installing Posh-SSH module"
-Install-Module Posh-SSH -Confirm:$False -force
-
-$Password = ConvertTo-SecureString "{{ADMS_SFTP_PASSWORD}}" -AsPlainText -Force
-
-$Credential = New-Object System.Management.Automation.PSCredential ("{{ADMS_SFTP_USER}}", $Password)
-
-# Set local file path, SFTP path, and the backup location path.
-$FilePath = Get-ChildItem -Path "C:\adms\" -Filter result-dataset*.zip | Select-Object -ExpandProperty FullName
-
-$SftpIp = "{{ADMS_SFTP_SERVER_IP}}"
-
-$portConfigValue = "{{ADMS_SFTP_PORT}}"
-$sftpPort = [int]$portConfigValue
-
-# Establish the SFTP connection
-echo "Establishing SFTP connection..."
-$ThisSession = New-SFTPSession -ComputerName $SftpIp -Port $sftpPort -Credential $Credential -AcceptKey -Force
-
-# Upload the file to the SFTP path
-echo "Uploading results to SFTP server..."
-Set-SFTPFile -SessionId ($ThisSession).SessionId -Localfile $FilePath -RemotePath $sftp_dest_dir
-
-#Disconnect all SFTP Sessions
-echo "Disconnecting SFTP connection"
-Get-SFTPSession | % { Remove-SFTPSession -SessionId ($_.SessionId) }
-
-{% endif %}
-
 
 # Cleanup
 #Set-Location C:\

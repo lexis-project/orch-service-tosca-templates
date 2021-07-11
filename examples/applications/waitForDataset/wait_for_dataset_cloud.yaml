@@ -10,7 +10,7 @@ description: ""
 imports:
   - yorc-types:1.1.0
   - org.lexis.common.heappe-types:1.0.6
-  - org.lexis.common.ddi-types:1.0.0
+  - org.lexis.common.ddi-types:1.0.1
   - tosca-normative-types:1.0.0-ALIEN20
   - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
 

@@ -36,6 +36,7 @@ is asked to select the best Cloud infrastructure where to create a Windows compu
 * The orchestrator executes then a powershell script on this Windows instance to generate ADMS results from MET results
 and store these ADMS results in DDI
 * if a SFTP server was specified by the user, these results will also be uploaded to the SFTP server
+* if a Dewetra SFTP server was specified by the user, the results will also be uploaded to Dewetra SFTP server
 * finally, the cloud staging area is cleaned and the cloud compute instances are released
 
 ### ADMS template input properties
@@ -55,6 +56,7 @@ The template expects the following input properties (mandatory inputs in **bold*
 * postprocessing_adms_sftp_server_ip: IP address of a SPTP server where to store results (default, no sftp server upload)
 * postprocessing_adms_sftp_port: Port of the SFTP server
   * default: `22`
+* postprocessing_dewetra_sftp_server_ip: IP address of a Dewetra SPTP server where to store results (default, no sftp server upload)
 * preprocessing_docker_image_ifs: Pre-processing container repository path
   * default: `cimafoundation/wps-da.ifs:v2.0.3`
 * preprocessing_docker_image_observation_data: Repository path of container downloading observation data
@@ -82,8 +84,8 @@ The template expects the following input properties (mandatory inputs in **bold*
 * postprocessing_dataset_docker_image_path: Post-processing docker image tar archive path in DDI
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/89ddda90-1918-11eb-b6d1-0050568fc9b5`
 * postprocessing_dataset_ncl_script: Post-processing NCL script path in DDI
-  * default: project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/7fc89bf4-1d13-11eb-ae7e-0050568fc9b5
-* postprocessing_ddi_path: Path of the project where to transfer the post-processing results in DDI
+  * default: project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/10d9e69e-e013-11eb-9c8d-0050568fc9b5
+* postprocessing_ddi_project_path: Path of the project where to transfer the post-processing results in DDI
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c`
 * postprocessing_dataset_id_adms_urban_app: ID of the dataset containing the ADMSUrban.exe and corresponding files. The DDI dataset has to contain single file called adms_urban.zip
   * default: `f284db6c-2588-11eb-bbae-0050568fcecc`
@@ -148,8 +150,8 @@ The template expects the following input properties (mandatory inputs in **bold*
 * postprocessing_dataset_docker_image_path: Post-processing docker image tar archive path in DDI
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/89ddda90-1918-11eb-b6d1-0050568fc9b5`
 * postprocessing_dataset_ncl_script: Post-processing NCL script path in DDI
-  * default: project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/7fc89bf4-1d13-11eb-ae7e-0050568fc9b5
-* postprocessing_ddi_path: Path of the project where to transfer the post-processing results in DDI
+  * default: project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/10d9e69e-e013-11eb-9c8d-0050568fc9b5
+* postprocessing_ddi_project_path: Path of the project where to transfer the post-processing results in DDI
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c`
 * postprocessing_dataset_id_adms_urban_app: ID of the dataset containing the ADMSUrban.exe and corresponding files. The DDI dataset has to contain single file called adms_urban.zip
   * default: `f284db6c-2588-11eb-bbae-0050568fcecc`

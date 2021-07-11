@@ -10,6 +10,4 @@
     - name: Run script
       raw: "{{ansible_env.HOME}}\\adms_runner.ps1"
       register: result
-    - name: Get the ID of the result dataset
-      set_fact:
-        DATASET_ID_RESULT: "{{ result.stdout | regex_search('Result dataset ID: (.+)', '\\1') | first | trim}}"
+    - debug: var=result.stdout
