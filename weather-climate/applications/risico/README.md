@@ -43,7 +43,7 @@ The template expects the following input properties (mandatory inputs in **bold*
 * preprocessing_uncompress_dataset_geographical_data: Should the input dataset be uncompressed
   * default: `true`
 * postprocessing_image: Post-processing container repository path
-  * default: `laurentg/risico:0.3.1`
+  * default: `laurentg/risico:1.0.0`
 * postprocessing_ddi_project_path: Path where to transfer the post-processing results in DDI
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c`
 * postprocessing_encrypt_dataset_result: Encrypt the result dataset

@@ -244,8 +244,9 @@ topology_template:
       type: org.lexis.common.datatransfer.nodes.CreateDirectories
       properties:
         directories:
-          - "/risico_data/wrf/1"
+          - "/risico_data/wrf"
           - "/risico_data/output"
+          - "/risico_data/results"
           - "/risico_data/observations/1"
       requirements:
         - hostedOnVirtualMachineHost:
@@ -523,8 +524,8 @@ topology_template:
     MoveWRFAuxhistResults:
       type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
-        source_file:  "/mnt/cloud_staging_area/wrf_results/*/aux/*/auxhist*"
-        destination: "/risico_data/wrf/1"
+        source_file:  "/mnt/cloud_staging_area/wrf_results/*/aux/*"
+        destination: "/risico_data/wrf/"
         as_user: "root"
       requirements:
         - hostedOnVirtualMachineHost:
@@ -537,7 +538,7 @@ topology_template:
       type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
         source_file:  "/mnt/cloud_staging_area/wrf_results/*/dewetra/lexis*"
-        destination: "/risico_data/wrf/1"
+        destination: "/risico_data/results"
         as_user: "root"
       requirements:
         - hostedOnVirtualMachineHost:
@@ -653,7 +654,7 @@ topology_template:
       properties:
         start_date: { get_input: preprocessing_start_date }
         computation_type: RISICO
-        wrf_results_dir: "/risico_data/wrf/1"
+        wrf_results_dir: "/risico_data/results"
         postprocessing_results_dir: "/risico_data/output"
         sftp_server_ip: { get_input: postprocessing_dewetra_sftp_server_ip }
       requirements:
