@@ -31,7 +31,6 @@ The template expects the following input properties (mandatory inputs in **bold*
 *  **token**: OpenID Connect access token
 * **project_id**: LEXIS project identifier
 * **preprocessing_start_date**: Download GFS files from this date, format YYYYMMDDHH
-* **postprocessing_run_date**: Continuum run date, format YYYY-MM-DD HH:MM
 * preprocessing_docker_image_gfs: Pre-processing container repository path
   * default: `cimafoundation/wps-da.gfs:v2.0.3`
 * preprocessing_docker_image_observation_data: Repository path of container downloading observation data
