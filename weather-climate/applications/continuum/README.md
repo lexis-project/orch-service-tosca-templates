@@ -34,12 +34,12 @@ these are containers build from the same [Flood Proofs virtualization repository
 The template expects the following input properties (mandatory inputs in **bold**):
 *  **token**: OpenID Connect access token
 * **project_id**: LEXIS project identifier
-* **preprocessing_start_date**: Download GFS files from this date, format YYYYMMDDHH
+* **preprocessing_start_date**: Start date of the simulation, format YYYYMMDDHH
 * **postprocessing_run_date**: Continuum run date, format YYYY-MM-DD HH:MM
 * preprocessing_docker_image_gfs: Pre-processing container repository path
   * default: `cimafoundation/wps-da.gfs:v2.0.3`
 * preprocessing_docker_image_observation_data: Repository path of container downloading observation data
-  * default: `cimafoundation/lexis-download-docker:v1.2.0`
+  * default: `cimafoundation/lexis-download-docker:v1.2.1`
 * preprocessing_dataset_geographical_data_path: Dataset containing geographical data
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/055b25ea-ba60-11eb-a44e-0050568fc9b5/static_geog_data.tar.gz`
 * preprocessing_decrypt_dataset_geographical_data: Should the input dataset be decrypted
