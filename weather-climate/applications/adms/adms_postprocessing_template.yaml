@@ -39,6 +39,14 @@ topology_template:
       type: string
       description: type of ADMS simulation executed, urban or industrial
       required: true
+    postprocessing_adms_latitude:
+      type: string
+      description: latitude (example 47.31322)
+      required: true
+    postprocessing_adms_longitude:
+      type: string
+      description: longitude (example -2.063825)
+      required: true
     postprocessing_title_dataset_MET_results:
       type: string
       description: Title of the MET processing results dataset to create in DDI
@@ -75,17 +83,17 @@ topology_template:
     postprocessing_image:
       type: string
       description: Post-processing docker image
-      default: "adms/ncl:1.0.0"
+      default: "adms/ncl:1.0.1"
       required: false
     postprocessing_dataset_docker_image_path:
       type: string
       description: Post-processing docker image tar archive path in DDI
-      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/89ddda90-1918-11eb-b6d1-0050568fc9b5"
+      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/263a6916-f506-11eb-8bc2-0050568fc9b5"
       required: false
     postprocessing_dataset_ncl_script:
       type: string
       description: Post-processing NCL script path in DDI
-      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/10d9e69e-e013-11eb-9c8d-0050568fc9b5"
+      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/6fb84668-f50a-11eb-8bc2-0050568fc9b5"
       required: false
     postprocessing_ddi_project_path:
       type: string
@@ -316,7 +324,7 @@ topology_template:
     FindNCLScript:
       type: org.lexis.common.datatransfer.nodes.FindFilesInStagingAreaDirectory
       properties:
-        shell_patterns: {concat: ["[\"mkMET-", get_input: postprocessing_adms_type, "*.ncl\"]"]}
+        shell_patterns: ["mkMET-*.ncl"]
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
@@ -422,6 +430,7 @@ topology_template:
         restart_policy: no
         cpu_share: 1.0
         volumes: ["/mnt/cloud_staging_area/adms/adms_data/:/wrfdata"]
+        docker_env_vars:  {concat: ["{\"TYPOUT\": \"", get_input: postprocessing_adms_type, "\", \"LAT\": \"", get_input: postprocessing_adms_latitude, "\", \"LON\": \"", get_input: postprocessing_adms_longitude, "\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
