@@ -46,12 +46,12 @@ The template expects the following input properties (mandatory inputs in **bold*
 * **project_id**: LEXIS project identifier
 * **preprocessing_start_date**: Start date of the simulation, format YYYYMMDDHH
 * **computation_dataset_radar_observations_data_path**: Dataset containing radar observations data over France for the selected date. Select one of the following datasets containing compressed weather radar reflectivity over France for the month corresponding to the date you specified:
-  * for 201806: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/fce2102e-cdb3-11eb-b462-0050568fc9b5/observations.tar.gz`
-  * for 201807: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/76ab841a-cdb6-11eb-afa8-0050568fc9b5/observations.tar.gz`
-  * for 201808: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/8e7646f4-cdb9-11eb-b462-0050568fc9b5/observations.tar.gz`
-  * for 201809: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/f7b2d0aa-cdba-11eb-afa8-0050568fc9b5/observations.tar.gz`
-  * for 201810: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/c270eaa6-cdbc-11eb-b462-0050568fc9b5/observations.tar.gz`
-  * for 201811: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/99774a7e-cdc0-11eb-afa8-0050568fc9b5/observations.tar.gz`
+  * for workflow simulation start dates from 2018060200 to 2018007100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/fce2102e-cdb3-11eb-b462-0050568fc9b5/observations.tar.gz`
+  * for workflow simulation start dates from 2018070200 to 2018080100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/76ab841a-cdb6-11eb-afa8-0050568fc9b5/observations.tar.gz`
+  * for workflow simulation start dates from 2018080200 to 2018090100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/8e7646f4-cdb9-11eb-b462-0050568fc9b5/observations.tar.gz`
+  * for workflow simulation start dates from 2018090200 to 2018100100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/f7b2d0aa-cdba-11eb-afa8-0050568fc9b5/observations.tar.gz`
+  * for workflow simulation start dates from 2018100200 to 2018110100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/c270eaa6-cdbc-11eb-b462-0050568fc9b5/observations.tar.gz`
+  * for workflow simulation start dates from 2018110200 to 2018120100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/99774a7e-cdc0-11eb-afa8-0050568fc9b5/observations.tar.gz`
 * **postprocessing_adms_type**: type of ADMS simulation executed, `urban` or `industrial`
 * **postprocessing_adms_latitude**: latitude (example 47.31322 for the industrial case, 48.8157 for the urban case)
 * **postprocessing_adms_longitude**: longitude (example -2.063825 for the industrial case, 2.32126 for the urban case)
