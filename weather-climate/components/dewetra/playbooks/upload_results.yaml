@@ -125,22 +125,8 @@
         create: yes
         block: |
           cd {{ resultsRootDir }}/{{ startyear }}/{{ startmonth }}/{{ startDay }}
-          -mkdir {{ item | basename }}
-          cd {{ item | basename }}
-          -mkdir gridded
-          cd gridded
-          lcd {{ POSTPROCESSING_RESULTS_DIR }}/{{ item | basename }}/gridded/{{ startyear }}/{{ startmonth }}/{{ startDay }}
-          put hmc*
-          cd ..
-          -mkdir point
-          cd point
-          lcd ../../../../point/{{ startyear }}/{{ startmonth }}/{{ startDay }}
-          put hmc*
-          cd ..
-          -mkdir time_series
-          cd time_series
-          lcd ../../../../time_series
-          put h*
+          lcd {{ POSTPROCESSING_RESULTS_DIR }}/{{ item | basename }}/time_series
+          put hydrograph*
       with_items: "{{ regions.files | map(attribute='path') | list }}"
     - name: Store results SFTP server
       command: "sftp -oStrictHostKeyChecking=no -b {{ ansible_env.HOME }}/lexis_store_continuum_{{ item | basename }}_results -P {{ SFTP_SERVER_PORT }} {{ destination }}"
