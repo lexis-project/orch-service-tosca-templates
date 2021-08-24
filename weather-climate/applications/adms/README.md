@@ -44,7 +44,7 @@ and store these ADMS results in DDI
 The template expects the following input properties (mandatory inputs in **bold**):
 *  **token**: OpenID Connect access token
 * **project_id**: LEXIS project identifier
-* **preprocessing_start_date**: Download IFS files from this date, format YYYYMMDDHH
+* **preprocessing_start_date**: Start date of the simulation, format YYYYMMDDHH
 * **computation_dataset_radar_observations_data_path**: Dataset containing radar observations data over France for the selected date. Select one of the following datasets containing compressed weather radar reflectivity over France for the month corresponding to the date you specified:
   * for 201806: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/fce2102e-cdb3-11eb-b462-0050568fc9b5/observations.tar.gz`
   * for 201807: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/76ab841a-cdb6-11eb-afa8-0050568fc9b5/observations.tar.gz`
@@ -53,6 +53,8 @@ The template expects the following input properties (mandatory inputs in **bold*
   * for 201810: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/c270eaa6-cdbc-11eb-b462-0050568fc9b5/observations.tar.gz`
   * for 201811: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/99774a7e-cdc0-11eb-afa8-0050568fc9b5/observations.tar.gz`
 * **postprocessing_adms_type**: type of ADMS simulation executed, `urban` or `industrial`
+* **postprocessing_adms_latitude**: latitude (example 47.31322 for the industrial case, 48.8157 for the urban case)
+* **postprocessing_adms_longitude**: longitude (example -2.063825 for the industrial case, 2.32126 for the urban case)
 * postprocessing_adms_sftp_server_ip: IP address of a SPTP server where to store results (default, no sftp server upload)
 * postprocessing_adms_sftp_port: Port of the SFTP server
   * default: `22`
@@ -60,7 +62,7 @@ The template expects the following input properties (mandatory inputs in **bold*
 * preprocessing_docker_image_ifs: Pre-processing container repository path
   * default: `cimafoundation/wps-da.ifs:v2.0.3`
 * preprocessing_docker_image_observation_data: Repository path of container downloading observation data
-  * default: `cimafoundation/lexis-download-docker:v1.2.0`
+  * default: `cimafoundation/lexis-download-docker:v1.2.1`
 * preprocessing_dataset_geographical_data_path: Dataset containing compressed geographical data
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/055b25ea-ba60-11eb-a44e-0050568fc9b5/static_geog_data.tar.gz`
 * preprocessing_decrypt_dataset_geographical_data: Should the input dataset be decrypted
@@ -82,9 +84,9 @@ The template expects the following input properties (mandatory inputs in **bold*
 * postprocessing_docker_image: Post-processing docker image name:tag
   * default: `adms/ncl:1.0.0`
 * postprocessing_dataset_docker_image_path: Post-processing docker image tar archive path in DDI
-  * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/89ddda90-1918-11eb-b6d1-0050568fc9b5`
+  * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/263a6916-f506-11eb-8bc2-0050568fc9b5`
 * postprocessing_dataset_ncl_script: Post-processing NCL script path in DDI
-  * default: project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/10d9e69e-e013-11eb-9c8d-0050568fc9b5
+  * default: project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/6fb84668-f50a-11eb-8bc2-0050568fc9b5
 * postprocessing_ddi_project_path: Path of the project where to transfer the post-processing results in DDI
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c`
 * postprocessing_dataset_id_adms_urban_app: ID of the dataset containing the ADMSUrban.exe and corresponding files. The DDI dataset has to contain single file called adms_urban.zip
@@ -148,9 +150,9 @@ The template expects the following input properties (mandatory inputs in **bold*
 * postprocessing_docker_image: Post-processing docker image name:tag
   * default: `adms/ncl:1.0.0`
 * postprocessing_dataset_docker_image_path: Post-processing docker image tar archive path in DDI
-  * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/89ddda90-1918-11eb-b6d1-0050568fc9b5`
+  * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/263a6916-f506-11eb-8bc2-0050568fc9b5`
 * postprocessing_dataset_ncl_script: Post-processing NCL script path in DDI
-  * default: project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/10d9e69e-e013-11eb-9c8d-0050568fc9b5
+  * default: project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/6fb84668-f50a-11eb-8bc2-0050568fc9b5
 * postprocessing_ddi_project_path: Path of the project where to transfer the post-processing results in DDI
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c`
 * postprocessing_dataset_id_adms_urban_app: ID of the dataset containing the ADMSUrban.exe and corresponding files. The DDI dataset has to contain single file called adms_urban.zip

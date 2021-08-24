@@ -142,7 +142,7 @@ topology_template:
             - Name: "OpenFoamParallel"
               ClusterNodeTypeId: 1
               CommandTemplateId: 6
-              WalltimeLimit: 3600
+              WalltimeLimit: 14400
               MinCores: 36
               MaxCores: 36
               Priority: 4

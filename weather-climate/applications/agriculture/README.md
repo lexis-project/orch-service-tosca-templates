@@ -28,7 +28,7 @@ Dynamic Allocation Module (DAM) is asked to select the best HPC infrastructure w
 The template expects the following input properties (mandatory inputs in **bold**):
 *  **token**: OpenID Connect access token
 * **project_id**: LEXIS project identifier
-* **preprocessing_start_date**: Download IFS files from this date, format YYYYMMDDHH
+* **preprocessing_start_date**: Start date of the simulation, format YYYYMMDDHH
 * **computation_dataset_radar_observations_data_path**: Dataset containing radar observations data over France for the selected date. Select one of the following datasets containing compressed weather radar reflectivity over France for the month corresponding to the date you specified:
   * for 201806: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/fce2102e-cdb3-11eb-b462-0050568fc9b5/observations.tar.gz`
   * for 201807: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/76ab841a-cdb6-11eb-afa8-0050568fc9b5/observations.tar.gz`
@@ -41,10 +41,11 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `22`
 * postprocessing_agriculture_sftp_server_directory: Absolute path to directory on SPTP server where to store results
   * default: `/limagrain`
+* postprocessing_dewetra_sftp_server_ip: IP address of a Dewetra SPTP server where to store results (default, no sftp server upload)
 * preprocessing_docker_image_ifs: Pre-processing container repository path
   * default: `cimafoundation/wps-da.ifs:v2.0.3`
 * preprocessing_docker_image_observation_data: Repository path of container downloading observation data
-  * default: `cimafoundation/lexis-download-docker:v1.2.0`
+  * default: `cimafoundation/lexis-download-docker:v1.2.1`
 * preprocessing_dataset_geographical_data_path: Dataset containing compressed geographical data
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/055b25ea-ba60-11eb-a44e-0050568fc9b5/static_geog_data.tar.gz`
 * preprocessing_decrypt_dataset_geographical_data: Should the input dataset be decrypted

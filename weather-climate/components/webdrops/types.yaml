@@ -15,7 +15,7 @@ node_types:
     properties:
       start_date:
         type: string
-        description: Download GFS files from this date, format YYYYMMDDHH
+        description: Start date of the simulation, format YYYYMMDDHH
         required: true
       download_type:
         type: string
