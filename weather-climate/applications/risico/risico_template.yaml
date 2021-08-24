@@ -34,7 +34,7 @@ topology_template:
       required: true
     preprocessing_start_date:
       type: string
-      description: Download GFS files from this date, format YYYYMMDDHH
+      description: Start date of the simulation, format YYYYMMDDHH (warmup data from the 2 previous days will be also downloaded)
       required: true
     preprocessing_docker_image_gfs:
       type: string
@@ -44,7 +44,7 @@ topology_template:
     preprocessing_docker_image_observation_data:
       type: string
       description: Repository path of container downloading observation data
-      default: "cimafoundation/lexis-download-docker:v1.2.0"
+      default: "cimafoundation/lexis-download-docker:v1.2.1"
       required: false
     preprocessing_dataset_geographical_data_path:
       type: string
@@ -247,7 +247,7 @@ topology_template:
           - "/risico_data/wrf"
           - "/risico_data/output"
           - "/risico_data/results"
-          - "/risico_data/observations/1"
+          - "/risico_data/observations"
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
@@ -366,7 +366,7 @@ topology_template:
     MoveObservationData:
       type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
-        source_file:  "/wps_data/observations/*/*"
+        source_file:  "/wps_data/observations/WRFDA/*"
         destination: "/wps_data/output/observations"
         as_user: "root"
       requirements:
@@ -420,10 +420,7 @@ topology_template:
             - Name: WRF Generic
               ClusterNodeTypeId: 7
               CommandTemplateId: 9
-              TemplateParameterValues:
-                - CommandParameterIdentifier: MPI_PROCESSES
-                  ParameterValue: "36"
-              WalltimeLimit: 172300
+              WalltimeLimit: 86400
               MinCores: 144
               MaxCores: 144
               Priority: 4
@@ -570,8 +567,8 @@ topology_template:
     MoveObservationRISICOData:
       type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
-        source_file:  "/wps_data/output/observations/*"
-        destination: "/risico_data/observations/1"
+        source_file:  "/wps_data/observations/*/SENSORS/*"
+        destination: "/risico_data/observations"
         as_user: "root"
       requirements:
         - hostedOnVirtualMachineHost:
@@ -1628,6 +1625,32 @@ topology_template:
             - set_state: executed
           on_success:
             - WRF_submit
+        WRF_submit:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - WRF_submitted
+        WRF_submitted:
+          target: WRF
+          activities:
+            - set_state: submitted
+          on_success:
+            - WRF_run
+        WRF_run:
+          target: WRF
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - WRF_executed
+        WRF_executed:
+          target: WRF
+          activities:
+            - set_state: executed
+    testSubmit:
+      steps:
         WRF_submit:
           target: WRF
           operation_host: ORCHESTRATOR
