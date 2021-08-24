@@ -8,17 +8,52 @@ metadata:
 description: "Compute PI example template"
 
 imports:
-    - tosca-normative-types:1.0.0-ALIEN20
-    - org.lexis.common.examples.pi:0.0.1-SNAPSHOT
+  - tosca-normative-types:1.0.0-ALIEN20
+  - yorc-openstack-types:3.1.0
+  - org.lexis.common.dynamic-orchestration-types:1.0.1
+  - org.lexis.common.examples.pi:0.0.1-SNAPSHOT
 
 topology_template:
   inputs:
+    token:
+      type: string
+      required: true
+      description: "OpenID Connect token"
+    project_id:
+      type: string
+      description: "LEXIS project identifier"
+      required: true
     # Prefix preprocessing is used by LEXIS Portal to identify a preprocessing input parameter
     preprocessing_decimalsNumber:
       type: integer
       required: true
       description: "Number of decimals to compute"
   node_templates:
+    # Validation of the token provided in input
+    # Exchanging this token to have an access and refresh tokens
+    # for any component needing it in the workflow
+    ValidateExchangeToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.ValidateAndExchangeToken
+      properties:
+        token: {get_input: token}
+        project_id: { get_input: project_id }
+
+    # Find the best cloud location depending on the input dataset and needed cloud resources
+    FindCloudLocationJob:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
+      properties:
+        token: { get_input: token }
+        project_id: { get_input: project_id }
+      requirements:
+        - CloudResourceVM:
+            type_requirement: cloud_instance
+            node: VirtualMachinePI
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.dynamic.orchestration.relationships.CloudResource
+    PublicNet:
+      type: yorc.nodes.openstack.FloatingIP
     VirtualMachinePI:
       type: tosca.nodes.Compute
       requirements:
@@ -60,23 +95,87 @@ topology_template:
             node: VirtualMachinePI
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
-    PublicNet:
-      type: tosca.nodes.Network
-      properties:
-        ip_version: 4
+    # At the end of the workflow, the Cloud instance token should be refreshed
+    # before attempting to uninstall the compute instance
+    RefreshVMToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.RefreshTargetTokens
+      requirements:
+        - target:
+            type_requirement: target
+            node: VirtualMachinePI
+            capability: tosca.capabilities.Node
+            relationship: tosca.relationships.DependsOn
   outputs:
     ComputePI_result:
       value: { get_attribute: [ ComputePI, result ] }
   workflows:
+    # At deployment time, validating the input token and exchanging it
+    # to get an access/refresh token for the orchestrator
     install:
-        steps:
-          PublicNet_install:
-            target: PublicNet
-            activities:
-              - delegate: install
+      steps:
+        ValidateExchangeToken_start:
+          target: ValidateExchangeToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ValidateExchangeToken_started
+        ValidateExchangeToken_started:
+          target: ValidateExchangeToken
+          activities:
+            - set_state: started
+    uninstall:
+      steps:
+        RefreshVMToken_start:
+          target: RefreshVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
+          on_success:
+            - Compute_uninstall
+        Compute_uninstall:
+          target: VirtualMachinePI
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: PublicNet
+          activities:
+            - delegate: uninstall
     Run:
       steps:
-        VirtualMachinePI_install:
+        # Submit the computation to find the best location from these inputs
+        FindCloudLocationJob_submit:
+          target: FindCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindCloudLocationJob_run
+        FindCloudLocationJob_run:
+          target: FindCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindCloudLocationJob_executed
+        FindCloudLocationJob_executed:
+          target: FindCloudLocationJob
+          activities:
+            - set_state: executed
+          on_success:
+            - Network_install
+        # Get a floating IP address for the Cloud Compute instance
+        Network_install:
+          target: PublicNet
+          activities:
+            - delegate: install
+          on_success:
+            - Compute_install
+        Compute_install:
           target: VirtualMachinePI
           activities:
             - delegate: install
@@ -98,45 +197,3 @@ topology_template:
           target: VirtualMachinePI
           activities:
             - delegate: uninstall
-    uninstall:
-      steps:
-        PublicNet_uninstall:
-            target: PublicNet
-            activities:
-              - delegate: uninstall
-    start:
-      steps:
-        ComputePI_start:
-          target: ComputePI
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - ComputePI_started
-        ComputePI_started:
-          target: ComputePI
-          activities:
-            - set_state: started
-    stop:
-      steps:
-        ComputePI_stopping:
-          target: ComputePI
-          activities:
-            - set_state: stopping
-          on_success:
-            - ComputePI_stopped
-        ComputePI_stopped:
-          target: ComputePI
-          activities:
-            - set_state: stopped
-    cancel:
-      steps:
-        ComputePI_cancelling:
-          target: ComputePI
-          activities:
-            - set_state: cancelling
-          on_success:
-            - ComputePI_cancelled
-        ComputePI_cancelled:
-          target: ComputePI
-          activities:
-            - set_state: cancelled
