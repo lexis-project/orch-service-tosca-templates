@@ -5,6 +5,7 @@
 # Template values:
 #
 # ADMS_TYPE:                      Type of ADMS simulation executed, urban or industrial
+# ADMS_START_DATE:                Start date of the simulation, format YYYYMMDDHH
 # ACCESS_TOKEN:                   OpenID Connect access token
 # ADMS_RESULT_DATASET_NAME:       Which will be the title of the dataset containing ADMS results
 # ADMS_SFTP_SERVER_IP:            IP address of a SPTP server where to store results (can be empty)
@@ -76,7 +77,7 @@ UploadResults C:\adms\results.zip "{{ADMS_RESULT_DATASET_NAME}}" "{{ACCESS_TOKEN
 {% if ADMS_SFTP_SERVER_IP != "" %}
 # Rename result file before storing it to the SFTP server
 $file_ext = ".zip"
-$newfilename = "result-dataset-$global:result_dataset_id$file_ext"
+$newfilename = "result-dataset-{{ADMS_START_DATE}}-$global:result_dataset_id$file_ext"
 echo "Renaming results file as: " $newfilename
 Rename-Item -Path "C:\adms\results.zip" -NewName "$newfilename"
 

@@ -39,6 +39,10 @@ topology_template:
       type: string
       description: type of ADMS simulation executed, urban or industrial
       required: true
+    postprocessing_start_date:
+      type: string
+      description: Start date of the simulation, format YYYYMMDDHH
+      required: true
     postprocessing_adms_latitude:
       type: string
       description: latitude (example 47.31322)
@@ -599,6 +603,7 @@ topology_template:
       type: org.lexis.wp7.nodes.ADMSRun
       properties:
         adms_type: { get_input: postprocessing_adms_type }
+        adms_start_date: {get_input: postprocessing_start_date}
         dataset_title_ncl_result: { get_input: postprocessing_title_dataset_MET_results }
         dataset_id_adms_urban_app: { get_input: postprocessing_dataset_id_adms_urban_app }
         dataset_id_adms_urban_static_data: { get_input: postprocessing_dataset_id_adms_urban_static_data }
@@ -628,6 +633,7 @@ topology_template:
       type: org.lexis.wp7.nodes.ADMSStore
       properties:
         adms_type: { get_input: postprocessing_adms_type }
+        adms_start_date: {get_input: postprocessing_start_date}
         dataset_title_adms_result: { get_input: postprocessing_title_dataset_adms_result }
         adms_sftp_server_ip: { get_input: postprocessing_adms_sftp_server_ip }
         adms_sftp_port: { get_input: postprocessing_adms_sftp_port }
