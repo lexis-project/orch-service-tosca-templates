@@ -54,5 +54,5 @@ The template expects the following input properties (mandatory inputs in **bold*
 ## Ouput attribute
 
 The following output attribute is provided:
-* attribute `destination_path` of component `CloudToDDIJob`: DDI path to Continuum post-processing results
-* attribute `destination_path` of component `CloudToDDIWRFJob`: DDI path to Continuum WRF results
+* attribute `destination_path` of component `CloudToDDIJob`: DDI path to Risico post-processing results
+* attribute `destination_path` of component `HPCToDDIJob`: DDI path to Risico WRF results

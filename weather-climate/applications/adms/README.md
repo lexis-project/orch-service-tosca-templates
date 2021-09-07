@@ -168,5 +168,6 @@ The template expects the following input properties (mandatory inputs in **bold*
 ### ADMS post-processing template ouput attributes
 
 The following output attribute is provided:
+* attribute `destination_path` of component `HPCToDDIJob`: DDI path to ADMS WRF results
 * attribute `destination_path` of component `METResultsToDDIJob`: the path to ADMS MET results in DDI
 * attribute `dataset_id_result` of component `ADMS`: the ID of the DDI dataset where ADMS post-process results are stored

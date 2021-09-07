@@ -66,4 +66,4 @@ The template expects the following input properties (mandatory inputs in **bold*
 ### Agriculture template ouput attribute
 
 The following output attribute is provided:
-* attribute `destination_path` of component `CloudToDDIWRFJob`: the path to compressed WRF results in DDI
+* attribute `destination_path` of component `HPCToDDIJob`: the path to compressed WRF results in DDI
