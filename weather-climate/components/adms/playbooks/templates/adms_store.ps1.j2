@@ -101,8 +101,11 @@ echo "Establishing SFTP connection..."
 $ThisSession = New-SFTPSession -ComputerName $SftpIp -Port $sftpPort -Credential $Credential -AcceptKey -Force
 
 # Upload the file to the SFTP path
-echo "Uploading results to SFTP server..."
-Set-SFTPFile -SessionId ($ThisSession).SessionId -Localfile $FilePath -RemotePath $sftp_dest_dir
+echo "Results to upload: " $FilePath
+echo "Destination directory: " $sftp_dest_dir
+echo "Uploading results to SFTP server: " $SftpIp
+echo "SFTP port: " $sftpPort
+Set-SFTPItem -SessionId ($ThisSession).SessionId -Destination $sftp_dest_dir -Path $FilePath -Force
 
 #Disconnect all SFTP Sessions
 echo "Disconnecting SFTP connection"
