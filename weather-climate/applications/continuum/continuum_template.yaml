@@ -683,7 +683,7 @@ topology_template:
     MoveObservationContinuumData:
       type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
-        source_file: "/wps_data/output/observations/*/SENSORS/*"
+        source_file: "/wps_data/observations/*/SENSORS/*"
         destination: "/continuum/datasets_hyde/dynamic_data"
         as_user: "root"
       requirements:
@@ -1603,7 +1603,7 @@ topology_template:
         start_date: { get_input: preprocessing_start_date }
         computation_type: CONTINUUM
         wrf_results_dir: "/continuum/datasets_hyde/dynamic_data"
-        postprocessing_results_dir: "/continuum/datasets_hmc/dynamic_data/destination"
+        postprocessing_results_dir: "/mnt/cloud_staging_area/continuum/continuum_results"
         sftp_server_ip: { get_input: postprocessing_dewetra_sftp_server_ip }
       requirements:
         - hostedOnComputeHost:
