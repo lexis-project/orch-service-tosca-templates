@@ -5,6 +5,7 @@
 # Template values:
 #
 # ADMS_TYPE:                      Type of ADMS simulation executed, urban or industrial
+# ADMS_START_DATE:                Start date of the simulation, format YYYYMMDDHH
 # ACCESS_TOKEN:                   OpenID Connect access token
 # METEO_DATASET_NAME:             Title of the dataset containing NCL results
 # ADMS_URBAN_APP_DATASET:         ID of the dataset containing the ADMSUrban.exe and corresponding files.
@@ -132,6 +133,15 @@ Copy-Item "$app_path\systme" C:\Windows
 echo "Pulling static dataset"
 $static_dataset = PullDatasetDDI $app_static_dataset "{{ACCESS_TOKEN}}" "{{DATASET_URL}}" "{{DDI_PROJECT_SHORT_NAME}}"
 $static_data_path = $(ExpandZipsInPlace $static_dataset)[0].FullName
+
+{% if ADMS_TYPE == "industrial" %}
+$start_date = "{{ADMS_START_DATE}}"
+$start_day = $start_date.Substring(0, 8)
+echo "Getting industrial var file for $start_day"
+$var_files = Get-ChildItem -Filter "$start_day*.var" $static_data_path
+echo "Found length " $var_files.Length " for var file for $start_day in $static_data_path"
+$var_files| select -first 1 | Rename-Item -NewName "industrial1.var"
+{% endif %}
 
 
 # Download the meteo data

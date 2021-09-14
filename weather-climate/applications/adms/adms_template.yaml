@@ -946,6 +946,7 @@ topology_template:
       type: org.lexis.wp7.nodes.ADMSRun
       properties:
         adms_type: { get_input: postprocessing_adms_type }
+        adms_start_date: {get_input: preprocessing_start_date}
         dataset_title_ncl_result: { concat: [get_input: postprocessing_title_dataset_MET_results, " - ", get_input: preprocessing_start_date ] }
         dataset_id_adms_urban_app: { get_input: postprocessing_dataset_id_adms_urban_app }
         dataset_id_adms_urban_static_data: { get_input: postprocessing_dataset_id_adms_urban_static_data }
@@ -975,6 +976,7 @@ topology_template:
       type: org.lexis.wp7.nodes.ADMSStore
       properties:
         adms_type: { get_input: postprocessing_adms_type }
+        adms_start_date: {get_input: preprocessing_start_date}
         dataset_title_adms_result: { concat: [get_input: postprocessing_title_dataset_adms_result, " - ", get_input: preprocessing_start_date ] }
         adms_sftp_server_ip: { get_input: postprocessing_adms_sftp_server_ip }
         adms_sftp_port: { get_input: postprocessing_adms_sftp_port }

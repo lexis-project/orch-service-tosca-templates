@@ -138,6 +138,7 @@ The template expects the following input properties (mandatory inputs in **bold*
 * **project_id**: LEXIS project identifier
 * **postprocessing_dataset_wrf_results_path**: WRF results dataset path in DDI
 * **postprocessing_adms_type**: Type of ADMS simulation executed, `urban` or `industrial`
+* **preprocessing_start_date**: Start date of the simulation, format YYYYMMDDHH
 * **postprocessing_title_dataset_MET_results**: Title of the MET processing results dataset to create in DDI
 * **postprocessing_title_dataset_adms_result**: Title of the ADMS results dataset to create in DDI
 * postprocessing_adms_sftp_server_ip: IP address of a SPTP server where to store results (default, no sftp server upload)
@@ -167,5 +168,6 @@ The template expects the following input properties (mandatory inputs in **bold*
 ### ADMS post-processing template ouput attributes
 
 The following output attribute is provided:
+* attribute `destination_path` of component `HPCToDDIJob`: DDI path to ADMS WRF results
 * attribute `destination_path` of component `METResultsToDDIJob`: the path to ADMS MET results in DDI
 * attribute `dataset_id_result` of component `ADMS`: the ID of the DDI dataset where ADMS post-process results are stored
