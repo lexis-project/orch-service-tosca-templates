@@ -7,6 +7,7 @@ Repository of TOSCA components and Application Templates.
   * Weather and climate:
     * [RISICO](weather-climate/applications/risico/) - Risks of wildlands fires simulations
     * [Continuum](weather-climate/applications/continuum/) - Hydrology simulations
+    * [WRF GFS computation over Italy](weather-climate/applications/italy_wrf_gfs/) - similar to Continnum, with just the pre-processing and WRF computation on HPC
     * [ADMS](weather-climate/applications/adms/) - Air quality
     * [Agriculture](weather-climate/applications/agriculture/) - Agricultural impact models
   * Computational Fluid Dynamics:
