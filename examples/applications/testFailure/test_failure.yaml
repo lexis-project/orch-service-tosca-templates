@@ -1,0 +1,460 @@
+tosca_definitions_version: alien_dsl_3_0_0
+
+metadata:
+  template_name: org.lexis.common.TestFailureTemplate
+  template_version: 0.1.0-SNAPSHOT
+  template_author: lexis
+
+description: "Test failure of a step, to let the user ask then for a replay"
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - yorc-openstack-types:3.1.0
+  - org.lexis.common.dynamic-orchestration-types:1.0.1
+  - org.lexis.common.examples.testfile:0.1.0
+
+topology_template:
+  inputs:
+    token:
+      type: string
+      required: true
+      description: "OpenID Connect token"
+    project_id:
+      type: string
+      description: "LEXIS project identifier"
+      required: true
+    preprocessing_testfile1_path:
+      type: string
+      description: "First file to check"
+      required: false
+      default: "/tmp/testfile1"
+    preprocessing_testfile2_path:
+      type: string
+      description: "Second file to check"
+      required: false
+      default: "/etc/hosts"
+    preprocessing_testfile3_path:
+      type: string
+      description: "Third file to check"
+      required: false
+      default: "/etc/group"
+    computation_testfile4_path:
+      type: string
+      description: "First file to check in computation"
+      required: false
+      default: "/etc/hosts"
+    computation_testfile5_path:
+      type: string
+      description: "Second file to check in computation"
+      required: false
+      default: "/tmp/testfile2"
+    computation_testfile6_path:
+      type: string
+      description: "Third file to check in computation"
+      required: false
+      default: "/etc/group"
+  node_templates:
+    # Validation of the token provided in input
+    # Exchanging this token to have an access and refresh tokens
+    # for any component needing it in the workflow
+    ValidateExchangeToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.ValidateAndExchangeToken
+      properties:
+        token: {get_input: token}
+        project_id: { get_input: project_id }
+
+    # Find the best cloud location depending on the input dataset and needed cloud resources
+    FindCloudLocationJob:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
+      properties:
+        token: { get_input: token }
+        project_id: { get_input: project_id }
+      requirements:
+        - CloudResourceVM:
+            type_requirement: cloud_instance
+            node: TestFailureVM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.dynamic.orchestration.relationships.CloudResource
+    PublicNet:
+      type: yorc.nodes.openstack.FloatingIP
+    TestFailureVM:
+      type: tosca.nodes.Compute
+      requirements:
+        - networkNetworkConnection:
+            type_requirement: network
+            node: PublicNet
+            capability: tosca.capabilities.Connectivity
+            relationship: tosca.relationships.Network
+      capabilities:
+        host:
+          properties:
+            num_cpus: 1
+            disk_size: "10 GB"
+            mem_size: "2 GB"
+        os:
+          properties:
+            type: linux
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        endpoint:
+          properties:
+            secure: true
+            protocol: tcp
+            network_name: PRIVATE
+            initiator: source
+    TestFile1:
+      type: org.lexis.common.examples.testfile.Check
+      # Metadata used by LEXIS Portal to identify a preprocessing workflow step
+      metadata:
+        task: preprocessing
+      properties:
+        file_path: { get_input: preprocessing_testfile1_path }
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: TestFailureVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    TestFile2:
+      type: org.lexis.common.examples.testfile.Check
+      # Metadata used by LEXIS Portal to identify a preprocessing workflow step
+      metadata:
+        task: computation
+      properties:
+        file_path: { get_input: preprocessing_testfile2_path }
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: TestFailureVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    TestFile3:
+      type: org.lexis.common.examples.testfile.Check
+      # Metadata used by LEXIS Portal to identify a preprocessing workflow step
+      metadata:
+        task: postprocessing
+      properties:
+        file_path: { get_input: preprocessing_testfile3_path }
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: TestFailureVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    TestFile4Job:
+      type: org.lexis.common.examples.testfile.CheckJob
+      # Metadata used by LEXIS Portal to identify a preprocessing workflow step
+      metadata:
+        task: computation
+      properties:
+        file_path: { get_input: computation_testfile4_path }
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: TestFailureVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    TestFile5Job:
+      type: org.lexis.common.examples.testfile.CheckJob
+      # Metadata used by LEXIS Portal to identify a preprocessing workflow step
+      metadata:
+        task: computation
+      properties:
+        file_path: { get_input: computation_testfile5_path }
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: TestFailureVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    TestFile6Job:
+      type: org.lexis.common.examples.testfile.CheckJob
+      # Metadata used by LEXIS Portal to identify a preprocessing workflow step
+      metadata:
+        task: computation
+      properties:
+        file_path: { get_input: computation_testfile5_path }
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: TestFailureVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    # At the end of the workflow, the Cloud instance token should be refreshed
+    # before attempting to uninstall the compute instance
+    RefreshVMToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.RefreshTargetTokens
+      requirements:
+        - target:
+            type_requirement: target
+            node: TestFailureVM
+            capability: tosca.capabilities.Node
+            relationship: tosca.relationships.DependsOn
+  workflows:
+    # At deployment time, validating the input token and exchanging it
+    # to get an access/refresh token for the orchestrator
+    install:
+      steps:
+        ValidateExchangeToken_start:
+          target: ValidateExchangeToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ValidateExchangeToken_started
+        ValidateExchangeToken_started:
+          target: ValidateExchangeToken
+          activities:
+            - set_state: started
+    uninstall:
+      steps:
+        RefreshVMToken_start:
+          target: RefreshVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
+          on_success:
+            - Compute_uninstall
+        Compute_uninstall:
+          target: TestFailureVM
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: PublicNet
+          activities:
+            - delegate: uninstall
+    Run:
+      steps:
+        # Submit the computation to find the best location from these inputs
+        FindCloudLocationJob_submit:
+          target: FindCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindCloudLocationJob_run
+        FindCloudLocationJob_run:
+          target: FindCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindCloudLocationJob_executed
+        FindCloudLocationJob_executed:
+          target: FindCloudLocationJob
+          activities:
+            - set_state: executed
+          on_success:
+            - Network_install
+        # Get a floating IP address for the Cloud Compute instance
+        Network_install:
+          target: PublicNet
+          activities:
+            - delegate: install
+          on_success:
+            - Compute_install
+        Compute_install:
+          target: TestFailureVM
+          activities:
+            - delegate: install
+          on_success:
+            - TestFile1_create
+        TestFile1_create:
+          target: TestFile1
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - TestFile1_created
+        TestFile1_created:
+          target: TestFile1
+          activities:
+            - set_state: created
+          on_success:
+            - TestFile1_start
+        TestFile1_start:
+          target: TestFile1
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - TestFile1_started
+        TestFile1_started:
+          target: TestFile1
+          activities:
+            - set_state: started
+          on_success:
+            - TestFile2_create
+        TestFile2_create:
+          target: TestFile2
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - TestFile2_created
+        TestFile2_created:
+          target: TestFile2
+          activities:
+            - set_state: created
+          on_success:
+            - TestFile2_start
+        TestFile2_start:
+          target: TestFile2
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - TestFile2_started
+        TestFile2_started:
+          target: TestFile2
+          activities:
+            - set_state: started
+          on_success:
+            - TestFile3_create
+        TestFile3_create:
+          target: TestFile3
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - TestFile3_created
+        TestFile3_created:
+          target: TestFile3
+          activities:
+            - set_state: created
+          on_success:
+            - TestFile3_start
+        TestFile3_start:
+          target: TestFile3
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - TestFile3_started
+        TestFile3_started:
+          target: TestFile3
+          activities:
+            - set_state: started
+          on_success:
+            - TestFile4Job_create
+        TestFile4Job_create:
+          target: TestFile4Job
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - TestFile4Job_created
+        TestFile4Job_created:
+          target: TestFile4Job
+          activities:
+            - set_state: created
+          on_success:
+            - TestFile4Job_submit
+        TestFile4Job_submit:
+          target: TestFile4Job
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - TestFile4Job_submitted
+        TestFile4Job_submitted:
+          target: TestFile4Job
+          activities:
+            - set_state: submitted
+          on_success:
+            - TestFile4Job_run
+        TestFile4Job_run:
+          target: TestFile4Job
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - TestFile4Job_executed
+        TestFile4Job_executed:
+          target: TestFile4Job
+          activities:
+            - set_state: executed
+          on_success:
+            - TestFile5Job_create
+        TestFile5Job_create:
+          target: TestFile5Job
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - TestFile5Job_created
+        TestFile5Job_created:
+          target: TestFile5Job
+          activities:
+            - set_state: created
+          on_success:
+            - TestFile5Job_submit
+        TestFile5Job_submit:
+          target: TestFile5Job
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - TestFile5Job_submitted
+        TestFile5Job_submitted:
+          target: TestFile5Job
+          activities:
+            - set_state: submitted
+          on_success:
+            - TestFile5Job_run
+        TestFile5Job_run:
+          target: TestFile5Job
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - TestFile5Job_executed
+        TestFile5Job_executed:
+          target: TestFile5Job
+          activities:
+            - set_state: executed
+          on_success:
+            - TestFile6Job_create
+        TestFile6Job_create:
+          target: TestFile6Job
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - TestFile6Job_created
+        TestFile6Job_created:
+          target: TestFile6Job
+          activities:
+            - set_state: created
+          on_success:
+            - TestFile6Job_submit
+        TestFile6Job_submit:
+          target: TestFile6Job
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - TestFile6Job_submitted
+        TestFile6Job_submitted:
+          target: TestFile6Job
+          activities:
+            - set_state: submitted
+          on_success:
+            - TestFile6Job_run
+        TestFile6Job_run:
+          target: TestFile6Job
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - TestFile6Job_executed
+        TestFile6Job_executed:
+          target: TestFile6Job
+          activities:
+            - set_state: executed
+          on_success:
+            - TestFailureVM_uninstall
+        TestFailureVM_uninstall:
+          target: TestFailureVM
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: PublicNet
+          activities:
+            - delegate: uninstall

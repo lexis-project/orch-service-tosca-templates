@@ -1,0 +1,7 @@
+- name: Submit check
+  hosts: all
+  strategy: free
+  tasks:
+    - name: Set SUBMIT_DATE_EPOCH
+      set_fact:
+        SUBMIT_DATE_EPOCH: "{{ ansible_date_time.epoch }}"

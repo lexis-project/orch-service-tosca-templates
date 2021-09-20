@@ -1,0 +1,28 @@
+- name: Check Xpra status
+  hosts: all
+  strategy: free
+  tasks:
+    - name: Check that the PID status file exists
+      stat:
+        path: "{{ FILE_PATH }}"
+      register: fpath
+    - name: Job status completed if the file is found
+      set_fact:
+        TOSCA_JOB_STATUS: "COMPLETED"
+      when: fpath.stat.exists
+    - meta: end_play
+      when: fpath.stat.exists
+
+    - name: Get elasped time in minutes
+      set_fact:
+        elapsedTime: "{{ ((ansible_date_time.epoch | int)  - (SUBMIT_DATE_EPOCH | int)) / 60 }}"
+    - name: Job status is running if wall time is not yet reached
+      set_fact:
+        TOSCA_JOB_STATUS: "RUNNING"
+      when: elapsedTime|int < WALLTIME|int
+    - meta: end_play
+      when: elapsedTime|int < WALLTIME|int
+
+    - name: Job status is failed as the file was still not found after the elasped time
+      set_fact:
+        TOSCA_JOB_STATUS: "FAILED"

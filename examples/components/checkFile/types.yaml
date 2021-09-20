@@ -1,0 +1,60 @@
+tosca_definitions_version: alien_dsl_3_0_0
+
+metadata:
+  template_name: org.lexis.common.examples.testfile
+  template_version: 0.1.0
+  template_author: lexis
+  
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - yorc-types:1.1.0
+
+description: "Check if a file exists"
+
+node_types:
+  org.lexis.common.examples.testfile.Check:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+      Checks that a file path exists, fails if not
+    properties:
+      file_path:
+        description: File path 
+        type: string
+        required: true
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+        start:
+          inputs:
+            FILE_PATH: {get_property: [SELF, file_path]}
+          implementation: playbooks/start.yaml
+  org.lexis.common.examples.testfile.CheckJob:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: >
+      Job waiting for a given time for a file path to appear, fails if not
+    properties:
+      file_path:
+        description: File path 
+        type: string
+        required: true
+      walltime_minutes:
+        type: integer
+        description: Duration in minutes of the job execution
+        required: true
+    attributes:
+      submit_date_epoch: { get_operation_output: [SELF, tosca.interfaces.node.lifecycle.Runnable, submit, SUBMIT_DATE_EPOCH] }
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/noop.yaml
+      tosca.interfaces.node.lifecycle.Runnable:
+        submit:
+          inputs:
+          implementation: playbooks/submit_check.yaml
+        run:
+          inputs:
+            FILE_PATH: {get_property: [SELF, file_path]}
+            WALLTIME: {get_property: [SELF, walltime_minutes] }
+            SUBMIT_DATE_EPOCH: {get_attribute: [SELF, submit_date_epoch] }
+          implementation: playbooks/run_check.yaml
