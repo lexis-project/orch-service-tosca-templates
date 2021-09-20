@@ -95,11 +95,11 @@ topology_template:
     postprocessing_hyde_image:
       type: string
       description: Hyde post-processing container repository path 
-      default: "laurentg/fp_framework_hyde:1.0.5"
+      default: "laurentg/fp_framework_hyde:1.0.6"
     postprocessing_hmc_image:
       type: string
       description: HMC post-processing container repository path
-      default: "laurentg/fp_framework_hmc:1.0.5"
+      default: "laurentg/fp_framework_hmc:1.0.6"
     postprocessing_ddi_project_path:
       type: string
       description: "Path where to transfer the post-processing results in DDI"
@@ -169,6 +169,7 @@ topology_template:
         host:
           properties:
             num_cpus: 10
+            disk_size: "150 GB"
         scalable:
           properties:
             min_instances: 1
