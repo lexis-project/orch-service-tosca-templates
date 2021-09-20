@@ -189,6 +189,7 @@ topology_template:
           properties:
             # num_cpus: 10
             num_cpus: 2
+            disk_size: "20 GB"
         scalable:
           properties:
             min_instances: 1

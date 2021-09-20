@@ -197,3 +197,9 @@ topology_template:
           target: VirtualMachinePI
           activities:
             - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: PublicNet
+          activities:
+            - delegate: uninstall

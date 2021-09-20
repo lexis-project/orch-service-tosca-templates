@@ -201,6 +201,7 @@ topology_template:
         host:
           properties:
             num_cpus: 4
+            disk_size: "40 GB"
         os:
           properties:
             type: linux

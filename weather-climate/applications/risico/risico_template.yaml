@@ -157,6 +157,7 @@ topology_template:
         host:
           properties:
             num_cpus: 10
+            disk_size: "150 GB"
         scalable:
           properties:
             min_instances: 1

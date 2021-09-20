@@ -269,6 +269,7 @@ topology_template:
         host:
           properties:
             num_cpus: 2
+            disk_size: "20 GB"
         os:
           properties:
             type: linux
