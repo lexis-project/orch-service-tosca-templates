@@ -631,6 +631,18 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - MountCloudDataset_create
+        MountCloudDataset_create:
+          target: MountCloudDataset
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - MountCloudDataset_created
+        MountCloudDataset_created:
+          target: MountCloudDataset
+          activities:
+            - set_state: created
+          on_success:
             - MountCloudDataset_refresh_token
         MountCloudDataset_refresh_token:
           target: MountCloudDataset
