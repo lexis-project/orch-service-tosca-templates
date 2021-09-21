@@ -81,7 +81,7 @@ topology_template:
     preprocessing_docker_image_observation_data:
       type: string
       description: Repository path of container downloading observation data
-      default: "cimafoundation/lexis-download-docker:v1.2.1"
+      default: "cimafoundation/lexis-download-docker:v1.2.5"
       required: false
     preprocessing_dataset_geographical_data_path:
       type: string
