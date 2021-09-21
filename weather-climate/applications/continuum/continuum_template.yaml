@@ -95,7 +95,7 @@ topology_template:
     postprocessing_hyde_image:
       type: string
       description: Hyde post-processing container repository path 
-      default: "laurentg/fp_framework_hyde:1.0.6"
+      default: "laurentg/fp_framework_hyde:1.0.5"
     postprocessing_hmc_image:
       type: string
       description: HMC post-processing container repository path
