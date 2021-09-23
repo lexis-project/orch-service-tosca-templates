@@ -50,6 +50,105 @@ $global:result_dataset_id = ($response | where { $_.status -eq "201" }).internal
 echo "Result dataset ID: $global:result_dataset_id"
 }
 
+# JWT Token parser
+function ConvertFrom-Jwt {
+    [cmdletbinding()]
+    param(
+    [Parameter(Mandatory = $true)]
+    [string]$Token
+    )
+
+    # Validate as per https://tools.ietf.org/html/rfc7519
+    # Access and ID tokens are fine, Refresh tokens will not work
+    if (!$Token.Contains('.') -or !$Token.StartsWith('eyJ')) { Write-Error 'Invalid token' -ErrorAction Stop }
+
+    # Extract header and payload
+    $tokenheader, $tokenPayload = $Token.Split('.').Replace('-', '+').Replace('_', '/')[0..1]
+
+    # Fix padding as needed, keep adding '=' until string length modulus 4 reaches 0
+    while ($tokenheader.Length % 4) { Write-Debug 'Invalid length for a Base-64 char array or string, adding ='; $tokenheader += '=' }
+    while ($tokenPayload.Length % 4) { Write-Debug 'Invalid length for a Base-64 char array or string, adding ='; $tokenPayload += '=' }
+
+    # Convert header from Base64 encoded string to PSObject all at once
+    $header = [System.Text.Encoding]::ASCII.GetString([system.convert]::FromBase64String($tokenheader)) | ConvertFrom-Json
+
+    # Convert payload to string array
+    $tokenArray = [System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String($tokenPayload))
+
+    # Convert from JSON to PSObject
+    $tokobj = $tokenArray | ConvertFrom-Json
+
+    return $tokobj
+}
+
+# Upload to iRODS directly
+function UploadResultsiRODS($file, $name, $token, $dataset_url, $ddi_project_short_name)
+{
+    echo "Creating empty dataset in DDI"
+    # Create empty dataset
+    $header_auth = @{Authorization="Bearer $token"}
+
+    # Create JSON body
+    $meta = @{contributor=@("ADMS Workflow");creator=@("ADMS Workflow");owner=@("ADMS Workflow");publicationYear="2021";publisher=@("ADMS Workflow");resourceType="Workflow result";title="$name"}
+    $body = @{push_method="empty";access="project";project="$ddi_project_short_name";metadata=$meta} | ConvertTo-Json
+
+    # Call DDI api
+    try
+    {
+        $response = Invoke-RestMethod -ContentType "application/json" -Method Post -Uri "$dataset_url" -Headers $header_auth -Body $body
+    }
+    catch [System.Net.WebException]
+    {
+        "Unable to upload dataset:  $_"
+        exit
+    }
+    $response
+    $global:result_dataset_id = ($response | where { $_.status -eq "201" }).internalID
+    echo "Result dataset ID: $global:result_dataset_id"
+
+    # Parameters for Python script
+    echo "Running Python upload to iRODS"
+    $irods_file_name = (Get-ChildItem C:\adms\results.zip).Name
+    $user_name = (ConvertFrom-Jwt $token).preferred_username
+
+    $irods_server = '{{ADMS_IRODS_SERVER}}'
+    $irods_zone = '{{ADMS_IRODS_ZONE}}'
+
+    $md5 = New-Object -TypeName System.Security.Cryptography.MD5CryptoServiceProvider
+    $utf8 = New-Object -TypeName System.Text.UTF8Encoding
+    $project_hash = [System.BitConverter]::ToString($md5.ComputeHash($utf8.GetBytes($ddi_project_short_name))).Replace("-","").ToLower()
+
+    $python_script=@"
+
+from irods.session import iRODSSession
+
+session = iRODSSession(host='$irods_server',
+port=1247, authentication_scheme='openid',
+openid_provider='keycloak_openid',
+zone='$irods_zone',
+access_token='$token',
+user='$user_name',
+block_on_authURL=False)
+
+session.data_objects.put('C:/adms/results.zip', '/$irods_zone/project/proj$project_hash/$result_dataset_id/$irods_file_name')
+"@
+
+    $python_script | Out-File -FilePath ./irods_transfer.py -Encoding utf8
+    $python_result = Start-Process -PassThru -Wait -RedirectStandardError 'irods_err.log' -RedirectStandardOutput 'irods_out.log' -FilePath "C:\Users\Administrator\AppData\Local\Programs\Python\Python39\python.exe" -ArgumentList "./irods_transfer.py"
+    if ($python_result.ExitCode -ne 0)
+    {
+        echo "iRODS upload ERROR"
+        echo (Get-Content 'irods_out.log')
+        echo (Get-Content 'irods_err.log')
+    }
+    else
+    {
+        echo "iRODS upload SUCCESS"
+    }
+}
+
+
+
 ####
 # PARAMETERS
 ####
@@ -72,7 +171,8 @@ echo "Unknown ADMS type, check adms_type value";
 Set-Location C:\adms
 
 # Upload them
-UploadResults C:\adms\results.zip "{{ADMS_RESULT_DATASET_NAME}}" "{{ACCESS_TOKEN}}" "{{DATASET_URL}}" "{{DDI_PROJECT_SHORT_NAME}}"
+#UploadResults C:\adms\results.zip "{{ADMS_RESULT_DATASET_NAME}}" "{{ACCESS_TOKEN}}" "{{DATASET_URL}}" "{{DDI_PROJECT_SHORT_NAME}}"
+UploadResultsiRODS C:\adms\results.zip "{{ADMS_RESULT_DATASET_NAME}}" "{{ACCESS_TOKEN}}" "{{DATASET_URL}}" "{{DDI_PROJECT_SHORT_NAME}}"
 
 {% if ADMS_SFTP_SERVER_IP != "" %}
 # Rename result file before storing it to the SFTP server
@@ -117,4 +217,3 @@ Get-SFTPSession | % { Remove-SFTPSession -SessionId ($_.SessionId) }
 # Cleanup
 #Set-Location C:\
 #Remove-Item -Force -Recurse C:\adms
-

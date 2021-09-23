@@ -114,6 +114,10 @@ echo "Unknown ADMS type, check adms_type value";
 # Main script
 ####
 
+# Install SplitPipeline
+Install-Module -Confirm -Name SplitPipeline
+Import-Module -Name SplitPipeline
+
 # Create dir for all data
 echo "Creating C:\adms"
 New-Item -Path C:\adms -ItemType "directory"
@@ -165,11 +169,10 @@ $met_files | Foreach-Object {Copy-Item -Force -Path $_.FullName -Destination $st
 # Run ADMS for each project file based on suffix
 echo "Running ADMS"
 Set-Location $static_data_path
-Get-ChildItem $static_data_path -Filter $app_suffix |
-Foreach-Object {
-echo "Running ADMS for:" $_.BaseName
-Start-Process -Wait -FilePath "$app_path/$app_bin" -ArgumentList "/E2",$_.FullName
-}
+
+$cpu_count = (Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors
+Get-ChildItem $static_data_path -Filter $app_suffix  | Split-Pipeline -Verbose -Count $cpu_count -Variable app_path,app_bin,static_data_path {process{Start-Process -WorkingDirectory "$static_data_path" -Wait -FilePath "$app_path/$app_bin" -ArgumentList "/E2",$_.FullName}}
+
 
 # Compress the results
 Compress-Archive -Path $static_data_path -DestinationPath C:\adms\results.zip
@@ -177,4 +180,3 @@ Compress-Archive -Path $static_data_path -DestinationPath C:\adms\results.zip
 # Cleanup
 #Set-Location C:\
 #Remove-Item -Force -Recurse C:\adms
-
