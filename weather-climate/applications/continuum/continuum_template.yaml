@@ -382,9 +382,9 @@ topology_template:
             - Name: WRF Generic
               ClusterNodeTypeId: 7
               CommandTemplateId: 9
-              WalltimeLimit: 36000
-              MinCores: 144
-              MaxCores: 144
+              WalltimeLimit: 27000
+              MinCores: 512
+              MaxCores: 512
               Priority: 4
               StandardOutputFile: "stdout"
               StandardErrorFile: "stderr"

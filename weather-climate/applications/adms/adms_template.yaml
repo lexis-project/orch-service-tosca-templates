@@ -162,9 +162,9 @@ topology_template:
       # TODO: replicate the dataset on IT4I
       default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/263a6916-f506-11eb-8bc2-0050568fc9b5"
       required: false
-    postprocessing_dataset_ncl_script:
+    postprocessing_dataset_ncl_script_path:
       type: string
-      description: Post-processing NCL script path in DDI
+      description: Post-processing NCL script dataset path in DDI
       # TODO: replicate the dataset on IT4I
       default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/6fb84668-f50a-11eb-8bc2-0050568fc9b5"
       required: false
@@ -461,9 +461,9 @@ topology_template:
             - Name: WRF Generic
               ClusterNodeTypeId: 7
               CommandTemplateId: 9
-              WalltimeLimit: 36000
-              MinCores: 144
-              MaxCores: 144
+              WalltimeLimit: 27000
+              MinCores: 512
+              MaxCores: 512
               Priority: 4
               StandardOutputFile: "stdout"
               StandardErrorFile: "stderr"
@@ -677,7 +677,7 @@ topology_template:
       type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
         token: { get_input: token }
-        ddi_dataset_path: { get_input: postprocessing_dataset_ncl_script }
+        ddi_dataset_path: { get_input: postprocessing_dataset_ncl_script_path }
         cloud_staging_area_directory_path: "adms_postprocessing_ncl"
         timestamp_cloud_staging_area_directory: true
       requirements:

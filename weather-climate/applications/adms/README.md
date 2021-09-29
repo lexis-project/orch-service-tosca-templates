@@ -85,7 +85,7 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `adms/ncl:1.0.0`
 * postprocessing_dataset_docker_image_path: Post-processing docker image tar archive path in DDI
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/263a6916-f506-11eb-8bc2-0050568fc9b5`
-* postprocessing_dataset_ncl_script: Post-processing NCL script path in DDI
+* postprocessing_dataset_ncl_script_path: Post-processing NCL script dataset path in DDI
   * default: project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/6fb84668-f50a-11eb-8bc2-0050568fc9b5
 * postprocessing_ddi_project_path: Path of the project where to transfer the post-processing results in DDI
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c`
@@ -152,7 +152,7 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `adms/ncl:1.0.0`
 * postprocessing_dataset_docker_image_path: Post-processing docker image tar archive path in DDI
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/263a6916-f506-11eb-8bc2-0050568fc9b5`
-* postprocessing_dataset_ncl_script: Post-processing NCL script path in DDI
+* postprocessing_dataset_ncl_script_path: Post-processing NCL script dataset path in DDI
   * default: project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/6fb84668-f50a-11eb-8bc2-0050568fc9b5
 * postprocessing_ddi_project_path: Path of the project where to transfer the post-processing results in DDI
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c`

@@ -1,11 +1,11 @@
 tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
-  template_name: org.lexis.wp7.RisicoTemplate
+  template_name: org.lexis.wp7.RisicoObservationsTemplate
   template_version: 0.1.0-SNAPSHOT
   template_author: lexis
 
-description: RISICO template
+description: RISICO template with a post-processing using observations data in input
 
 imports:
   - yorc-types:1.1.0
@@ -564,6 +564,19 @@ topology_template:
             capability: org.lexis.common.heappe.capabilities.HeappeJob
             relationship: org.lexis.common.ddi.relationships.SendJobOutputs
 
+    # Move observations data to match RISICO inputs structure expectations
+    MoveObservationRISICOData:
+      type: org.lexis.common.datatransfer.nodes.MoveFile
+      properties:
+        source_file:  "/wps_data/observations/*/SENSORS/*"
+        destination: "/risico_data/observations"
+        as_user: "root"
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: RisicoVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
     RISICO:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
       metadata:
@@ -1177,6 +1190,18 @@ topology_template:
             - set_state: started
           on_success:
             - HPCToCloudWRFJob_create
+            - MoveObservationRISICOData_start
+        MoveObservationRISICOData_start:
+          target: MoveObservationRISICOData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveObservationRISICOData_started
+        MoveObservationRISICOData_started:
+          target: MoveObservationRISICOData
+          activities:
+            - set_state: started
+          on_success:
             - RISICO_create
         # Transfer HPC results from HPC to Cloud staging area
         HPCToCloudWRFJob_create:
@@ -1665,6 +1690,18 @@ topology_template:
             - set_state: started
           on_success:
             - HPCToCloudWRFJob_create
+            - MoveObservationRISICOData_start
+        MoveObservationRISICOData_start:
+          target: MoveObservationRISICOData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveObservationRISICOData_started
+        MoveObservationRISICOData_started:
+          target: MoveObservationRISICOData
+          activities:
+            - set_state: started
+          on_success:
             - RISICO_create
         # Transfer HPC results from HPC to Cloud staging area
         HPCToCloudWRFJob_create:
@@ -2448,6 +2485,18 @@ topology_template:
             - set_state: started
           on_success:
             - HPCToCloudWRFJob_create
+            - MoveObservationRISICOData_start
+        MoveObservationRISICOData_start:
+          target: MoveObservationRISICOData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveObservationRISICOData_started
+        MoveObservationRISICOData_started:
+          target: MoveObservationRISICOData
+          activities:
+            - set_state: started
+          on_success:
             - RISICO_create
         # Transfer HPC results from HPC to Cloud staging area
         HPCToCloudWRFJob_create:
