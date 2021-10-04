@@ -45,7 +45,7 @@ The template expects the following input properties (mandatory inputs in **bold*
 *  **token**: OpenID Connect access token
 * **project_id**: LEXIS project identifier
 * **preprocessing_start_date**: Start date of the simulation, format YYYYMMDDHH
-* **computation_dataset_radar_observations_data_path**: Dataset containing radar observations data over France for the selected date. Select one of the following datasets containing compressed weather radar reflectivity over France for the month corresponding to the date you specified:
+* **computation_dataset_path_radar_observations_data_path**: Dataset containing radar observations data over France for the selected date. Select one of the following datasets containing compressed weather radar reflectivity over France for the month corresponding to the date you specified:
   * for workflow simulation start dates from 2018060200 to 2018007100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/fce2102e-cdb3-11eb-b462-0050568fc9b5/observations.tar.gz`
   * for workflow simulation start dates from 2018070200 to 2018080100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/76ab841a-cdb6-11eb-afa8-0050568fc9b5/observations.tar.gz`
   * for workflow simulation start dates from 2018080200 to 2018090100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/8e7646f4-cdb9-11eb-b462-0050568fc9b5/observations.tar.gz`
@@ -63,7 +63,7 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `cimafoundation/wps-da.ifs:v2.0.3`
 * preprocessing_docker_image_observation_data: Repository path of container downloading observation data
   * default: `cimafoundation/lexis-download-docker:v1.2.5`
-* preprocessing_dataset_geographical_data_path: Dataset containing compressed geographical data
+* preprocessing_dataset_path_geographical_data_path: Dataset containing compressed geographical data
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/055b25ea-ba60-11eb-a44e-0050568fc9b5/static_geog_data.tar.gz`
 * preprocessing_decrypt_dataset_geographical_data: Should the input dataset be decrypted
   * default: `false`
@@ -136,7 +136,7 @@ and store these ADMS results in DDI
 The template expects the following input properties (mandatory inputs in **bold**):
 *  **token**: OpenID Connect access token
 * **project_id**: LEXIS project identifier
-* **postprocessing_dataset_wrf_results_path**: WRF results dataset path in DDI
+* **postprocessing_dataset_path_wrf_results_path**: WRF results dataset path in DDI
 * **postprocessing_adms_type**: Type of ADMS simulation executed, `urban` or `industrial`
 * **preprocessing_start_date**: Start date of the simulation, format YYYYMMDDHH
 * **postprocessing_title_dataset_MET_results**: Title of the MET processing results dataset to create in DDI

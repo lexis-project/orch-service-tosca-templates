@@ -16,12 +16,12 @@ The Run workflow is doing:
 The template expects the following input properties (mandatory inputs in **bold**):
 *  **token**: OpenID Connect access token
 * **project_id**: LEXIS project identifier
-* **preprocessing_dataset_input_path**: Input dataset path in DDI
+* **preprocessing_dataset_path_input_path**: Input dataset path in DDI
 * **computation_title_dataset_result**: Title of the result dataset to create in DDI
 * **computation_ddi_project_path**: Path of the project where to transfer the computation results in DDI: project/projxxx
 * **visualization_walltime_minutes**: Duration in minutes of the visualization session
-* preprocessing_decrypt_input_dataset: Should the input dataset be decrypted (default: false)
-* preprocessing_uncompress_input_dataset: Should the input dataset be uncompressed (default: false)
+* preprocessing_decrypt_input: Should the input dataset be decrypted (default: false)
+* preprocessing_uncompress_input: Should the input dataset be uncompressed (default: false)
 * computation_encrypt_dataset_result: Should the result dataset be encrypted (default: false)
 * computation_compress_dataset_result: Should the result dataset be compressed (default: false)
 * visualization_directory: Directory where visualization data will be accesible on a cloud instance (default: openfoam)

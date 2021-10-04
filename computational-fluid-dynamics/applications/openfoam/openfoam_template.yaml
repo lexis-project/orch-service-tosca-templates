@@ -28,7 +28,7 @@ topology_template:
       type: string
       description: "LEXIS project identifier"
       required: true
-    preprocessing_dataset_input_path:
+    preprocessing_dataset_path_input_path:
       type: string
       description: Input dataset path in DDI
       required: true
@@ -44,12 +44,12 @@ topology_template:
       type: string
       description: "Path of the project where to transfer the computation results in DDI: project/projxxx"
       required: true
-    preprocessing_decrypt_input_dataset:
+    preprocessing_decrypt_input:
       type: boolean
       description: Should the input dataset be decrypted
       default: false
       required: false
-    preprocessing_uncompress_input_dataset:
+    preprocessing_uncompress_input:
       type: boolean
       description: Should the input dataset be uncompressed
       default: false
@@ -105,7 +105,7 @@ topology_template:
       type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
       properties:
         token: {get_input: token}
-        dataset_path: {get_input: preprocessing_dataset_input_path}
+        dataset_path: {get_input: preprocessing_dataset_path_input_path}
     # Find the best HPC location depending on the input dataset and needed HPC resources
     FindHPCLocationJob:
       type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
@@ -163,9 +163,9 @@ topology_template:
         task: preprocessing
       properties:
         token: { get_input: token }
-        decrypt: {get_input: preprocessing_decrypt_input_dataset}
-        uncompress: {get_input: preprocessing_uncompress_input_dataset}
-        ddi_dataset_path: { get_input: preprocessing_dataset_input_path }
+        decrypt: {get_input: preprocessing_decrypt_input}
+        uncompress: {get_input: preprocessing_uncompress_input}
+        ddi_dataset_path: { get_input: preprocessing_dataset_path_input_path }
         task_name: "OpenFoamParallel"
       requirements:
         - job:

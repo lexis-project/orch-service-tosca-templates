@@ -38,7 +38,7 @@ topology_template:
       type: string
       description: Continuum run date, format YYYY-MM-DD HH:MM
       required: true
-    postprocessing_dataset_wrf_results_path:
+    postprocessing_dataset_path_wrf_results_path:
       type: string
       description: WRF results dataset path in DDI
       required: true
@@ -100,7 +100,7 @@ topology_template:
       type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
       properties:
         token: {get_input: token}
-        dataset_path: {get_input: postprocessing_dataset_wrf_results_path}
+        dataset_path: {get_input: postprocessing_dataset_path_wrf_results_path}
     # Find the best cloud location depending on the input dataset and needed cloud resources
     FindCloudLocationJob:
       type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
@@ -171,7 +171,7 @@ topology_template:
         token: { get_input: token }
         decrypt: {get_input: preprocessing_decrypt_dataset_wrf_results}
         uncompress: {get_input: preprocessing_uncompress_dataset_wrf_results}
-        ddi_dataset_path: { get_input: postprocessing_dataset_wrf_results_path }
+        ddi_dataset_path: { get_input: postprocessing_dataset_path_wrf_results_path }
         cloud_staging_area_directory_path: "continuum_postprocessing_wrf"
         timestamp_cloud_staging_area_directory: true
       requirements:

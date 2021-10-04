@@ -31,7 +31,7 @@ topology_template:
       type: string
       description: "LEXIS project identifier"
       required: true
-    postprocessing_dataset_wrf_results_path:
+    postprocessing_dataset_path_wrf_results_path:
       type: string
       description: WRF results dataset path in DDI
       required: true
@@ -153,7 +153,7 @@ topology_template:
       type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
       properties:
         token: {get_input: token}
-        dataset_path: {get_input: postprocessing_dataset_wrf_results_path}
+        dataset_path: {get_input: postprocessing_dataset_path_wrf_results_path}
     # Find the best cloud location depending on the input dataset and needed cloud resources
     FindCloudLocationJob:
       type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
@@ -190,6 +190,10 @@ topology_template:
             # num_cpus: 10
             num_cpus: 2
             disk_size: "20 GB"
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
         scalable:
           properties:
             min_instances: 1
@@ -345,7 +349,7 @@ topology_template:
       type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
         token: { get_input: token }
-        ddi_dataset_path: { get_input: postprocessing_dataset_wrf_results_path }
+        ddi_dataset_path: { get_input: postprocessing_dataset_path_wrf_results_path }
         cloud_staging_area_directory_path: "adms_postprocessing_wrf"
         timestamp_cloud_staging_area_directory: true
         decrypt: {get_input: postprocessing_decrypt_dataset_wrf_results}
@@ -571,6 +575,10 @@ topology_template:
             protocol: tcp
             network_name: PRIVATE
             initiator: source
+        host:
+          properties:
+            num_cpus: 4
+            disk_size: "20 GB"
         os:
           properties:
             type: "windows"
