@@ -920,8 +920,8 @@ topology_template:
             initiator: source
         host:
           properties:
-            num_cpus: 4
-            disk_size: "20 GB"
+            num_cpus: 16
+            disk_size: "70 GB"
         os:
           properties:
             type: "windows"
