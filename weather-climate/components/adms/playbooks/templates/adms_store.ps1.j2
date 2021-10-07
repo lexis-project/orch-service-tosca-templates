@@ -134,7 +134,7 @@ session.data_objects.put('C:/adms/results.zip', '/$irods_zone/project/proj$proje
 "@
 
     $python_script | Out-File -FilePath ./irods_transfer.py -Encoding utf8
-    $python_result = Start-Process -PassThru -Wait -RedirectStandardError 'irods_err.log' -RedirectStandardOutput 'irods_out.log' -FilePath "C:\Users\Administrator\AppData\Local\Programs\Python\Python39\python.exe" -ArgumentList "./irods_transfer.py"
+    $python_result = Start-Process -PassThru -Wait -RedirectStandardError 'irods_err.log' -RedirectStandardOutput 'irods_out.log' -FilePath "C:\Program Files\Python39\python.exe" -ArgumentList "./irods_transfer.py"
     if ($python_result.ExitCode -ne 0)
     {
         echo "iRODS upload ERROR"
