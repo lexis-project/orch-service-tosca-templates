@@ -115,7 +115,8 @@ echo "Unknown ADMS type, check adms_type value";
 ####
 
 # Install SplitPipeline
-Install-Module -Confirm -Name SplitPipeline
+Install-PackageProvider -Name NuGet -Force
+Install-Module -Name SplitPipeline -Force
 Import-Module -Name SplitPipeline
 
 # Create dir for all data
@@ -135,8 +136,14 @@ Copy-Item "$app_path\systme" C:\Windows
 
 # Download the static dataset
 echo "Pulling static dataset"
+{% if ADMS_TYPE == "industrial" %}
 $static_dataset = PullDatasetDDI $app_static_dataset "{{ACCESS_TOKEN}}" "{{DATASET_URL}}" "{{DDI_PROJECT_SHORT_NAME}}"
 $static_data_path = $(ExpandZipsInPlace $static_dataset)[0].FullName
+{% else %}
+$static_data_path = PullDatasetDDI $app_static_dataset "{{ACCESS_TOKEN}}" "{{DATASET_URL}}" "{{DDI_PROJECT_SHORT_NAME}}"
+ExpandZipsInPlace $static_data_path
+echo "static_data_path: $static_data_path"
+{% endif %}
 
 {% if ADMS_TYPE == "industrial" %}
 $start_date = "{{ADMS_START_DATE}}"
