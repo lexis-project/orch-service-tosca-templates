@@ -121,6 +121,16 @@ function UploadResultsiRODS($file, $name, $token, $dataset_url, $ddi_project_sho
     $python_script=@"
 
 from irods.session import iRODSSession
+import requests
+
+r = requests.get('{{ADMS_IRODS_BROKER_URL}}' + '/validate_token',
+    headers={'Authorization': 'Basic {{ADMS_IRODS_BROKER_KEY}}'},
+    params={'access_token': '$token','provider':'keycloak_openid'}, verify=True)
+
+print(r.text)
+if r.status_code != 200:
+    print("Invalid token.")
+    exit(1)
 
 session = iRODSSession(host='$irods_server',
 port=1247, authentication_scheme='openid',
