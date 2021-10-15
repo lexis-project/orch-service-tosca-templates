@@ -114,6 +114,11 @@ echo "Unknown ADMS type, check adms_type value";
 # Main script
 ####
 
+# Install SplitPipeline
+Install-PackageProvider -Name NuGet -Force
+Install-Module -Name SplitPipeline -Force
+Import-Module -Name SplitPipeline
+
 # Create dir for all data
 echo "Creating C:\adms"
 New-Item -Path C:\adms -ItemType "directory"
@@ -131,8 +136,14 @@ Copy-Item "$app_path\systme" C:\Windows
 
 # Download the static dataset
 echo "Pulling static dataset"
+{% if ADMS_TYPE == "industrial" %}
 $static_dataset = PullDatasetDDI $app_static_dataset "{{ACCESS_TOKEN}}" "{{DATASET_URL}}" "{{DDI_PROJECT_SHORT_NAME}}"
 $static_data_path = $(ExpandZipsInPlace $static_dataset)[0].FullName
+{% else %}
+$static_data_path = PullDatasetDDI $app_static_dataset "{{ACCESS_TOKEN}}" "{{DATASET_URL}}" "{{DDI_PROJECT_SHORT_NAME}}"
+ExpandZipsInPlace $static_data_path
+echo "static_data_path: $static_data_path"
+{% endif %}
 
 {% if ADMS_TYPE == "industrial" %}
 $start_date = "{{ADMS_START_DATE}}"
@@ -165,11 +176,10 @@ $met_files | Foreach-Object {Copy-Item -Force -Path $_.FullName -Destination $st
 # Run ADMS for each project file based on suffix
 echo "Running ADMS"
 Set-Location $static_data_path
-Get-ChildItem $static_data_path -Filter $app_suffix |
-Foreach-Object {
-echo "Running ADMS for:" $_.BaseName
-Start-Process -Wait -FilePath "$app_path/$app_bin" -ArgumentList "/E2",$_.FullName
-}
+
+$cpu_count = (Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors
+Get-ChildItem $static_data_path -Filter $app_suffix  | Split-Pipeline -Verbose -Count $cpu_count -Variable app_path,app_bin,static_data_path {process{Start-Process -WorkingDirectory "$static_data_path" -Wait -FilePath "$app_path/$app_bin" -ArgumentList "/E2",$_.FullName}}
+
 
 # Compress the results
 Compress-Archive -Path $static_data_path -DestinationPath C:\adms\results.zip
@@ -177,4 +187,3 @@ Compress-Archive -Path $static_data_path -DestinationPath C:\adms\results.zip
 # Cleanup
 #Set-Location C:\
 #Remove-Item -Force -Recurse C:\adms
-
