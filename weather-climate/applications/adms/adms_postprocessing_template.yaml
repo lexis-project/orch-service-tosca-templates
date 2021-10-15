@@ -122,7 +122,7 @@ topology_template:
     postprocessing_dataset_id_adms_urban_static_data:
       type: string
       description: ID of the dataset containing the static data for ADMSUrban
-      default: "f1275722-25b5-11eb-bbae-0050568fcecc"
+      default: "017d74f6-2b9d-11ec-8ba2-0050568f0c4e"
       required: false
     postprocessing_dataset_id_adms_industrial_app:
       type: string
@@ -133,6 +133,16 @@ topology_template:
       type: string
       description: ID of the dataset containing the static data for ADMSIndustrial
       default: "b6e09a96-25ac-11eb-bbae-0050568fcecc"
+      required: false
+    postprocessing_adms_irods_server:
+      type: string
+      description: IRODS server where to upload ADMS results
+      default: "irods.it4i.lexis.tech"
+      required: false
+    postprocessing_adms_irods_zone:
+      type: string
+      description: IRODS zone where to upload ADMS results
+      default: "IT4ILexisZone"
       required: false
   node_templates:
     # Validation of the token provided in input
@@ -187,8 +197,8 @@ topology_template:
       capabilities:
         host:
           properties:
-            # num_cpus: 10
-            num_cpus: 2
+            num_cpus: 16
+            # num_cpus: 2
             disk_size: "20 GB"
         os:
           properties:
@@ -644,6 +654,8 @@ topology_template:
         adms_type: { get_input: postprocessing_adms_type }
         adms_start_date: {get_input: postprocessing_start_date}
         dataset_title_adms_result: { get_input: postprocessing_title_dataset_adms_result }
+        adms_irods_server: { get_input: postprocessing_adms_irods_server }
+        adms_irods_zone: { get_input: postprocessing_adms_irods_zone }
         adms_sftp_server_ip: { get_input: postprocessing_adms_sftp_server_ip }
         adms_sftp_port: { get_input: postprocessing_adms_sftp_port }
         adms_sftp_industrial_dir: { get_input: postprocessing_adms_sftp_industrial_dir }
@@ -1244,120 +1256,6 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - FindWindowsCloudLocationJob_submit
-        FindWindowsCloudLocationJob_submit:
-          target: FindWindowsCloudLocationJob
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - FindWindowsCloudLocationJob_run
-        FindWindowsCloudLocationJob_run:
-          target: FindWindowsCloudLocationJob
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - FindWindowsCloudLocationJob_executed
-        FindWindowsCloudLocationJob_executed:
-          target: FindWindowsCloudLocationJob
-          activities:
-            - set_state: executed
-          on_success:
-            - WindowsNetwork_install
-        WindowsNetwork_install:
-          target: PublicNetADMSWinVM
-          activities:
-            - delegate: install
-          on_success:
-            - WindowsCompute_install
-        WindowsCompute_install:
-          target: ADMS_WIN_VM
-          activities:
-            - delegate: install
-          on_success:
-            - GetDDIAccessWinVM_start
-        GetDDIAccessWinVM_start:
-          target: GetDDIAccessWinVM
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - GetDDIAccessWinVM_started
-        GetDDIAccessWinVM_started:
-          target: GetDDIAccessWinVM
-          activities:
-            - set_state: started
-          on_success:
-            - RefreshADMSRunToken_start
-        RefreshADMSRunToken_start:
-          target: RefreshADMSRunToken
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - RefreshADMSRunToken_started
-        RefreshADMSRunToken_started:
-          target: RefreshADMSRunToken
-          activities:
-            - set_state: started
-          on_success:
-            - ADMSRun_start
-        ADMSRun_start:
-          target: ADMSRun
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - ADMSRun_started
-        ADMSRun_started:
-          target: ADMSRun
-          activities:
-            - set_state: started
-          on_success:
-            - RefreshADMSStoreToken_start
-        RefreshADMSStoreToken_start:
-          target: RefreshADMSStoreToken
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - RefreshADMSStoreToken_started
-        RefreshADMSStoreToken_started:
-          target: RefreshADMSStoreToken
-          activities:
-            - set_state: started
-          on_success:
-            - ADMSStore_start
-        ADMSStore_start:
-          target: ADMSStore
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - ADMSStore_started
-        ADMSStore_started:
-          target: ADMSStore
-          activities:
-            - set_state: started
-          on_success:
-            - RefreshADMSWinVMToken_start
-        RefreshADMSWinVMToken_start:
-          target: RefreshADMSWinVMToken
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - RefreshADMSWinVMToken_started
-        RefreshADMSWinVMToken_started:
-          target: RefreshADMSWinVMToken
-          activities:
-            - set_state: started
-          on_success:
-            - WindowsCompute_uninstall
-        WindowsCompute_uninstall:
-          target: ADMS_WIN_VM
-          activities:
-            - delegate: uninstall
-          on_success:
-            - WindowsNetwork_uninstall
-        WindowsNetwork_uninstall:
-          target: PublicNetADMSWinVM
-          activities:
-            - delegate: uninstall
-          on_success:
             - MountDockerImageDataset_refresh_token_for_stop
         MountDockerImageDataset_refresh_token_for_stop:
           target: MountDockerImageDataset
@@ -1550,5 +1448,119 @@ topology_template:
             - Network_uninstall
         Network_uninstall:
           target: PublicNetADMSVM
+          activities:
+            - delegate: uninstall
+          on_success:
+            - FindWindowsCloudLocationJob_submit
+        FindWindowsCloudLocationJob_submit:
+          target: FindWindowsCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindWindowsCloudLocationJob_run
+        FindWindowsCloudLocationJob_run:
+          target: FindWindowsCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindWindowsCloudLocationJob_executed
+        FindWindowsCloudLocationJob_executed:
+          target: FindWindowsCloudLocationJob
+          activities:
+            - set_state: executed
+          on_success:
+            - WindowsNetwork_install
+        WindowsNetwork_install:
+          target: PublicNetADMSWinVM
+          activities:
+            - delegate: install
+          on_success:
+            - WindowsCompute_install
+        WindowsCompute_install:
+          target: ADMS_WIN_VM
+          activities:
+            - delegate: install
+          on_success:
+            - GetDDIAccessWinVM_start
+        GetDDIAccessWinVM_start:
+          target: GetDDIAccessWinVM
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetDDIAccessWinVM_started
+        GetDDIAccessWinVM_started:
+          target: GetDDIAccessWinVM
+          activities:
+            - set_state: started
+          on_success:
+            - RefreshADMSRunToken_start
+        RefreshADMSRunToken_start:
+          target: RefreshADMSRunToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshADMSRunToken_started
+        RefreshADMSRunToken_started:
+          target: RefreshADMSRunToken
+          activities:
+            - set_state: started
+          on_success:
+            - ADMSRun_start
+        ADMSRun_start:
+          target: ADMSRun
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ADMSRun_started
+        ADMSRun_started:
+          target: ADMSRun
+          activities:
+            - set_state: started
+          on_success:
+            - RefreshADMSStoreToken_start
+        RefreshADMSStoreToken_start:
+          target: RefreshADMSStoreToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshADMSStoreToken_started
+        RefreshADMSStoreToken_started:
+          target: RefreshADMSStoreToken
+          activities:
+            - set_state: started
+          on_success:
+            - ADMSStore_start
+        ADMSStore_start:
+          target: ADMSStore
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ADMSStore_started
+        ADMSStore_started:
+          target: ADMSStore
+          activities:
+            - set_state: started
+          on_success:
+            - RefreshADMSWinVMToken_start
+        RefreshADMSWinVMToken_start:
+          target: RefreshADMSWinVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshADMSWinVMToken_started
+        RefreshADMSWinVMToken_started:
+          target: RefreshADMSWinVMToken
+          activities:
+            - set_state: started
+          on_success:
+            - WindowsCompute_uninstall
+        WindowsCompute_uninstall:
+          target: ADMS_WIN_VM
+          activities:
+            - delegate: uninstall
+          on_success:
+            - WindowsNetwork_uninstall
+        WindowsNetwork_uninstall:
+          target: PublicNetADMSWinVM
           activities:
             - delegate: uninstall

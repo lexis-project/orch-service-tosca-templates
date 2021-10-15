@@ -92,7 +92,7 @@ The template expects the following input properties (mandatory inputs in **bold*
 * postprocessing_dataset_id_adms_urban_app: ID of the dataset containing the ADMSUrban.exe and corresponding files. The DDI dataset has to contain single file called adms_urban.zip
   * default: `f284db6c-2588-11eb-bbae-0050568fcecc`
 * postprocessing_dataset_id_adms_urban_static_data: ID of the dataset containing the static data for ADMSUrban
-  * default: `f1275722-25b5-11eb-bbae-0050568fcecc`
+  * default: `017d74f6-2b9d-11ec-8ba2-0050568f0c4e`
 * postprocessing_dataset_id_adms_industrial_app: ID of the dataset containing the ADMSIndustrial.exe and corresponding files. The DDI dataset has to contain single file called adms_industrial.zip
   * default: `ab773490-544a-11eb-b72c-0050568fcecc`
 * `postprocessing_dataset_id_adms_industrial_static_data`: ID of the dataset containing the static data for ADMSIndustrial
@@ -101,6 +101,10 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `false`
 * postprocessing_compress_wrf_dataset_result: Compress the WRF result dataset
   * default: `true`
+* postprocessing_adms_irods_server: IRODS server where to upload ADMS results
+  * default: `irods.it4i.lexis.tech`
+* postprocessing_adms_irods_zone: IRODS zone where to upload ADMS results
+  * default: `IT4ILexisZone`
 
 ### ADMS template ouput attributes
 
@@ -159,11 +163,15 @@ The template expects the following input properties (mandatory inputs in **bold*
 * postprocessing_dataset_id_adms_urban_app: ID of the dataset containing the ADMSUrban.exe and corresponding files. The DDI dataset has to contain single file called adms_urban.zip
   * default: `f284db6c-2588-11eb-bbae-0050568fcecc`
 * postprocessing_dataset_id_adms_urban_static_data: ID of the dataset containing the static data for ADMSUrban
-  * default: `f1275722-25b5-11eb-bbae-0050568fcecc`
+  * default: `017d74f6-2b9d-11ec-8ba2-0050568f0c4e`
 * postprocessing_dataset_id_adms_industrial_app: ID of the dataset containing the ADMSIndustrial.exe and corresponding files. The DDI dataset has to contain single file called adms_industrial.zip
   * default: `ab773490-544a-11eb-b72c-0050568fcecc`
 * `postprocessing_dataset_id_adms_industrial_static_data`: ID of the dataset containing the static data for ADMSIndustrial
   * default: `b6e09a96-25ac-11eb-bbae-0050568fcecc`
+* postprocessing_adms_irods_server: IRODS server where to upload ADMS results
+  * default: `irods.it4i.lexis.tech`
+* postprocessing_adms_irods_zone: IRODS zone where to upload ADMS results
+  * default: `IT4ILexisZone`
 
 ### ADMS post-processing template ouput attributes
 
