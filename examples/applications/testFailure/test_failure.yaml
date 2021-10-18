@@ -10,7 +10,7 @@ description: "Test failure of a step, to let the user ask then for a replay"
 imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - yorc-openstack-types:3.1.0
-  - org.lexis.common.dynamic-orchestration-types:1.0.1
+  - org.lexis.common.dynamic-orchestration-types:1.0.2
   - org.lexis.common.examples.testfile:0.1.0
 
 topology_template:

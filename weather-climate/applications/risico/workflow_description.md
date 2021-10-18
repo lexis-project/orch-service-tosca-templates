@@ -34,7 +34,7 @@ description: RISICO template
 # so that they can be instantiated in our template
 imports:
   - yorc-types:1.1.0
-  - org.lexis.common.heappe-types:1.0.6
+  - org.lexis.common.heappe-types:1.0.7
 
 # Section topology_template describe the application template:
 # input parameters, components and relationships, outputs, workflows
@@ -88,7 +88,7 @@ This section allows to import archives from the Alien4Cloud catalog, to add data
 For example, this import:
 ```yaml
 imports:
-  - org.lexis.common.heappe-types:1.0.6
+  - org.lexis.common.heappe-types:1.0.7
 ```
 
 will import from Alien4Cloud the definition of HEAppE data types and node types
@@ -207,7 +207,7 @@ thanks to these lines in the import section:
 # Section imports declare which types to import from Alien4Cloud catalog
 # so that they can be instantiated in our template
 imports:
-  - org.lexis.common.heappe-types:1.0.6
+  - org.lexis.common.heappe-types:1.0.7
 ```
 
 <a name="topology_template"></a>
