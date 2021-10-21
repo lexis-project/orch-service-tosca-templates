@@ -47,12 +47,12 @@ topology_template:
       description: Repository path of container downloading observation data
       default: "cimafoundation/lexis-download-docker:v1.2.5"
       required: false
-    preprocessing_decrypt_dataset_wrf_results:
+    postprocessing_decrypt_dataset_wrf_results:
       type: boolean
       description: Should the input dataset be decrypted
       default: false
       required: false
-    preprocessing_uncompress_dataset_wrf_results:
+    postprocessing_uncompress_dataset_wrf_results:
       type: boolean
       description: Should the input dataset be uncompressed
       default: true
@@ -67,6 +67,11 @@ topology_template:
       description: Continuum static data dataset path in DDI
       default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/7eb5e3ee-446d-11eb-8958-0050568fcecc"
       required: false
+    postprocessing_dataset_continuum_hmc_initial_conditions_data_path:
+      type: string
+      description: Continuum HMC initial conditions dataset path in DDI
+      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/1ca70cfa-3107-11ec-8dca-0050568fcecc"
+      required: false
     postprocessing_hyde_image:
       type: string
       description: Hyde post-processing container repository path 
@@ -74,7 +79,7 @@ topology_template:
     postprocessing_hmc_image:
       type: string
       description: HMC post-processing container repository path
-      default: "laurentg/fp_framework_hmc:1.0.6"
+      default: "laurentg/fp_framework_hmc:1.0.7"
     postprocessing_ddi_project_path:
       type: string
       description: "Path where to transfer the post-processing results in DDI"
@@ -169,8 +174,8 @@ topology_template:
       type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
         token: { get_input: token }
-        decrypt: {get_input: preprocessing_decrypt_dataset_wrf_results}
-        uncompress: {get_input: preprocessing_uncompress_dataset_wrf_results}
+        decrypt: {get_input: postprocessing_decrypt_dataset_wrf_results}
+        uncompress: {get_input: postprocessing_uncompress_dataset_wrf_results}
         ddi_dataset_path: { get_input: postprocessing_dataset_path_wrf_results_path }
         cloud_staging_area_directory_path: "continuum_postprocessing_wrf"
         timestamp_cloud_staging_area_directory: true
@@ -299,6 +304,87 @@ topology_template:
             node: ContinuumVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
+    DDIToCloudContinuumHMCInitialConditionsDataJob:
+      type: org.lexis.common.ddi.nodes.DDIToCloudJob
+      properties:
+        token: { get_input: token }
+        ddi_dataset_path: { get_input: postprocessing_dataset_continuum_hmc_initial_conditions_data_path }
+        cloud_staging_area_directory_path: "continuum_postprocessing_hmc"
+        timestamp_cloud_staging_area_directory: true
+      requirements:
+        - sameSite:
+            type_requirement: os
+            node: ContinuumVM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
+    MountContinuumHMCInitialConditionsDataset:
+      type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
+      properties:
+        token: { get_input: token }
+        mount_point_directory: "/mnt/cloud_staging_area/postprocess_hmc"
+      requirements:
+        - ddi_access:
+            type_requirement: ddi_access
+            node: GetDDIAccess
+            capability: org.lexis.common.ddi.capabilities.DDIAccess
+            relationship: org.lexis.common.ddi.relationships.DDIAccessProvider
+        - data_transfer:
+            type_requirement: data_transfer
+            node: DDIToCloudContinuumHMCInitialConditionsDataJob
+            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    FindContinuumHMCInitialConditionsFiles:
+      type: org.lexis.common.datatransfer.nodes.FindFilesInStagingAreaDirectory
+      properties:
+        shell_patterns:
+          - marche
+          - liguria
+          - adige
+          - basilicata
+          - calabria
+          - fvg
+          - gargano
+          - lazio
+          - liri
+          - po
+          - puglia
+          - romagna
+          - sardegna
+          - sicilia
+          - tevere
+          - toscana
+          - volturno
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: MountContinuumHMCInitialConditionsDataset
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    MoveContinuumHMCInitialConditionsFiles:
+      type: org.lexis.common.datatransfer.nodes.MoveFilesFromProvider
+      properties:
+        destination_directory: "/continuum/datasets_hmc/dynamic_data/restart"
+      requirements:
+        - files_provider:
+            type_requirement: files_provider
+            node: FindContinuumHMCInitialConditionsFiles
+            capability: org.lexis.common.datatransfer.capabilities.FilesProvider
+            relationship: org.lexis.common.datatransfer.relationships.FilesProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
     Docker:
       type: org.ystia.docker.ansible.nodes.Docker
       requirements:
@@ -398,7 +484,7 @@ topology_template:
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     # Download observation data needed by Continuum 
-    ObservationsContinuum:
+    ObservationsData:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
       properties:
         auto_remove: false
@@ -1373,6 +1459,16 @@ topology_template:
             node: DDIToCloudContinuumStaticDataJob
             capability: org.lexis.common.ddi.capabilities.DataTransferCloud
             relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
+    DeleteCloudContinuumHMCInitialConditionsDataJob:
+      type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - cloud_area_dataset_provider:
+            type_requirement: cloud_area_dataset_provider
+            node: DDIToCloudContinuumHMCInitialConditionsDataJob
+            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
   outputs:
     ddi_post_process_results:
       description: DDI path to Continuum post-processing results
@@ -1413,6 +1509,20 @@ topology_template:
             - DeleteCloudContinuumStaticDataJob_submit
         DeleteCloudContinuumStaticDataJob_submit:
           target: DeleteCloudContinuumStaticDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudContinuumHMCInitialConditionsDataJob_create
+        DeleteCloudContinuumHMCInitialConditionsDataJob_create:
+          target: DeleteCloudContinuumHMCInitialConditionsDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudContinuumHMCInitialConditionsDataJob_submit
+        DeleteCloudContinuumHMCInitialConditionsDataJob_submit:
+          target: DeleteCloudContinuumHMCInitialConditionsDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
@@ -1532,7 +1642,37 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - ObservationsContinuum_create
+            - ObservationsData_create
+        ObservationsData_create:
+          target: ObservationsData
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ObservationsData_start
+        ObservationsData_start:
+          target: ObservationsData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ObservationsData_started
+        ObservationsData_started:
+          target: ObservationsData
+          activities:
+            - set_state: started
+          on_success:
+            - ObservationsData_delete
+        ObservationsData_delete:
+          target: ObservationsData
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - ObservationsData_deleted
+        ObservationsData_deleted:
+          target: ObservationsData
+          activities:
+            - set_state: deleted
+          on_success:
+            - MoveObservationContinuumData_start
         GetDDIAccess_start:
           target: GetDDIAccess
           activities:
@@ -1721,37 +1861,81 @@ topology_template:
             - set_state: started
           on_success:
             - Continuum_Hyde_marche_create
-        ObservationsContinuum_create:
-          target: ObservationsContinuum
+        DDIToCloudContinuumHMCInitialConditionsDataJob_create:
+          target: DDIToCloudContinuumHMCInitialConditionsDataJob
+          operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
           on_success:
-            - ObservationsContinuum_start
-        ObservationsContinuum_start:
-          target: ObservationsContinuum
+            - DDIToCloudContinuumHMCInitialConditionsDataJob_submit
+        DDIToCloudContinuumHMCInitialConditionsDataJob_submit:
+          target: DDIToCloudContinuumHMCInitialConditionsDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToCloudContinuumHMCInitialConditionsDataJob_submitted
+        DDIToCloudContinuumHMCInitialConditionsDataJob_submitted:
+          target: DDIToCloudContinuumHMCInitialConditionsDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToCloudContinuumHMCInitialConditionsDataJob_run
+        DDIToCloudContinuumHMCInitialConditionsDataJob_run:
+          target: DDIToCloudContinuumHMCInitialConditionsDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToCloudContinuumHMCInitialConditionsDataJob_executed
+        DDIToCloudContinuumHMCInitialConditionsDataJob_executed:
+          target: DDIToCloudContinuumHMCInitialConditionsDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountContinuumHMCInitialConditionsDataset_refresh_token
+        MountContinuumHMCInitialConditionsDataset_refresh_token:
+          target: MountContinuumHMCInitialConditionsDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountContinuumHMCInitialConditionsDataset_start
+        MountContinuumHMCInitialConditionsDataset_start:
+          target: MountContinuumHMCInitialConditionsDataset
           activities:
             - call_operation: Standard.start
           on_success:
-            - ObservationsContinuum_started
-        ObservationsContinuum_started:
-          target: ObservationsContinuum
+            - MountContinuumHMCInitialConditionsDataset_started
+        MountContinuumHMCInitialConditionsDataset_started:
+          target: MountContinuumHMCInitialConditionsDataset
           activities:
             - set_state: started
           on_success:
-            - ObservationsContinuum_delete
-        ObservationsContinuum_delete:
-          target: ObservationsContinuum
+            - FindContinuumHMCInitialConditionsFiles_start
+        FindContinuumHMCInitialConditionsFiles_start:
+          target: FindContinuumHMCInitialConditionsFiles
           activities:
-            - call_operation: Standard.delete
+            - call_operation: Standard.start
           on_success:
-            - ObservationsContinuum_deleted
-        ObservationsContinuum_deleted:
-          target: ObservationsContinuum
+            - FindContinuumHMCInitialConditionsFiles_started
+        FindContinuumHMCInitialConditionsFiles_started:
+          target: FindContinuumHMCInitialConditionsFiles
           activities:
-            - set_state: deleted
+            - set_state: started
           on_success:
-            - MountWRFDataset_create
-            - MoveObservationContinuumData_start
+            - MoveContinuumHMCInitialConditionsFiles_start
+        MoveContinuumHMCInitialConditionsFiles_start:
+          target: MoveContinuumHMCInitialConditionsFiles
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveContinuumHMCInitialConditionsFiles_started
+        MoveContinuumHMCInitialConditionsFiles_started:
+          target: MoveContinuumHMCInitialConditionsFiles
+          activities:
+            - set_state: started
+          on_success:
+            - Continuum_HMC_marche_create
         MoveObservationContinuumData_start:
           target: MoveObservationContinuumData
           activities:
@@ -1777,6 +1961,7 @@ topology_template:
             - set_state: started
           on_success:
             - Move_Hyde_Results_start
+            - DDIToCloudContinuumHMCInitialConditionsDataJob_create
         Continuum_Hyde_marche_create:
           target: Continuum_Hyde_marche
           activities:
@@ -2328,99 +2513,42 @@ topology_template:
           activities:
             - set_state: stopped
           on_success:
-            - DeleteCloudWRFDataJob_create
-        DeleteCloudWRFDataJob_create:
-          target: DeleteCloudWRFDataJob
+            - DeleteCloudContinuumHMCInitialConditionsDataJob_create
+        DeleteCloudContinuumHMCInitialConditionsDataJob_create:
+          target: DeleteCloudContinuumHMCInitialConditionsDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
           on_success:
-            - DeleteCloudWRFDataJob_created
-        DeleteCloudWRFDataJob_created:
-          target: DeleteCloudWRFDataJob
+            - DeleteCloudContinuumHMCInitialConditionsDataJob_created
+        DeleteCloudContinuumHMCInitialConditionsDataJob_created:
+          target: DeleteCloudContinuumHMCInitialConditionsDataJob
           activities:
             - set_state: created
           on_success:
-            - DeleteCloudWRFDataJob_submit
-        DeleteCloudWRFDataJob_submit:
-          target: DeleteCloudWRFDataJob
+            - DeleteCloudContinuumHMCInitialConditionsDataJob_submit
+        DeleteCloudContinuumHMCInitialConditionsDataJob_submit:
+          target: DeleteCloudContinuumHMCInitialConditionsDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
-            - DeleteCloudWRFDataJob_submitted
-        DeleteCloudWRFDataJob_submitted:
-          target: DeleteCloudWRFDataJob
+            - DeleteCloudContinuumHMCInitialConditionsDataJob_submitted
+        DeleteCloudContinuumHMCInitialConditionsDataJob_submitted:
+          target: DeleteCloudContinuumHMCInitialConditionsDataJob
           activities:
             - set_state: submitted
           on_success:
-            - DeleteCloudWRFDataJob_run
-        DeleteCloudWRFDataJob_run:
-          target: DeleteCloudWRFDataJob
+            - DeleteCloudContinuumHMCInitialConditionsDataJob_run
+        DeleteCloudContinuumHMCInitialConditionsDataJob_run:
+          target: DeleteCloudContinuumHMCInitialConditionsDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
           on_success:
-            - DeleteCloudWRFDataJob_executed
-        DeleteCloudWRFDataJob_executed:
-          target: DeleteCloudWRFDataJob
-          activities:
-            - set_state: executed
-          on_success:
-            - MountContinuumDataset_refresh_token_for_stop
-        MountContinuumDataset_refresh_token_for_stop:
-          target: MountContinuumDataset
-          activities:
-            - call_operation: custom.refresh_token
-          on_success:
-            - MountContinuumDataset_stop
-        MountContinuumDataset_stop:
-          target: MountContinuumDataset
-          activities:
-            - call_operation: Standard.stop
-          on_success:
-            - MountContinuumDataset_stopped
-        MountContinuumDataset_stopped:
-          target: MountContinuumDataset
-          activities:
-            - set_state: stopped
-          on_success:
-            - DeleteCloudContinuumStaticDataJob_create
-        DeleteCloudContinuumStaticDataJob_create:
-          target: DeleteCloudContinuumStaticDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DeleteCloudContinuumStaticDataJob_created
-        DeleteCloudContinuumStaticDataJob_created:
-          target: DeleteCloudContinuumStaticDataJob
-          activities:
-            - set_state: created
-          on_success:
-            - DeleteCloudContinuumStaticDataJob_submit
-        DeleteCloudContinuumStaticDataJob_submit:
-          target: DeleteCloudContinuumStaticDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DeleteCloudContinuumStaticDataJob_submitted
-        DeleteCloudContinuumStaticDataJob_submitted:
-          target: DeleteCloudContinuumStaticDataJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DeleteCloudContinuumStaticDataJob_run
-        DeleteCloudContinuumStaticDataJob_run:
-          target: DeleteCloudContinuumStaticDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DeleteCloudContinuumStaticDataJob_executed
-        DeleteCloudContinuumStaticDataJob_executed:
-          target: DeleteCloudContinuumStaticDataJob
+            - DeleteCloudContinuumHMCInitialConditionsDataJob_executed
+        DeleteCloudContinuumHMCInitialConditionsDataJob_executed:
+          target: DeleteCloudContinuumHMCInitialConditionsDataJob
           activities:
             - set_state: executed
           on_success:

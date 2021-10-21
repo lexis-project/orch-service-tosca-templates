@@ -95,7 +95,7 @@ topology_template:
     postprocessing_dataset_continuum_hmc_initial_conditions_data_path:
       type: string
       description: Continuum HMC initial conditions dataset path in DDI
-      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/e149a142-2cf4-11ec-8dca-0050568fcecc"
+      default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/1ca70cfa-3107-11ec-8dca-0050568fcecc"
       required: false
     postprocessing_hyde_image:
       type: string
