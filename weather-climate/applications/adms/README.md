@@ -46,12 +46,12 @@ The template expects the following input properties (mandatory inputs in **bold*
 * **project_id**: LEXIS project identifier
 * **preprocessing_start_date**: Start date of the simulation, format YYYYMMDDHH
 * **computation_dataset_path_radar_observations_data_path**: Dataset containing radar observations data over France for the selected date. Select one of the following datasets containing compressed weather radar reflectivity over France for the month corresponding to the date you specified:
-  * for workflow simulation start dates from 2018060100 to 2018007100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/fce2102e-cdb3-11eb-b462-0050568fc9b5/observations.tar.gz`
-  * for workflow simulation start dates from 2018070200 to 2018080100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/76ab841a-cdb6-11eb-afa8-0050568fc9b5/observations.tar.gz`
-  * for workflow simulation start dates from 2018080200 to 2018090100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/8e7646f4-cdb9-11eb-b462-0050568fc9b5/observations.tar.gz`
-  * for workflow simulation start dates from 2018090200 to 2018100100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/f7b2d0aa-cdba-11eb-afa8-0050568fc9b5/observations.tar.gz`
-  * for workflow simulation start dates from 2018100200 to 2018110100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/c270eaa6-cdbc-11eb-b462-0050568fc9b5/observations.tar.gz`
-  * for workflow simulation start dates from 2018110200 to 2018120100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/99774a7e-cdc0-11eb-afa8-0050568fc9b5/observations.tar.gz`
+  * for workflow simulation start dates from 2018060100 to 2018003000: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/fce2102e-cdb3-11eb-b462-0050568fc9b5/observations.tar.gz`
+  * for workflow simulation start dates from 2018070200 to 20180073100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/76ab841a-cdb6-11eb-afa8-0050568fc9b5/observations.tar.gz`
+  * for workflow simulation start dates from 2018080200 to 2018083100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/8e7646f4-cdb9-11eb-b462-0050568fc9b5/observations.tar.gz`
+  * for workflow simulation start dates from 2018090100 to 2018093000: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/a3c8b5f8-327e-11ec-bfe5-0050568fc9b5/observations.tar.gz`
+  * for workflow simulation start dates from 2018100200 to 2018103100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/c270eaa6-cdbc-11eb-b462-0050568fc9b5/observations.tar.gz`
+  * for workflow simulation start dates from 2018110200 to 2018113000: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/99774a7e-cdc0-11eb-afa8-0050568fc9b5/observations.tar.gz`
 * **postprocessing_adms_type**: type of ADMS simulation executed, `urban` or `industrial`
 * **postprocessing_adms_latitude**: latitude (example 47.31322 for the industrial case, 48.8157 for the urban case)
 * **postprocessing_adms_longitude**: longitude (example -2.063825 for the industrial case, 2.32126 for the urban case)
@@ -96,7 +96,7 @@ The template expects the following input properties (mandatory inputs in **bold*
 * postprocessing_dataset_id_adms_industrial_app: ID of the dataset containing the ADMSIndustrial.exe and corresponding files. The DDI dataset has to contain single file called adms_industrial.zip
   * default: `ab773490-544a-11eb-b72c-0050568fcecc`
 * `postprocessing_dataset_id_adms_industrial_static_data`: ID of the dataset containing the static data for ADMSIndustrial
-  * default: `b6e09a96-25ac-11eb-bbae-0050568fcecc`
+  * default: `55180d36-317b-11ec-8dca-0050568fcecc`
 * postprocessing_encrypt_wrf_dataset_result: Encrypt the WRF result dataset
   * default: `false`
 * postprocessing_compress_wrf_dataset_result: Compress the WRF result dataset
@@ -167,7 +167,7 @@ The template expects the following input properties (mandatory inputs in **bold*
 * postprocessing_dataset_id_adms_industrial_app: ID of the dataset containing the ADMSIndustrial.exe and corresponding files. The DDI dataset has to contain single file called adms_industrial.zip
   * default: `ab773490-544a-11eb-b72c-0050568fcecc`
 * `postprocessing_dataset_id_adms_industrial_static_data`: ID of the dataset containing the static data for ADMSIndustrial
-  * default: `b6e09a96-25ac-11eb-bbae-0050568fcecc`
+  * default: `55180d36-317b-11ec-8dca-0050568fcecc`
 * postprocessing_adms_irods_server: IRODS server where to upload ADMS results
   * default: `irods.it4i.lexis.tech`
 * postprocessing_adms_irods_zone: IRODS zone where to upload ADMS results

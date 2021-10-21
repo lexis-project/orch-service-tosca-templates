@@ -191,7 +191,7 @@ topology_template:
     postprocessing_dataset_id_adms_industrial_static_data:
       type: string
       description: ID of the dataset containing the static data for ADMSIndustrial
-      default: "b6e09a96-25ac-11eb-bbae-0050568fcecc"
+      default: "55180d36-317b-11ec-8dca-0050568fcecc"
       required: false
     postprocessing_encrypt_wrf_dataset_result:
       type: boolean
@@ -1859,6 +1859,7 @@ topology_template:
             - set_state: created
           on_success:
             - MountNCLScriptDataset_refresh_token
+            - ImageLoader_create
         MountNCLScriptDataset_refresh_token:
           target: MountNCLScriptDataset
           activities:
