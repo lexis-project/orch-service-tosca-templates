@@ -36,6 +36,16 @@
         state: present
         update_cache: yes
       when: ansible_os_family == 'RedHat'
+    - name: Debian - Install ca-certificates
+      apt:
+        name:
+          - ca-certificates
+        state: latest
+      when: ansible_os_family == 'Debian'
+    - name: Debian - Apt update cache
+      apt:
+        update_cache: yes
+      when: ansible_os_family == 'Debian'
     - name: Debian - install gpg
       apt:
         name:
