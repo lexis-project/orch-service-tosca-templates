@@ -129,8 +129,8 @@ topology_template:
       capabilities:
         host:
           properties:
-            disk_size: "40 GB"
-            mem_size: "8 GB"
+            disk_size: "100 GB"
+            mem_size: "16 GB"
         os:
           properties:
             type: linux
