@@ -16,9 +16,9 @@ imports:
   - docker-types:3.0.0
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
-  - org.lexis.common.ddi-types:1.0.1
-  - org.lexis.common.dynamic-orchestration-types:1.0.1
-  - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
+  - org.lexis.common.ddi-types:1.0.2
+  - org.lexis.common.dynamic-orchestration-types:1.0.2
+  - org.lexis.common.datatransfer:0.1.3-SNAPSHOT
 
 topology_template:
   #
@@ -31,7 +31,7 @@ topology_template:
   # - input parameters uded in the HPC computation phase start with computation_
   # - input parameters used in the postprocessing phase start with postprocessing_
   # - Paths of DDI dataset are expect to follow the expression <phase>_dataset_*
-  #   for example: preprocessing_dataset_input_path
+  #   for example: preprocessing_dataset_path_input_path
   #
   inputs:
     token:
@@ -42,7 +42,7 @@ topology_template:
       type: string
       description: "LEXIS project identifier"
       required: true
-    computation_dataset_input_path:
+    computation_dataset_path_input_path:
       type: string
       description: Dataset containing input data
       required: true
@@ -50,12 +50,12 @@ topology_template:
       type: string
       description: "Path where to transfer the computation results in DDI"
       required: true
-    computation_decrypt_input_dataset:
+    computation_decrypt_input:
       type: boolean
       description: Should the input dataset be decrypted
       default: false
       required: false
-    computation_uncompress_input_dataset:
+    computation_uncompress_input:
       type: boolean
       description: Should the input dataset be uncompressed
       default: false
@@ -145,7 +145,7 @@ topology_template:
       type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
       properties:
         token: {get_input: token}
-        dataset_path: {get_input: computation_dataset_input_path}
+        dataset_path: {get_input: computation_dataset_path_input_path}
 
     # Find the best cloud location depending on the input dataset and needed cloud resources
     FindCloudLocation:
@@ -172,9 +172,9 @@ topology_template:
       type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
         token: {get_input: token}
-        decrypt: {get_input: computation_decrypt_input_dataset}
-        uncompress: {get_input: computation_uncompress_input_dataset}
-        ddi_dataset_path: { get_input: computation_dataset_input_path }
+        decrypt: {get_input: computation_decrypt_input}
+        uncompress: {get_input: computation_uncompress_input}
+        ddi_dataset_path: { get_input: computation_dataset_path_input_path }
         cloud_staging_area_directory_path: "lexis_cloud_computation_container"
         timestamp_cloud_staging_area_directory: true
       requirements:
@@ -201,6 +201,7 @@ topology_template:
         host:
           properties:
             num_cpus: 4
+            disk_size: "40 GB"
         os:
           properties:
             type: linux

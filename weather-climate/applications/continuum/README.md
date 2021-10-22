@@ -39,8 +39,8 @@ The template expects the following input properties (mandatory inputs in **bold*
 * preprocessing_docker_image_gfs: Pre-processing container repository path
   * default: `cimafoundation/wps-da.gfs:v2.0.3`
 * preprocessing_docker_image_observation_data: Repository path of container downloading observation data
-  * default: `cimafoundation/lexis-download-docker:v1.2.1`
-* preprocessing_dataset_geographical_data_path: Dataset containing geographical data
+  * default: `cimafoundation/lexis-download-docker:v1.2.5`
+* preprocessing_dataset_path_geographical_data_path: Dataset containing geographical data
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/055b25ea-ba60-11eb-a44e-0050568fc9b5/static_geog_data.tar.gz`
 * preprocessing_decrypt_dataset_geographical_data: Should the input dataset be decrypted
   * default: `false`
@@ -48,10 +48,12 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `true`
 * postprocessing_dataset_continuum_static_data_path: Continuum static data dataset path in DDI
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/7eb5e3ee-446d-11eb-8958-0050568fcecc`
+* postprocessing_dataset_continuum_hmc_initial_conditions_data_path: Continuum HMC initial conditions dataset path in DDI
+  * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/1ca70cfa-3107-11ec-8dca-0050568fcecc`
 * postprocessing_hyde_image: Hyde post-processing container repository path 
   * default: `laurentg/fp_framework_hyde:1.0.5`
 * postprocessing_hmc_image: HMC post-processing container repository path
-  * default: `laurentg/fp_framework_hmc:1.0.5`
+  * default: `laurentg/fp_framework_hmc:1.0.6`
 * postprocessing_ddi_project_path: Path where to transfer the post-processing results in DDI
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c`
 * postprocessing_encrypt_dataset_result: Encrypt the result dataset

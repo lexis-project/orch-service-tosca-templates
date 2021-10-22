@@ -2,7 +2,7 @@ tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
   template_name: org.lexis.wp7.adms
-  template_version: 0.1.0
+  template_version: 0.1.1
   template_author: lexis
 
 description: ADMS types
@@ -10,7 +10,7 @@ description: ADMS types
 imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - yorc-types:1.1.0
-  - org.lexis.common.ddi-types:1.0.1
+  - org.lexis.common.ddi-types:1.0.2
 node_types:
   org.lexis.wp7.nodes.ADMSRun:
     derived_from: tosca.nodes.SoftwareComponent
@@ -96,6 +96,14 @@ node_types:
         type: string
         description: Short name of the DDI project where to store results
         required: true
+      adms_irods_server:
+        type: string
+        description: IRODS server where to upload results
+        required: true
+      adms_irods_zone:
+        type: string
+        description: IRODS zone where to upload results
+        required: true
       adms_sftp_server_ip:
         type: string
         description: IP address of a SPTP server where to store results (no upload to sftp server if not defined)
@@ -115,6 +123,11 @@ node_types:
         description: IP address of a SPTP server where to store results (no upload to sftp server if not defined)
         required: false
         default: "/"
+      adms_irods_broker_url:
+        type: string
+        description: IRODS broker URL
+        required: false
+        default: "https://irods-broker.msad.it4i.lexis.tech"
     requirements:
       - ddi_access:
           capability: org.lexis.common.ddi.capabilities.DDIAccess
@@ -141,6 +154,10 @@ node_types:
             ADMS_SFTP_PASSWORD: { get_secret: ["/secret/wp7/adms/creds", "data=password"]}
             ADMS_SFTP_INDUSTRIAL_DIR: {get_property: [SELF, adms_sftp_industrial_dir]}
             ADMS_SFTP_URBAN_DIR: {get_property: [SELF, adms_sftp_urban_dir]}
+            ADMS_IRODS_SERVER: {get_property: [SELF, adms_irods_server]}
+            ADMS_IRODS_ZONE: {get_property: [SELF, adms_irods_zone]}
+            ADMS_IRODS_BROKER_URL: {get_property: [SELF, adms_irods_broker_url]}
+            ADMS_IRODS_BROKER_KEY: { get_secret: ["/secret/wp7/adms/it4ibroker", "data=key"]}
             DATASET_URL: {get_attribute: [REQ_TARGET, ddi_access, dataset_url]}
             DDI_PROJECT_SHORT_NAME:  {get_property: [SELF, ddi_project_short_name]}
           implementation: playbooks/adms_store.yaml

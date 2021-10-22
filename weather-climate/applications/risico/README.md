@@ -1,5 +1,9 @@
 # RISICO Application Template - Risks of wildlands fires simulations
 
+RISICO comes with two flavours:
+* [org.lexis.wp7.RisicoTemplate](risico_template.yaml) performing a RISICO post-processing without observations data in input
+* [org.lexis.wp7.RisicoObservationsTemplate](risico_observations_template.yaml) performing a RISICO post-processing with observations data in input.
+
 The Run workflow for the RISICO template is executing the following steps:
 * getting details on the input dataset (size, locations) in DDI containing static geographical data
 * asking the Dynamic Allocation Module (DAM) to select the best Cloud infrastructure where to transfer these input data
@@ -34,15 +38,15 @@ The template expects the following input properties (mandatory inputs in **bold*
 * preprocessing_docker_image_gfs: Pre-processing container repository path
   * default: `cimafoundation/wps-da.gfs:v2.0.3`
 * preprocessing_docker_image_observation_data: Repository path of container downloading observation data
-  * default: `cimafoundation/lexis-download-docker:v1.2.1`
-* preprocessing_dataset_geographical_data_path: Dataset containing geographical data
+  * default: `cimafoundation/lexis-download-docker:v1.2.5`
+* preprocessing_dataset_path_geographical_data_path: Dataset containing geographical data
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/055b25ea-ba60-11eb-a44e-0050568fc9b5/static_geog_data.tar.gz`
 * preprocessing_decrypt_dataset_geographical_data: Should the input dataset be decrypted
   * default: `false`
 * preprocessing_uncompress_dataset_geographical_data: Should the input dataset be uncompressed
   * default: `true`
 * postprocessing_image: Post-processing container repository path
-  * default: `laurentg/risico:1.0.0`
+  * default: `laurentg/risico:1.0.1`
 * postprocessing_ddi_project_path: Path where to transfer the post-processing results in DDI
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c`
 * postprocessing_encrypt_dataset_result: Encrypt the result dataset

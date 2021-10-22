@@ -13,13 +13,13 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
-  - org.lexis.common.ddi-types:1.0.1
-  - org.lexis.common.heappe-types:1.0.6
-  - org.lexis.common.dynamic-orchestration-types:1.0.1
+  - org.lexis.common.ddi-types:1.0.2
+  - org.lexis.common.heappe-types:1.0.7
+  - org.lexis.common.dynamic-orchestration-types:1.0.2
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
-  - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
-  - org.lexis.wp7.wps:0.1.1-SNAPSHOT
+  - org.lexis.common.datatransfer:0.1.3-SNAPSHOT
+  - org.lexis.wp7.wps:0.1.2-SNAPSHOT
   - org.lexis.wp7.dewetra:0.1.0
 
 topology_template:
@@ -44,9 +44,9 @@ topology_template:
     preprocessing_docker_image_observation_data:
       type: string
       description: Repository path of container downloading observation data
-      default: "cimafoundation/lexis-download-docker:v1.2.1"
+      default: "cimafoundation/lexis-download-docker:v1.2.5"
       required: false
-    preprocessing_dataset_geographical_data_path:
+    preprocessing_dataset_path_geographical_data_path:
       type: string
       description: Dataset containing geographical data
       default: project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/055b25ea-ba60-11eb-a44e-0050568fc9b5/static_geog_data.tar.gz
@@ -117,7 +117,7 @@ topology_template:
       type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
       properties:
         token: {get_input: token}
-        dataset_path: {get_input: preprocessing_dataset_geographical_data_path}
+        dataset_path: {get_input: preprocessing_dataset_path_geographical_data_path}
     # Find the best cloud location depending on the input dataset and needed cloud resources
     FindCloudLocationJob:
       type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
@@ -152,6 +152,11 @@ topology_template:
         host:
           properties:
             num_cpus: 10
+            disk_size: "150 GB"
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
         scalable:
           properties:
             min_instances: 1
@@ -187,7 +192,7 @@ topology_template:
         token: { get_input: token }
         decrypt: {get_input: preprocessing_decrypt_dataset_geographical_data}
         uncompress: {get_input: preprocessing_uncompress_dataset_geographical_data}
-        ddi_dataset_path: { get_input: preprocessing_dataset_geographical_data_path }
+        ddi_dataset_path: { get_input: preprocessing_dataset_path_geographical_data_path }
         cloud_staging_area_directory_path: "italywrfgfs_preprocessing_geog"
         timestamp_cloud_staging_area_directory: true
       requirements:
@@ -281,7 +286,7 @@ topology_template:
             node: ItalyWRFGFSVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
-    # Download observation data needed by WRF (similar to Continuum) 
+    # Download observation data needed by WRF
     ObservationsData:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
       properties:
@@ -294,7 +299,7 @@ topology_template:
         cpu_share: 1.0
         shm_size: "64 GB"
         volumes: {get_input: preprocessing_observation_data_volumes}
-        docker_env_vars:  {concat: ["{\"START_DATE\": \"", get_input: preprocessing_start_date, "\", \"DOWNLOAD_TYPE\": \"CONTINUUM\", \"WEBDROPS_USER\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=user"], "\", \"WEBDROPS_PWD\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=password"], "\"}"]}
+        docker_env_vars:  {concat: ["{\"START_DATE\": \"", get_input: preprocessing_start_date, "\", \"DOWNLOAD_TYPE\": \"WRFIT\", \"WEBDROPS_USER\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=user"], "\", \"WEBDROPS_PWD\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=password"], "\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
@@ -364,9 +369,9 @@ topology_template:
             - Name: WRF Generic
               ClusterNodeTypeId: 7
               CommandTemplateId: 9
-              WalltimeLimit: 36000
-              MinCores: 144
-              MaxCores: 144
+              WalltimeLimit: 27000
+              MinCores: 512
+              MaxCores: 512
               Priority: 4
               StandardOutputFile: "stdout"
               StandardErrorFile: "stderr"
@@ -803,14 +808,20 @@ topology_template:
           activities:
             - set_state: started
           on_success:
+            - ObservationsData_create
+        ObservationsData_create:
+          target: ObservationsData
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ObservationsData_start
             - WPS_GFS_create
         WPS_GFS_create:
           target: WPS_GFS
           activities:
             - call_operation: Standard.create
           on_success:
-            - WPS_GFS_start
-            - ObservationsData_create
+            - MountGEOGDataset_create
         WPS_GFS_start:
           target: WPS_GFS
           activities:
@@ -835,12 +846,6 @@ topology_template:
             - set_state: deleted
           on_success:
             - GetPreprocessDatasetInfo_create
-        ObservationsData_create:
-          target: ObservationsData
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - ObservationsData_start
         ObservationsData_start:
           target: ObservationsData
           activities:
@@ -1013,287 +1018,6 @@ topology_template:
             - set_state: executed
           on_success:
             - HPCToCloudWRFJob_create
-        # Transfer HPC results from HPC to Cloud staging area
-        HPCToCloudWRFJob_create:
-          target: HPCToCloudWRFJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - HPCToCloudWRFJob_submit
-        HPCToCloudWRFJob_submit:
-          target: HPCToCloudWRFJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - HPCToCloudWRFJob_submitted
-        HPCToCloudWRFJob_submitted:
-          target: HPCToCloudWRFJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - HPCToCloudWRFJob_run
-        HPCToCloudWRFJob_run:
-          target: HPCToCloudWRFJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - HPCToCloudWRFJob_executed
-        HPCToCloudWRFJob_executed:
-          target: HPCToCloudWRFJob
-          activities:
-            - set_state: executed
-          on_success:
-            - MountWRFDataset_refresh_token
-        MountWRFDataset_refresh_token:
-          target: MountWRFDataset
-          activities:
-            - call_operation: custom.refresh_token
-          on_success:
-            - MountWRFDataset_start
-        MountWRFDataset_start:
-          target: MountWRFDataset
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - MountWRFDataset_started
-        MountWRFDataset_started:
-          target: MountWRFDataset
-          activities:
-            - set_state: started
-          on_success:
-            - CreatePostProcessDirs_start
-        CreatePostProcessDirs_start:
-          target: CreatePostProcessDirs
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CreatePostProcessDirs_started
-        CreatePostProcessDirs_started:
-          target: CreatePostProcessDirs
-          activities:
-            - set_state: started
-          on_success:
-            - HPCToDDIJob_create
-            - MoveWRFLexisResult_start
-        MoveWRFLexisResult_start:
-          target: MoveWRFLexisResult
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - MoveWRFLexisResult_started
-        MoveWRFLexisResult_started:
-          target: MoveWRFLexisResult
-          activities:
-            - set_state: started
-          on_success:
-            - DewetraUpload_start
-        DewetraUpload_start:
-          target: DewetraUpload
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - DewetraUpload_started
-        DewetraUpload_started:
-          target: DewetraUpload
-          activities:
-            - set_state: started
-          on_success:
-            - MountGEOGDataset_refresh_token_for_stop
-        # Transfer HPC job results to DDI
-        HPCToDDIJob_create:
-          target: HPCToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - HPCToDDIJob_submit
-        HPCToDDIJob_submit:
-          target: HPCToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - HPCToDDIJob_submitted
-        HPCToDDIJob_submitted:
-          target: HPCToDDIJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - HPCToDDIJob_run
-        HPCToDDIJob_run:
-          target: HPCToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - HPCToDDIJob_executed
-        HPCToDDIJob_executed:
-          target: HPCToDDIJob
-          activities:
-            - set_state: executed
-          on_success:
-            - MountGEOGDataset_refresh_token_for_stop
-        MountGEOGDataset_refresh_token_for_stop:
-          target: MountGEOGDataset
-          activities:
-            - call_operation: custom.refresh_token
-          on_success:
-            - MountGEOGDataset_stop
-        MountGEOGDataset_stop:
-          target: MountGEOGDataset
-          activities:
-            - call_operation: Standard.stop
-          on_success:
-            - MountGEOGDataset_stopped
-        MountGEOGDataset_stopped:
-          target: MountGEOGDataset
-          activities:
-            - set_state: stopped
-          on_success:
-            - MountWRFDataset_refresh_token_for_stop
-        MountWRFDataset_refresh_token_for_stop:
-          target: MountWRFDataset
-          activities:
-            - call_operation: custom.refresh_token
-          on_success:
-            - MountWRFDataset_stop
-        MountWRFDataset_stop:
-          target: MountWRFDataset
-          activities:
-            - call_operation: Standard.stop
-          on_success:
-            - MountWRFDataset_stopped
-        MountWRFDataset_stopped:
-          target: MountWRFDataset
-          activities:
-            - set_state: stopped
-          on_success:
-            - DeleteCloudGEOGDataJob_create
-        DeleteCloudGEOGDataJob_create:
-          target: DeleteCloudGEOGDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DeleteCloudGEOGDataJob_created
-        DeleteCloudGEOGDataJob_created:
-          target: DeleteCloudGEOGDataJob
-          activities:
-            - set_state: created
-          on_success:
-            - DeleteCloudGEOGDataJob_submit
-        DeleteCloudGEOGDataJob_submit:
-          target: DeleteCloudGEOGDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DeleteCloudGEOGDataJob_submitted
-        DeleteCloudGEOGDataJob_submitted:
-          target: DeleteCloudGEOGDataJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DeleteCloudGEOGDataJob_run
-        DeleteCloudGEOGDataJob_run:
-          target: DeleteCloudGEOGDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DeleteCloudGEOGDataJob_executed
-        DeleteCloudGEOGDataJob_executed:
-          target: DeleteCloudGEOGDataJob
-          activities:
-            - set_state: executed
-          on_success:
-            - DeleteCloudWRFDataJob_create
-        DeleteCloudWRFDataJob_create:
-          target: DeleteCloudWRFDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DeleteCloudWRFDataJob_created
-        DeleteCloudWRFDataJob_created:
-          target: DeleteCloudWRFDataJob
-          activities:
-            - set_state: created
-          on_success:
-            - DeleteCloudWRFDataJob_submit
-        DeleteCloudWRFDataJob_submit:
-          target: DeleteCloudWRFDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DeleteCloudWRFDataJob_submitted
-        DeleteCloudWRFDataJob_submitted:
-          target: DeleteCloudWRFDataJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DeleteCloudWRFDataJob_run
-        DeleteCloudWRFDataJob_run:
-          target: DeleteCloudWRFDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DeleteCloudWRFDataJob_executed
-        DeleteCloudWRFDataJob_executed:
-          target: DeleteCloudWRFDataJob
-          activities:
-            - set_state: executed
-          on_success:
-            - WRF_disable_file_transfer
-        WRF_disable_file_transfer:
-          target: WRF
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: custom.disable_file_transfer
-          on_success:
-            - WRF_delete
-        WRF_delete:
-          target: WRF
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.delete
-          on_success:
-            - WRF_deleted
-        WRF_deleted:
-          target: WRF
-          activities:
-            - set_state: deleted
-          on_success:
-            - RefreshVMToken_start
-        RefreshVMToken_start:
-          target: RefreshVMToken
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - RefreshVMToken_started
-        RefreshVMToken_started:
-          target: RefreshVMToken
-          activities:
-            - set_state: started
-          on_success:
-            - Compute_uninstall
-        Compute_uninstall:
-          target: ItalyWRFGFSVM
-          activities:
-            - delegate: uninstall
-          on_success:
-            - Network_uninstall
-        Network_uninstall:
-          target: PublicNet
-          activities:
-            - delegate: uninstall
-    testPostProcess:
-      steps:
         # Transfer HPC results from HPC to Cloud staging area
         HPCToCloudWRFJob_create:
           target: HPCToCloudWRFJob

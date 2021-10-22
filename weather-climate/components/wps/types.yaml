@@ -2,7 +2,7 @@ tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
   template_name: org.lexis.wp7.wps
-  template_version: 0.1.1-SNAPSHOT
+  template_version: 0.1.2-SNAPSHOT
   template_author: lexis
 
 description: WPS types - WRF pre-processing
@@ -10,7 +10,7 @@ description: WPS types - WRF pre-processing
 imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - yorc-types:1.1.0
-  - org.lexis.common.datatransfer:0.1.2-SNAPSHOT
+  - org.lexis.common.datatransfer:0.1.3-SNAPSHOT
 node_types:
   org.lexis.wp7.nodes.GFSData:
     derived_from: tosca.nodes.SoftwareComponent

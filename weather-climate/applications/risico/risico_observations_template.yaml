@@ -1,11 +1,11 @@
 tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
-  template_name: org.lexis.wp7.AgricultureTemplate
+  template_name: org.lexis.wp7.RisicoObservationsTemplate
   template_version: 0.1.0-SNAPSHOT
   template_author: lexis
 
-description: Agriculture template
+description: RISICO template with a post-processing using observations data in input
 
 imports:
   - yorc-types:1.1.0
@@ -13,8 +13,8 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
-  - org.lexis.common.ddi-types:1.0.2
   - org.lexis.common.heappe-types:1.0.7
+  - org.lexis.common.ddi-types:1.0.2
   - org.lexis.common.dynamic-orchestration-types:1.0.2
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
@@ -26,49 +26,20 @@ topology_template:
   inputs:
     token:
       type: string
-      required: true
       description: "OpenID Connect token"
+      required: true
     project_id:
       type: string
       description: "LEXIS project identifier"
       required: true
     preprocessing_start_date:
       type: string
-      description: Start date of the simulation, format YYYYMMDDHH
+      description: Start date of the simulation, format YYYYMMDDHH (warmup data from the 2 previous days will be also downloaded)
       required: true
-    computation_dataset_path_radar_observations_data_path:
-      type: string
-      description: Dataset containing radar observations data over France for the selected date
-      required: true
-    postprocessing_agriculture_sftp_server_ip:
-        type: string
-        description: IP address of a SPTP server where to store results (default, no sftp server upload)
-        required: false
-        default: ""
-    postprocessing_agriculture_sftp_port:
-        type: integer
-        description: Port of the SFTP server
-        required: false
-        default: 22
-    postprocessing_agriculture_sftp_server_directory:
-        type: string
-        description: Absolute path to directory on SPTP server where to store results
-        required: false
-        default: "/limagrain"
-    postprocessing_dewetra_sftp_server_ip:
-        type: string
-        description: IP address of a Dewetra SPTP server where to store results (default, no sftp server upload)
-        required: false
-        default: ""
-    postprocessing_project_short_name:
-      type: string
-      description: "DDI project short name"
-      default: "wp7"
-      required: false
-    preprocessing_docker_image_ifs:
+    preprocessing_docker_image_gfs:
       type: string
       description: Pre-processing container repository path
-      default: "cimafoundation/wps-da.ifs:v2.0.3"
+      default: "cimafoundation/wps-da.gfs:v2.0.3"
       required: false
     preprocessing_docker_image_observation_data:
       type: string
@@ -79,6 +50,7 @@ topology_template:
       type: string
       description: Dataset containing geographical data
       default: project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/055b25ea-ba60-11eb-a44e-0050568fc9b5/static_geog_data.tar.gz
+      # default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/69c0f740-33f0-11eb-8f85-0050568fcecc"
       required: false
     preprocessing_decrypt_dataset_geographical_data:
       type: boolean
@@ -90,11 +62,6 @@ topology_template:
       description: Should the input dataset be uncompressed
       default: true
       required: false
-    preprocessing_wps_mode:
-      type: string
-      description: WPS mode, WRF or WRFDA if data assimilation is needed
-      required: false
-      default: WRFDA
     preprocessing_volumes:
       type: list
       entry_schema:
@@ -102,8 +69,7 @@ topology_template:
       description: |
         List of volumes to mount within the pre-processing container.
         Use docker CLI-style syntax: /host:/container[:mode]
-      default: ["/wps_data/ifs:/input", "/wps_data/output/inputs:/output", "/mnt/cloud_staging_area/agriculture:/geogrid"]
-      required: false
+      default: ["/wps_data/gfs:/input", "/wps_data/output/inputs:/output", "/mnt/cloud_staging_area/risico:/geogrid"]
     preprocessing_observation_data_volumes:
       type: list
       entry_schema:
@@ -112,30 +78,29 @@ topology_template:
         List of volumes to mount within the post-processing container downloading observation data.
         Use docker CLI-style syntax: /host:/container[:mode]
       default: ["/wps_data/observations:/output"]
-      required: false
-    computation_decrypt_dataset_radar_observations_data:
-      type: boolean
-      description: Should the radar observations data dataset be decrypted
-      default: false
-      required: false
-    computation_uncompress_dataset_radar_observations_data:
-      type: boolean
-      description: Should the radar observations data dataset be uncompressed
-      default: true
+    postprocessing_dewetra_sftp_server_ip:
+        type: string
+        description: IP address of a Dewetra SPTP server where to store results (default, no sftp server upload)
+        required: false
+        default: ""
+    postprocessing_image:
+      type: string
+      description: Post-processing container repository path
+      default: "laurentg/risico:1.0.1"
       required: false
     postprocessing_ddi_project_path:
       type: string
-      description: Path of the project where to transfer the post-processing results in DDI
+      description: "Path where to transfer the post-processing results in DDI"
       default: "project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c"
       required: false
-    postprocessing_encrypt_wrf_dataset_result:
+    postprocessing_encrypt_dataset_result:
       type: boolean
-      description: Encrypt the WRF result dataset
+      description: Encrypt the result dataset
       default: false
       required: false
-    postprocessing_compress_wrf_dataset_result:
+    postprocessing_compress_dataset_result:
       type: boolean
-      description: Compress the WRF result dataset
+      description: Compress the result dataset
       default: true
       required: false
   node_templates:
@@ -174,18 +139,18 @@ topology_template:
             relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
         - CloudResourceVM:
             type_requirement: cloud_instance
-            node: AgriVM
+            node: RisicoVM
             capability: tosca.capabilities.OperatingSystem
             relationship: org.lexis.common.dynamic.orchestration.relationships.CloudResource
     # Floating IP address network
-    PublicNetAgriVM:
+    PublicNet:
       type: yorc.nodes.openstack.FloatingIP
-    AgriVM:
+    RisicoVM:
       type: tosca.nodes.Compute
       requirements:
         - networkPublicNetConnection:
             type_requirement: network
-            node: PublicNetAgriVM
+            node: PublicNet
             capability: tosca.capabilities.Connectivity
             relationship: tosca.relationships.Network
       capabilities:
@@ -193,10 +158,6 @@ topology_template:
           properties:
             num_cpus: 10
             disk_size: "150 GB"
-        os:
-          properties:
-            type: linux
-            distribution: ubuntu
         scalable:
           properties:
             min_instances: 1
@@ -215,7 +176,7 @@ topology_template:
       requirements:
         - target:
             type_requirement: target
-            node: AgriVM
+            node: RisicoVM
             capability: tosca.capabilities.Node
             relationship: tosca.relationships.DependsOn
     GetDDIAccess:
@@ -223,7 +184,7 @@ topology_template:
       requirements:
         - hostedOnComputeHost:
             type_requirement: os
-            node: AgriVM
+            node: RisicoVM
             capability: tosca.capabilities.OperatingSystem
             relationship: org.lexis.common.ddi.relationships.SameSite
     DDIToCloudGEOGDatasetJob:
@@ -233,19 +194,19 @@ topology_template:
         decrypt: {get_input: preprocessing_decrypt_dataset_geographical_data}
         uncompress: {get_input: preprocessing_uncompress_dataset_geographical_data}
         ddi_dataset_path: { get_input: preprocessing_dataset_path_geographical_data_path }
-        cloud_staging_area_directory_path: "agriculture_preprocessing_geog"
+        cloud_staging_area_directory_path: "risico_preprocessing_geog"
         timestamp_cloud_staging_area_directory: true
       requirements:
         - sameSite:
             type_requirement: os
-            node: AgriVM
+            node: RisicoVM
             capability: tosca.capabilities.OperatingSystem
             relationship: org.lexis.common.ddi.relationships.SameSite
     MountGEOGDataset:
       type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
       properties:
         token: { get_input: token }
-        mount_point_directory: "/mnt/cloud_staging_area/agriculture"
+        mount_point_directory: "/mnt/cloud_staging_area/risico"
       requirements:
         - ddi_access:
             type_requirement: ddi_access
@@ -259,17 +220,17 @@ topology_template:
             relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
         - hostedOnComputeHost:
             type_requirement: host
-            node: AgriVM
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     CreatePreProcessDirs:
       type: org.lexis.common.datatransfer.nodes.CreateDirectories
       properties:
-        directories: ["/wps_data/ifs", "/wps_data/output/inputs", "/wps_data/output/observations"]
+        directories: ["/wps_data/gfs", "/wps_data/output/inputs", "/wps_data/observations", "/wps_data/output/observations"]
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
-            node: AgriVM
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     Docker:
@@ -277,10 +238,24 @@ topology_template:
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
-            node: AgriVM
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
-    WPS_IFS:
+    CreatePostProcessDirs:
+      type: org.lexis.common.datatransfer.nodes.CreateDirectories
+      properties:
+        directories:
+          - "/risico_data/wrf"
+          - "/risico_data/output"
+          - "/risico_data/results"
+          - "/risico_data/observations"
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: RisicoVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    WPS_GFS:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
       metadata:
         task: preprocessing
@@ -288,39 +263,83 @@ topology_template:
         auto_remove: false
         cleanup: false
         detach: false
-        docker_run_cmd: "bash common-start.sh"
-        image: {get_input: preprocessing_docker_image_ifs}
+        image: {get_input: preprocessing_docker_image_gfs}
         keep_volumes: true
         restart_policy: no
         cpu_share: 1.0
         shm_size: "64 GB"
         volumes: {get_input: preprocessing_volumes}
-        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_MODE\": \"", get_input: preprocessing_wps_mode, "\"}"]}
+        docker_env_vars:  {concat: ["{\"WPS_START_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_END_DATE\": \"", get_input: preprocessing_start_date, "\", \"WPS_MODE\": \"WARMUPDA\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
             node: Docker
             capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
-
-    # Get ECMWF data
-    ECMWFData:
-      type: org.lexis.wp7.nodes.ECMWFData
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+    GFSData_D_day:
+      type: org.lexis.wp7.nodes.GFSData
       properties:
         start_date: {get_input: preprocessing_start_date}
-        output_directory: "/wps_data/ifs"
+        end_date: {get_input: preprocessing_start_date}
+        past_day_number: 0
+        with_data_assimilation: true
+        left_longitude: "-19.0"
+        right_longitude: "48.0"
+        top_latitude: "64.0"
+        bottom_latitude: "24.0"
+        output_directory: "/wps_data/gfs"
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
-            node: AgriVM
+            node: RisicoVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    GFSData_day_before:
+      type: org.lexis.wp7.nodes.GFSData
+      properties:
+        start_date: {get_input: preprocessing_start_date}
+        end_date: {get_input: preprocessing_start_date}
+        past_day_number: 1
+        with_data_assimilation: true
+        left_longitude: "-19.0"
+        right_longitude: "48.0"
+        top_latitude: "64.0"
+        bottom_latitude: "24.0"
+        output_directory: "/wps_data/gfs"
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: RisicoVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    GFSData_2_days_before:
+      type: org.lexis.wp7.nodes.GFSData
+      properties:
+        start_date: {get_input: preprocessing_start_date}
+        end_date: {get_input: preprocessing_start_date}
+        past_day_number: 2
+        with_data_assimilation: true
+        left_longitude: "-19.0"
+        right_longitude: "48.0"
+        top_latitude: "64.0"
+        bottom_latitude: "24.0"
+        output_directory: "/wps_data/gfs"
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
 
-    # Download observation data needed 
+    # Download observation data needed by RISICO 
     ObservationsData:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
-      metadata:
-        task: preprocessing
       properties:
         auto_remove: false
         cleanup: false
@@ -331,7 +350,7 @@ topology_template:
         cpu_share: 1.0
         shm_size: "64 GB"
         volumes: {get_input: preprocessing_observation_data_volumes}
-        docker_env_vars:  {concat: ["{\"START_DATE\": \"", get_input: preprocessing_start_date, "\", \"DOWNLOAD_TYPE\": \"LIMAGRAIN\", \"WEBDROPS_USER\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=user"], "\", \"WEBDROPS_PWD\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=password"], "\"}"]}
+        docker_env_vars:  {concat: ["{\"START_DATE\": \"", get_input: preprocessing_start_date, "\", \"DOWNLOAD_TYPE\": \"RISICO\", \"WEBDROPS_USER\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=user"], "\", \"WEBDROPS_PWD\": \"", get_secret: ["/secret/wp7/webdrops/creds", "data=password"], "\"}"]}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
@@ -348,13 +367,13 @@ topology_template:
     MoveObservationData:
       type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
-        source_file:  "/wps_data/observations/*/*"
+        source_file:  "/wps_data/observations/WRFDA/*"
         destination: "/wps_data/output/observations"
         as_user: "root"
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
-            node: AgriVM
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
 
@@ -366,7 +385,7 @@ topology_template:
       requirements:
         - host:
             type_requirement: host
-            node: AgriVM
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     # Find the best HPC location depending on the input dataset and needed HPC resources
@@ -402,7 +421,7 @@ topology_template:
             - Name: WRF Generic
               ClusterNodeTypeId: 7
               CommandTemplateId: 9
-              WalltimeLimit: 27000
+              WalltimeLimit: 54000
               MinCores: 512
               MaxCores: 512
               Priority: 4
@@ -414,7 +433,7 @@ topology_template:
     CreateStagingAreaWRFInputDir:
       type: org.lexis.common.datatransfer.nodes.CreateStagingAreaDirectory
       properties:
-        directory: "agriculture_wrf_inputs"
+        directory: "risico_wrf_inputs"
       requirements:
         - mountedCloudStagingArea:
             type_requirement: mounted_staging_area
@@ -423,7 +442,7 @@ topology_template:
             relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
         - hostedOnComputeHost:
             type_requirement: host
-            node: AgriVM
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     StageWRFInputs:
@@ -438,7 +457,7 @@ topology_template:
             relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
         - hostedOnComputeHost:
             type_requirement: host
-            node: AgriVM
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     # Transfer these inputs to WRF
@@ -458,23 +477,6 @@ topology_template:
             node: WRF
             capability: org.lexis.common.heappe.capabilities.HeappeJob
             relationship: org.lexis.common.heappe.relationships.SendInputsToJob
-    # Transfer the input dataset to the job task input directory
-    DDIToHPCTaskJob:
-      type: org.lexis.common.ddi.nodes.DDIToHPCTaskJob
-      metadata:
-        task: preprocessing
-      properties:
-        token: { get_input: token }
-        decrypt: {get_input: computation_decrypt_dataset_radar_observations_data}
-        uncompress: {get_input: computation_uncompress_dataset_radar_observations_data}
-        ddi_dataset_path: { get_input: computation_dataset_path_radar_observations_data_path }
-        task_name: "WRF Generic"
-      requirements:
-        - job:
-            type_requirement: job
-            node: WRF
-            capability: org.lexis.common.heappe.capabilities.HeappeJob
-            relationship: org.lexis.common.heappe.relationships.SendInputsToJob
     # Transfer HPC job results to the cloud staging area
     HPCToCloudWRFJob:
       type: org.lexis.common.ddi.nodes.HPCToCloudJob
@@ -482,12 +484,12 @@ topology_template:
         token: { get_input: token }
         task_name: "WRF Generic"
         source_subdirectory: "results"
-        cloud_staging_area_directory_path: "agriculture_wrf_results"
+        cloud_staging_area_directory_path: "risico_wrf_results"
         timestamp_cloud_staging_area_directory: true
       requirements:
         - sameSite:
             type_requirement: os
-            node: AgriVM
+            node: RisicoVM
             capability: tosca.capabilities.OperatingSystem
             relationship: org.lexis.common.ddi.relationships.SameSite
         - job:
@@ -513,30 +515,20 @@ topology_template:
             relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
         - hostedOnComputeHost:
             type_requirement: host
-            node: AgriVM
-            capability: tosca.capabilities.Container
-            relationship: tosca.relationships.HostedOn
-    CreateWRFDir:
-      type: org.lexis.common.datatransfer.nodes.CreateDirectories
-      properties:
-        directories: ["/mnt/cloud_staging_area/agriculture/agriculture_wrf_results/wrf/"]
-      requirements:
-        - hostedOnVirtualMachineHost:
-            type_requirement: host
-            node: AgriVM
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     # Move only the WRF auxhist results needed by post-processing
     MoveWRFAuxhistResults:
       type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
-        source_file:  "/mnt/cloud_staging_area/wrf_results/*/aux/*/auxhist*"
-        destination: "/mnt/cloud_staging_area/agriculture/agriculture_wrf_results/wrf/"
+        source_file:  "/mnt/cloud_staging_area/wrf_results/*/aux/*"
+        destination: "/risico_data/wrf/"
         as_user: "root"
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
-            node: AgriVM
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     # Move the WRF lexis result to be uploaded to dewetra
@@ -544,12 +536,12 @@ topology_template:
       type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
         source_file:  "/mnt/cloud_staging_area/wrf_results/*/dewetra/lexis*"
-        destination: "/mnt/cloud_staging_area/agriculture/agriculture_wrf_results/wrf/"
+        destination: "/risico_data/results"
         as_user: "root"
       requirements:
         - hostedOnVirtualMachineHost:
             type_requirement: host
-            node: AgriVM
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     # Transfer HEAppE WRF job results to DDI
@@ -559,9 +551,9 @@ topology_template:
         task: preprocessing
       properties:
         token: { get_input: token }
-        metadata: {concat: ["{\"creator\": [\"Agriculture workflow\"], \"contributor\": [\"Agriculture workflow\"], \"publisher\": [\"Agriculture workflow\"], \"resourceType\": \"Dataset\", \"title\": \"Agriculture workflow WRF result - ", get_input: preprocessing_start_date, "\"}"]}
-        encrypt: {get_input: postprocessing_encrypt_wrf_dataset_result}
-        compress: {get_input: postprocessing_compress_wrf_dataset_result}
+        metadata: {concat: ["{\"creator\": [\"RISICO workflow\"], \"contributor\": [\"RISICO workflow\"], \"publisher\": [\"RISICO workflow\"], \"resourceType\": \"Dataset\", \"title\": \"RISICO Workflow WRF result - ", get_input: preprocessing_start_date, "\"}"]}
+        encrypt: {get_input: postprocessing_encrypt_dataset_result}
+        compress: {get_input: postprocessing_compress_dataset_result}
         ddi_path: { get_input: postprocessing_ddi_project_path }
         task_name: "WRF Generic"
         source_subdirectory: "results"
@@ -571,33 +563,102 @@ topology_template:
             node: WRF
             capability: org.lexis.common.heappe.capabilities.HeappeJob
             relationship: org.lexis.common.ddi.relationships.SendJobOutputs
-    ZIPUploadSFTP:
-      type: org.lexis.common.datatransfer.nodes.ZIPUploadSFTP
+
+    # Move observations data to match RISICO inputs structure expectations
+    MoveObservationRISICOData:
+      type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
-        path: "/mnt/cloud_staging_area/agriculture/agriculture_wrf_results"
-        zip_name: { concat: ["wrf_results_", { get_input: preprocessing_start_date }] }
-        sftp_server_ip: { get_input: postprocessing_agriculture_sftp_server_ip }
-        sftp_port: { get_input: postprocessing_agriculture_sftp_port }
-        sftp_server_directory: { get_input: postprocessing_agriculture_sftp_server_directory }
-        user: { get_secret: ["/secret/wp7/adms/creds", "data=user"]}
-        password: { get_secret: ["/secret/wp7/adms/creds", "data=password"]}
+        source_file:  "/wps_data/observations/*/SENSORS/*"
+        destination: "/risico_data/observations"
+        as_user: "root"
       requirements:
-        - hostedOnAgriVmHost:
+        - hostedOnVirtualMachineHost:
             type_requirement: host
-            node: AgriVM
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
+    RISICO:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: postprocessing_image}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        volumes: ["/risico_data/:/home/risico/data"]
+        docker_env_vars:  {concat: ["{\"RISICO_RUN_DATE\": \"", get_input: preprocessing_start_date, "00\"}"]}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+    CreateStagingAreaResultDir:
+      type: org.lexis.common.datatransfer.nodes.CreateStagingAreaDirectory
+      properties:
+        directory: "risico_results"
+      requirements:
+        - mountedCloudStagingArea:
+            type_requirement: mounted_staging_area
+            node: MountGEOGDataset
+            capability: org.lexis.common.ddi.capabilities.MountedStagingAreaAccess
+            relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: RisicoVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    StageRISICOResults:
+      type: org.lexis.common.datatransfer.nodes.CopyToStagingAreaDirectory
+      properties:
+        source_directory: "/risico_data/output"
+      requirements:
+        - staging_area_directory:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaResultDir
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: RisicoVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    CloudToDDIJob:
+      type: org.lexis.common.ddi.nodes.CloudToDDIJob
+      properties:
+        metadata: {concat: ["{\"creator\": [\"RISICO workflow\"], \"contributor\": [\"RISICO workflow\"], \"publisher\": [\"RISICO workflow\"], \"resourceType\": \"Dataset\", \"title\": \"RISICO Workflow result - ", get_input: preprocessing_start_date, "\"}"]}
+        token: { get_input: token }
+        encrypt: {get_input: postprocessing_encrypt_dataset_result}
+        compress: {get_input: postprocessing_compress_dataset_result}
+        ddi_path: { get_input: postprocessing_ddi_project_path }
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaResultDir
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
     DewetraUpload:
       type: org.lexis.wp7.nodes.DewetraUpload
       properties:
         start_date: { get_input: preprocessing_start_date }
-        computation_type: ADMS
-        wrf_results_dir: "/mnt/cloud_staging_area/agriculture/agriculture_wrf_results/wrf"
+        computation_type: RISICO
+        wrf_results_dir: "/risico_data/results"
+        postprocessing_results_dir: "/risico_data/output"
         sftp_server_ip: { get_input: postprocessing_dewetra_sftp_server_ip }
       requirements:
         - hostedOnComputeHost:
             type_requirement: host
-            node: AgriVM
+            node: RisicoVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     DeleteCloudWRFDataJob:
@@ -621,9 +682,12 @@ topology_template:
             capability: org.lexis.common.ddi.capabilities.DataTransferCloud
             relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
   outputs:
-    computation_dataset_wrf_results_path:
-      description: DDI path to Agriculture WRF results
+    computation_dataset_wrf_result_path:
+      description: DDI path to RISICO WRF results
       value: { get_attribute: [ HPCToDDIJob, destination_path ] }
+    postprocessing_ddi_project_path:
+      description: DDI path to RISICO post-processing results
+      value: { get_attribute: [ CloudToDDIJob, destination_path ] }
   workflows:
     # At deployment time, validating the input token and exchanging it
     # to get an access/refresh token for the orchestrator
@@ -689,13 +753,13 @@ topology_template:
           on_success:
             - Compute_uninstall
         Compute_uninstall:
-          target: AgriVM
+          target: RisicoVM
           activities:
             - delegate: uninstall
           on_success:
             - Network_uninstall
         Network_uninstall:
-          target: PublicNetAgriVM
+          target: PublicNet
           activities:
             - delegate: uninstall
     Run:
@@ -743,18 +807,19 @@ topology_template:
             - Network_install
         # Get a floating IP address for the Cloud Compute instance
         Network_install:
-          target: PublicNetAgriVM
+          target: PublicNet
           activities:
             - delegate: install
           on_success:
             - Compute_install
         Compute_install:
-          target: AgriVM
+          target: RisicoVM
           activities:
             - delegate: install
           on_success:
             - GetDDIAccess_start
             - CreatePreProcessDirs_start
+            - Docker_create
         GetDDIAccess_start:
           target: GetDDIAccess
           activities:
@@ -829,7 +894,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - WPS_IFS_start
+            - WPS_GFS_start
         CreatePreProcessDirs_start:
           target: CreatePreProcessDirs
           activities:
@@ -841,26 +906,45 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - ECMWFData_create
-        ECMWFData_create:
-          target: ECMWFData
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - ECMWFData_start
-            - Docker_create
-        ECMWFData_start:
-          target: ECMWFData
+            - GFSData_D_day_start
+            - GFSData_day_before_start
+            - GFSData_2_days_before_start
+        GFSData_D_day_start:
+          target: GFSData_D_day
           activities:
             - call_operation: Standard.start
           on_success:
-            - ECMWFData_started
-        ECMWFData_started:
-          target: ECMWFData
+            - GFSData_D_day_started
+        GFSData_D_day_started:
+          target: GFSData_D_day
           activities:
             - set_state: started
           on_success:
-            - WPS_IFS_start
+            - WPS_GFS_start
+        GFSData_day_before_start:
+          target: GFSData_day_before
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GFSData_day_before_started
+        GFSData_day_before_started:
+          target: GFSData_day_before
+          activities:
+            - set_state: started
+          on_success:
+            - WPS_GFS_start
+        GFSData_2_days_before_start:
+          target: GFSData_2_days_before
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GFSData_2_days_before_started
+        GFSData_2_days_before_started:
+          target: GFSData_2_days_before
+          activities:
+            - set_state: started
+          on_success:
+            - WPS_GFS_start
         Docker_create:
           target: Docker
           activities:
@@ -884,35 +968,40 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - WPS_IFS_create
-        WPS_IFS_create:
-          target: WPS_IFS
+            - ObservationsData_create
+        ObservationsData_create:
+          target: ObservationsData
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ObservationsData_start
+            - WPS_GFS_create
+        WPS_GFS_create:
+          target: WPS_GFS
           activities:
             - call_operation: Standard.create
           on_success:
             - MountGEOGDataset_create
-            - WPS_IFS_start
-            - ObservationsData_start
-        WPS_IFS_start:
-          target: WPS_IFS
+        WPS_GFS_start:
+          target: WPS_GFS
           activities:
             - call_operation: Standard.start
           on_success:
-            - WPS_IFS_started
-        WPS_IFS_started:
-          target: WPS_IFS
+            - WPS_GFS_started
+        WPS_GFS_started:
+          target: WPS_GFS
           activities:
             - set_state: started
           on_success:
-            - WPS_IFS_delete
-        WPS_IFS_delete:
-          target: WPS_IFS
+            - WPS_GFS_delete
+        WPS_GFS_delete:
+          target: WPS_GFS
           activities:
             - call_operation: Standard.delete
           on_success:
-            - WPS_IFS_deleted
-        WPS_IFS_deleted:
-          target: WPS_IFS
+            - WPS_GFS_deleted
+        WPS_GFS_deleted:
+          target: WPS_GFS
           activities:
             - set_state: deleted
           on_success:
@@ -1002,7 +1091,6 @@ topology_template:
           activities:
             - call_operation: custom.enable_file_transfer
           on_success:
-            - DDIToHPCTaskJob_create
             - CreateStagingAreaWRFInputDir_start
         # Create a directory in cloud staging area and copy HPC inputs there
         CreateStagingAreaWRFInputDir_start:
@@ -1064,39 +1152,6 @@ topology_template:
             - set_state: executed
           on_success:
             - WRF_submit
-        DDIToHPCTaskJob_create:
-          target: DDIToHPCTaskJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DDIToHPCTaskJob_submit
-        DDIToHPCTaskJob_submit:
-          target: DDIToHPCTaskJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DDIToHPCTaskJob_submitted
-        DDIToHPCTaskJob_submitted:
-          target: DDIToHPCTaskJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DDIToHPCTaskJob_run
-        DDIToHPCTaskJob_run:
-          target: DDIToHPCTaskJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DDIToHPCTaskJob_executed
-        DDIToHPCTaskJob_executed:
-          target: DDIToHPCTaskJob
-          activities:
-            - set_state: executed
-          on_success:
-            - CloudToHPCTaskJob_create
         WRF_submit:
           target: WRF
           operation_host: ORCHESTRATOR
@@ -1122,8 +1177,32 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - CreateWRFDir_start
+            - CreatePostProcessDirs_start
+        CreatePostProcessDirs_start:
+          target: CreatePostProcessDirs
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreatePostProcessDirs_started
+        CreatePostProcessDirs_started:
+          target: CreatePostProcessDirs
+          activities:
+            - set_state: started
+          on_success:
             - HPCToCloudWRFJob_create
+            - MoveObservationRISICOData_start
+        MoveObservationRISICOData_start:
+          target: MoveObservationRISICOData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveObservationRISICOData_started
+        MoveObservationRISICOData_started:
+          target: MoveObservationRISICOData
+          activities:
+            - set_state: started
+          on_success:
+            - RISICO_create
         # Transfer HPC results from HPC to Cloud staging area
         HPCToCloudWRFJob_create:
           target: HPCToCloudWRFJob
@@ -1156,18 +1235,6 @@ topology_template:
           target: HPCToCloudWRFJob
           activities:
             - set_state: executed
-          on_success:
-            - MountWRFDataset_refresh_token
-        CreateWRFDir_start:
-          target: CreateWRFDir
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CreateWRFDir_started
-        CreateWRFDir_started:
-          target: CreateWRFDir
-          activities:
-            - set_state: started
           on_success:
             - MountWRFDataset_refresh_token
         MountWRFDataset_refresh_token:
@@ -1212,7 +1279,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - ZIPUploadSFTP_create
+            - RISICO_create
         # Transfer HPC job results to DDI
         HPCToDDIJob_create:
           target: HPCToDDIJob
@@ -1246,29 +1313,80 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - MountGEOGDataset_refresh_token_for_stop
-        ZIPUploadSFTP_create:
-          target: ZIPUploadSFTP
+            - CloudToDDIJob_create
+        RISICO_create:
+          target: RISICO
           activities:
             - call_operation: Standard.create
           on_success:
-            - ZIPUploadSFTP_created
-        ZIPUploadSFTP_created:
-          target: ZIPUploadSFTP
-          activities:
-            - set_state: created
-          on_success:
-            - ZIPUploadSFTP_start
-        ZIPUploadSFTP_start:
-          target: ZIPUploadSFTP
+            - RISICO_start
+        RISICO_start:
+          target: RISICO
           activities:
             - call_operation: Standard.start
           on_success:
-            - ZIPUploadSFTP_started
-        ZIPUploadSFTP_started:
-          target: ZIPUploadSFTP
+            - RISICO_started
+        RISICO_started:
+          target: RISICO
           activities:
             - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        CreateStagingAreaResultDir_start:
+          target: CreateStagingAreaResultDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaResultDir_started
+        CreateStagingAreaResultDir_started:
+          target: CreateStagingAreaResultDir
+          activities:
+            - set_state: started
+          on_success:
+            - StageRISICOResults_start
+        StageRISICOResults_start:
+          target: StageRISICOResults
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - StageRISICOResults_started
+        StageRISICOResults_started:
+          target: StageRISICOResults
+          activities:
+            - set_state: started
+          on_success:
+            - CloudToDDIJob_create
+        CloudToDDIJob_create:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CloudToDDIJob_submit
+        CloudToDDIJob_submit:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CloudToDDIJob_submitted
+        CloudToDDIJob_submitted:
+          target: CloudToDDIJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CloudToDDIJob_run
+        CloudToDDIJob_run:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CloudToDDIJob_executed
+        CloudToDDIJob_executed:
+          target: CloudToDDIJob
+          activities:
+            - set_state: executed
           on_success:
             - DewetraUpload_start
         DewetraUpload_start:
@@ -1430,12 +1548,12 @@ topology_template:
           on_success:
             - Compute_uninstall
         Compute_uninstall:
-          target: AgriVM
+          target: RisicoVM
           activities:
             - delegate: uninstall
           on_success:
             - Network_uninstall
         Network_uninstall:
-          target: PublicNetAgriVM
+          target: PublicNet
           activities:
             - delegate: uninstall

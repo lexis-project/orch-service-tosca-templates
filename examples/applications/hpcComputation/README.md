@@ -25,9 +25,9 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `""`
 * computation_heappe_parameter_value: HEAppE Command Template parameter value
   * default: `""`
-* computation_decrypt_input_dataset: Should the input dataset be decrypted
+* computation_decrypt_input: Should the input dataset be decrypted
   * default: `false`
-* computation_uncompress_input_dataset: the input dataset be uncompressed
+* computation_uncompress_input: the input dataset be uncompressed
   * default: `false`
 * computation_metadata_dataset_result: Metadata for the computation results dataset to create in DDI
   * default:

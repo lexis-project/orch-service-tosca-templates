@@ -20,7 +20,7 @@ The Run workflow is:
 The template expects the following input properties (mandatory inputs in **bold**):
 *  **token**: OpenID Connect access token
 * **project_id**: LEXIS project identifier
-* **computation_dataset_input_path**: Dataset containing input data
+* **computation_dataset_path_input_path**: Dataset containing input data
 * **computation_script_content**: Content of the script to execute
 * **computation_output_directory**: Path of the directory of results on the Compute Instance to store to DDI
 * **computation_ddi_project_path**: Path where to transfer the computation results in DDI
@@ -34,9 +34,9 @@ The template expects the following input properties (mandatory inputs in **bold*
     * default: `ubuntu`
 * computation_mount_point_input_dataset: Directory on the compute instance where to mount the dataset
     * default: `/mnt/lexis_input`
-* computation_decrypt_input_dataset: Should the input dataset be decrypted
+* computation_decrypt_input: Should the input dataset be decrypted
   * default: `false`
-* computation_uncompress_input_dataset: the input dataset be uncompressed
+* computation_uncompress_input: the input dataset be uncompressed
   * default: `false`
 * computation_mount_point_input_dataset: Directory on the compute instance where to mount the dataset (accessible to root only)
   * default: `/mnt/lexis_input`

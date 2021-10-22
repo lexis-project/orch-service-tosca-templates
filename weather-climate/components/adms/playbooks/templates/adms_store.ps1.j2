@@ -14,6 +14,10 @@
 # ADMS_SFTP_PASSWORD:             SFTP account password (can be empty)
 # ADMS_SFTP_INDUSTRIAL_DIR:       SFTP destination directory for the industrial case
 # ADMS_SFTP_URBAN_DIR:            SFTP destination directory for the urban case
+# ADMS_IRODS_SERVER:              IRODS server where to upload results
+# ADMS_IRODS_ZONE:                IRODS zone where to upload results
+# ADMS_IRODS_BROKER_URL:          IRODS broker URL
+# ADMS_IRODS_BROKER_KEY:          IRODS broker key
 # DATASET_URL:                    REST Endpoint of the DDI dataset API
 # DDI_PROJECT_SHORT_NAME:         Short Name of the DDI Project (wp7)
 
@@ -140,7 +144,7 @@ access_token='$token',
 user='$user_name',
 block_on_authURL=False)
 
-session.data_objects.put('C:/adms/results.zip', '/$irods_zone/project/proj$project_hash/$result_dataset_id/$irods_file_name')
+session.data_objects.put('C:/adms/results.zip', '/$irods_zone/project/proj$project_hash/$global:result_dataset_id/$irods_file_name')
 "@
 
     $python_script | Out-File -FilePath ./irods_transfer.py -Encoding utf8
@@ -218,8 +222,8 @@ echo "SFTP port: " $sftpPort
 Set-SFTPItem -SessionId ($ThisSession).SessionId -Destination $sftp_dest_dir -Path $FilePath -Force
 
 #Disconnect all SFTP Sessions
-echo "Disconnecting SFTP connection"
-Get-SFTPSession | % { Remove-SFTPSession -SessionId ($_.SessionId) }
+#echo "Disconnecting SFTP connection"
+#Get-SFTPSession | % { Remove-SFTPSession -SessionId ($_.SessionId) }
 
 {% endif %}
 
