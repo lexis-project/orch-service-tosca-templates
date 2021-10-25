@@ -14,7 +14,7 @@ imports:
   - alien-base-types:3.0.0
   - org.lexis.common.ddi-types:1.0.2
   - org.lexis.common.dynamic-orchestration-types:1.0.2
-  - org.lexis.common.datatransfer:0.1.3-SNAPSHOT
+  - org.lexis.common.datatransfer:0.1.4-SNAPSHOT
   - org.lexis.common.visualization.xpra:0.1.0
 
 topology_template:
