@@ -18,7 +18,7 @@ imports:
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.ystia.docker.images:3.0.0-SNAPSHOT
-  - org.lexis.common.datatransfer:0.1.3-SNAPSHOT
+  - org.lexis.common.datatransfer:0.1.4-SNAPSHOT
   - org.lexis.wp7.adms:0.1.1
 
 topology_template:

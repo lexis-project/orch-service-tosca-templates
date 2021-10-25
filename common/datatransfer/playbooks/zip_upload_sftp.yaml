@@ -21,7 +21,7 @@
       when: USER == ""
     - name: Upload zip file to SFTP server
       expect:
-        command: "sftp -P {{ SFTP_SERVER_PORT }} {{ destination }}"
+        command: "sftp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P {{ SFTP_SERVER_PORT }} {{ destination }}"
         timeout: "{{ SFTP_TIMEOUT }}"
         responses:
           (.*)assword: "{{ PASSWORD }}"
