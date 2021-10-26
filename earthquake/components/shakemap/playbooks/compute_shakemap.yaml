@@ -1,0 +1,27 @@
+- name: Shakemap computation
+  hosts: all
+  strategy: linear
+  tasks:
+    - name: "Send request to shakemap service"
+      uri:
+        url: "{{ SHAKEMAP_SERVICE_URL }}?gmpe={{ GMPE_VALUE }}&imt={{ IMT_VALUE }}&format={{ FORMAT_VALUE }}"
+        method: POST
+        status_code: 200
+        validate_certs: no
+        headers:
+          Content-Type: "application/xml"
+        src: "{{ QUAKEML_FILE_PATH }}"
+        remote_src: yes
+        return_content: yes
+      register: result
+    - name: Create the destination directory if need
+      file:
+        path: "{{SHAKEMAP_RESULT_FILE_PATH | dirname}}"
+        state: directory
+        mode: '0777'
+      become: true
+      become_method: sudo
+    - name: Copy content to result file
+      copy:
+        content: "{{ result.json }}"
+        dest: "{{ SHAKEMAP_RESULT_FILE_PATH }}" 
