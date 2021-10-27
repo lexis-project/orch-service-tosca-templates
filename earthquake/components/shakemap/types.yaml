@@ -11,7 +11,7 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - yorc-types:1.1.0
 node_types:
-  org.lexis.nodes.Shakemap:
+  org.lexis.common.tsunawi.nodes.Shakemap:
     derived_from: tosca.nodes.SoftwareComponent
     properties:
       shakemap_service_url:
