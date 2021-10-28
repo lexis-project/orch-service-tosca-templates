@@ -48,7 +48,7 @@ The template expects the following input properties (mandatory inputs in **bold*
 * **computation_dataset_path_radar_observations_data_path**: Dataset containing radar observations data over France for the selected date. Select one of the following datasets containing compressed weather radar reflectivity over France for the month corresponding to the date you specified:
   * for workflow simulation start dates from 2018060100 to 2018003000: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/fce2102e-cdb3-11eb-b462-0050568fc9b5/observations.tar.gz`
   * for workflow simulation start dates from 2018070200 to 20180073100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/76ab841a-cdb6-11eb-afa8-0050568fc9b5/observations.tar.gz`
-  * for workflow simulation start dates from 2018080200 to 2018083100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/8e7646f4-cdb9-11eb-b462-0050568fc9b5/observations.tar.gz`
+  * for workflow simulation start dates from 2018080100 to 2018083100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/92656b1a-37f8-11ec-98a4-0050568fc9b5/observations.tar.gz`
   * for workflow simulation start dates from 2018090100 to 2018093000: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/a3c8b5f8-327e-11ec-bfe5-0050568fc9b5/observations.tar.gz`
   * for workflow simulation start dates from 2018100200 to 2018103100: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/c270eaa6-cdbc-11eb-b462-0050568fc9b5/observations.tar.gz`
   * for workflow simulation start dates from 2018110200 to 2018113000: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/99774a7e-cdc0-11eb-afa8-0050568fc9b5/observations.tar.gz`
