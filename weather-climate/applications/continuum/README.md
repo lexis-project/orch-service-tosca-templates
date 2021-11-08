@@ -49,7 +49,7 @@ The template expects the following input properties (mandatory inputs in **bold*
 * postprocessing_dataset_continuum_static_data_path: Continuum static data dataset path in DDI
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/7eb5e3ee-446d-11eb-8958-0050568fcecc`
 * postprocessing_dataset_continuum_hmc_initial_conditions_data_path: Continuum HMC initial conditions dataset path in DDI
-  * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/1ca70cfa-3107-11ec-8dca-0050568fcecc`
+  * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/89ea8360-40a6-11ec-bb9c-0050568fcecc`
 * postprocessing_hyde_image: Hyde post-processing container repository path 
   * default: `laurentg/fp_framework_hyde:1.0.5`
 * postprocessing_hmc_image: HMC post-processing container repository path
