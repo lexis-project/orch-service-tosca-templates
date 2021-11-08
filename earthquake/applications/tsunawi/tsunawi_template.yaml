@@ -1,11 +1,11 @@
 tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
-  template_name: org.lexis.wp6.TsunawiTemplate
+  template_name: org.lexis.wp6.TsunAWITemplate
   template_version: 0.1.0-SNAPSHOT
   template_author: lexis
 
-description: "Tsunawi workflow template"
+description: "TsunAWI workflow template"
 
 imports:
   - yorc-types:1.1.0
@@ -30,6 +30,10 @@ topology_template:
     project_id:
       type: string
       description: "LEXIS project identifier"
+      required: true
+    postprocessing_title_for_result_datasets:
+      type: string
+      description: String used in result datatsets 
       required: true
     preprocessing_event_dataset_metadata:
       type: org.lexis.common.ddi.types.Metadata
@@ -69,16 +73,11 @@ topology_template:
       type: string
       description:
       required: false
-      default: "laurentg/shakemapi:0.0.2"
+      default: "laurentg/shakemapi:0.0.1"
     postprocessing_ddi_path:
       type: string
       description: Path where to transfer the post-processing results in DDI
       default: "project/proj19de37bda794a92aa6e514994bf0f930"
-      required: false
-    postprocessing_dataset_title_shakemap_result:
-      type: string
-      description: Which will be the title of the dataset containing shakemap results
-      default: Shakemap tests results
       required: false
   node_templates:
     # Validation of the token provided in input
@@ -180,9 +179,14 @@ topology_template:
       properties:
         token: { get_input: token }
         file_pattern: { get_input: preprocessing_quakeml_file_pattern }
-        cloud_staging_area_directory_path: "test_lexis_ddi_to_cloud"
+        cloud_staging_area_directory_path: "tsunawi"
         timestamp_cloud_staging_area_directory: true
       requirements:
+        - sameSite:
+            type_requirement: os
+            node: ShakemapVM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
         - dataset_files:
             type_requirement: dataset_files
             node: WaitForDDIDatasetJob
@@ -202,7 +206,7 @@ topology_template:
       type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
       properties:
         token: { get_input: token }
-        mount_point_directory: "/mnt/cloud_staging_area/tsunawi-event"
+        mount_point_directory: "/mnt/cloud_staging_area/tsunawi/event"
       requirements:
         - ddi_access:
             type_requirement: ddi_access
@@ -289,7 +293,7 @@ topology_template:
     ShakemapResultsCloudToDDIJob:
       type: org.lexis.common.ddi.nodes.CloudToDDIJob
       properties:
-        metadata: {concat: ["{\"creator\": [\"Shakemap workflow\"], \"contributor\": [\"Shakemap workflow\"], \"publisher\": [\"Shakemap workflow\"], \"resourceType\": \"Workflow result\", \"title\": \"", get_input: postprocessing_dataset_title_shakemap_result, "\"}"]}
+        metadata: {concat: ["{\"creator\": [\"TsunAWI workflow\"], \"contributor\": [\"TsunAWI workflow\"], \"publisher\": [\"TsunAWI workflow\"], \"resourceType\": \"Dataset\", \"title\": \"Shakemap results - ", get_input: postprocessing_title_for_result_datasets, "\"}"]}
         token: { get_input: token }
         ddi_path: { get_input: postprocessing_ddi_path }
         source_file_name: "shakemap_result.json"
@@ -299,8 +303,124 @@ topology_template:
             node: MountTransferredDataset
             capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
             relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
-    #Clenaup the staging area
-    DeleteCloudTransferredDataJob:
+    # Find the best HPC location depending on the input dataset and needed HPC resources
+    FindHPCLocationJob:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
+      properties:
+        token: {get_input: token}
+        project_id: { get_input: project_id }
+      requirements:
+        - HPCResourceHPCJob:
+            type_requirement: heappe_job
+            node: TsunAWI
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.dynamic.orchestration.relationships.HeappeJob
+    TsunAWIJob:
+      type: org.lexis.common.heappe.nodes.Job
+      metadata:
+        task: computation
+      properties:
+        token: { get_input: token }
+        JobSpecification:
+          Name: TsunAWI
+          Project: "MyProject"
+          ClusterId: 2
+          Tasks:
+            - Name: TestTemplate
+              ClusterNodeTypeId: 7
+              CommandTemplateId: 9
+              WalltimeLimit: 3600
+              TemplateParameterValues:
+                - CommandParameterIdentifier: inputParam
+                  ParameterValue: inputParam
+              MinCores: 1
+              MaxCores: 1
+              Priority: 4
+              StandardOutputFile: "stdout"
+              StandardErrorFile: "stderr"
+              ProgressFile: "stdprog"
+              LogFile: "stdlog"
+    # Transfer the DDI input dataset to the job task input directory
+    DDIToHPCTaskJob:
+      type: org.lexis.common.ddi.nodes.DDIRuntimeFilesToHPCTaskJob
+      properties:
+        token: { get_input: token }
+        task_name: TestTemplate
+        file_pattern: ".*.quakeml"
+      requirements:
+        - job:
+            type_requirement: job
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            node: TsunAWIJob
+            relationship: org.lexis.common.heappe.relationships.SendInputsToJob
+        - dataset_files:
+            type_requirement: dataset_files
+            node: WaitForDDIDatasetJob
+            capability: org.lexis.common.ddi.capabilities.DatasetFilesProvider
+            relationship: org.lexis.common.ddi.relationships.DatasetFilesProvider
+    # Transfer HPC job results to the cloud staging area
+    HPCToCloudTsunAWIJob:
+      type: org.lexis.common.ddi.nodes.HPCToCloudJob
+      properties:
+        token: { get_input: token }
+        task_name: "TestTemplate"
+        cloud_staging_area_directory_path: "tsunawi_results"
+        timestamp_cloud_staging_area_directory: true
+      requirements:
+        - sameSite:
+            type_requirement: os
+            node: ShakemapVM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
+        - job:
+            type_requirement: job
+            node: TsunAWIJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.ddi.relationships.SendJobOutputs
+    # Transfer HPC job results to DDI
+    HPCToDDIJob:
+      type: org.lexis.common.ddi.nodes.HPCToDDIJob
+      metadata:
+        task: preprocessing
+      properties:
+        token: { get_input: token }
+        metadata: {concat: ["{\"creator\": [\"TsunAWI workflow\"], \"contributor\": [\"TsunAWI workflow\"], \"publisher\": [\"TsunAWI workflow\"], \"resourceType\": \"Dataset\", \"title\": \"TsunAWI Workflow HPC result - ", get_input: postprocessing_title_for_result_datasets, "\"}"]}
+        encrypt: false
+        compress: false
+        ddi_path: { get_input: postprocessing_ddi_project_path }
+        task_name: "TestTemplate"
+      requirements:
+        - job:
+            type_requirement: job
+            node: TsunAWIJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.ddi.relationships.SendJobOutputs
+    # Mount the cloud staging area on the VM to access the TsunAWI dataset result
+    MountTsunAWIResultDataset:
+      type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
+      properties:
+        token: { get_input: token }
+        mount_point_directory: "/mnt/cloud_staging_area/tsunawi/results"
+      requirements:
+        - ddi_access:
+            type_requirement: ddi_access
+            node: GetDDIAccess
+            capability: org.lexis.common.ddi.capabilities.DDIAccess
+            relationship: org.lexis.common.ddi.relationships.DDIAccessProvider
+        - data_transfer:
+            type_requirement: data_transfer
+            node: HPCToCloudTsunAWIJob
+            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ShakemapVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    #Cleanup the staging area
+    DeleteCloudEventDataJob:
       type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
       properties:
         token: { get_input: token }
@@ -310,10 +430,23 @@ topology_template:
             node: DDIToCloudTransferJob
             capability: org.lexis.common.ddi.capabilities.DataTransferCloud
             relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
+    DeleteCloudTsunawiDataJob:
+      type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - cloud_area_dataset_provider:
+            type_requirement: cloud_area_dataset_provider
+            node: HPCToCloudTsunAWIJob
+            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
   outputs:
     dataset_shakemap_results:
-      description: DDI path to ADMS post-processing results
+      description: DDI path to Shakemap results
       value: { get_attribute: [ ShakemapResultsCloudToDDIJob, destination_path ] }
+    dataset_tsunawi_results:
+      description: DDI path to TsunAWI results
+      value: { get_attribute: [ HPCToDDIJob, destination_path ] }
   workflows:
     # At deployment time, validating the input token and exchanging it
     # to get an access/refresh token for the orchestrator
@@ -436,6 +569,7 @@ topology_template:
             - set_state: started
           on_success:
             - Shakemap_start
+            - WaitForDDIDatasetJob_create
         WaitForDDIDatasetJob_create:
           target: WaitForDDIDatasetJob
           operation_host: ORCHESTRATOR
@@ -469,6 +603,25 @@ topology_template:
             - set_state: executed
           on_success:
             - DDIToCloudTransferJob_create
+            - FindHPCLocationsJob_submit
+        FindHPCLocationsJob_submit:
+          target: FindHPCLocationsJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindHPCLocationsJob_run
+        FindHPCLocationsJob_run:
+          target: FindHPCLocationsJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindHPCLocationsJob_executed
+        FindHPCLocationsJob_executed:
+          target: FindHPCLocationsJob
+          activities:
+            - set_state: executed
+          on_success:
+            - TsunAWIJob_create
         DDIToCloudTransferJob_create:
           target: DDIToCloudTransferJob
           operation_host: ORCHESTRATOR
@@ -625,6 +778,81 @@ topology_template:
             - set_state: executed
           on_success:
             - MountTransferredDataset_stop
+        TsunAWIJob_create:
+          target: TsunAWIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - TsunAWIJob_enable_file_transfer
+        TsunAWIJob_enable_file_transfer:
+          target: TsunAWIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - DDIToHPCTaskJob_create
+        DDIToHPCTaskJob_create:
+          target: DDIToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToHPCTaskJob_submit
+        DDIToHPCTaskJob_submit:
+          target: DDIToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToHPCTaskJob_submitted
+        DDIToHPCTaskJob_submitted:
+          target: DDIToHPCTaskJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToHPCTaskJob_run
+        DDIToHPCTaskJob_run:
+          target: DDIToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToHPCTaskJob_executed
+        DDIToHPCTaskJob_executed:
+          target: DDIToHPCTaskJob
+          activities:
+            - set_state: executed
+          on_success:
+            - TsunAWIJob_submit
+        TsunAWIJob_submit:
+          target: TsunAWIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - TsunAWIJob_submitted
+        TsunAWIJob_submitted:
+          target: TsunAWIJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - TsunAWIJob_run
+        TsunAWIJob_run:
+          target: TsunAWIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - TsunAWIJob_executed
+        TsunAWIJob_executed:
+          target: TsunAWIJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountWRFDataset_refresh_token
+
+
         MountTransferredDataset_stop:
           target: MountTransferredDataset
           activities:
