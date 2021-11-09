@@ -74,6 +74,11 @@ topology_template:
       description:
       required: false
       default: "laurentg/shakemapi:0.0.1"
+    postprocessing_image_area_of_interest:
+      type: string
+      description:
+      required: false
+      default: "laurentg/shakemapi:0.1.0"
     postprocessing_ddi_path:
       type: string
       description: Path where to transfer the post-processing results in DDI
@@ -419,6 +424,105 @@ topology_template:
             node: ShakemapVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
+    FindTsunAWIResultFiles:
+      type: org.lexis.common.datatransfer.nodes.FindFilesInStagingAreaDirectory
+      properties:
+        shell_patterns:
+          - "*.nc"
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: MountTsunAWIResultDataset
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ContinuumVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    MoveTsunAWIResultFiles:
+      type: org.lexis.common.datatransfer.nodes.MoveFilesFromProvider
+      properties:
+        destination_directory: "/tsunawi/data"
+      requirements:
+        - files_provider:
+            type_requirement: files_provider
+            node: FindTsunAWIResultFiles
+            capability: org.lexis.common.datatransfer.capabilities.FilesProvider
+            relationship: org.lexis.common.datatransfer.relationships.FilesProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ShakemapVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    # Container computing area of interest from TsunAWI and shakemap results
+    AreaOfInterest:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: postprocessing
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: true
+        image: {get_input: postprocessing_image_area_of_interest}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        shm_size: "1024 MB"
+        volumes: ["/tsunawi/:/export/"]
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+    # Create a directory on cloud staging area where to store results
+    CreateStagingAreaResultDir:
+      type: org.lexis.common.datatransfer.nodes.CreateStagingAreaDirectory
+      properties:
+        directory: "area_of_interest_results"
+      requirements:
+        - mountedCloudStagingArea:
+            type_requirement: mounted_staging_area
+            node: MountTsunAWIResultDataset
+            capability: org.lexis.common.ddi.capabilities.MountedStagingAreaAccess
+            relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ShakemapVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    # Move results to cloud staging area
+    MoveAreaOfInterestResults:
+      type: org.lexis.common.datatransfer.nodes.MoveToStagingAreaDirectory
+      properties:
+        source_directory: "/tsunawi/"
+      requirements:
+        - staging_area_directory:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaResultDir
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: ShakemapVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    # Transfer results to DDI
+    CloudToDDIJob:
+      type: org.lexis.common.ddi.nodes.CloudToDDIJob
+      properties:
+        metadata: {concat: ["{\"creator\": [\"TsunAWI workflow\"], \"contributor\": [\"TsunAWI workflow\"], \"publisher\": [\"TsunAWI workflow\"], \"resourceType\": \"Dataset\", \"title\": \"TsunAWI Workflow area of interest result - ", get_input: postprocessing_title_for_result_datasets, "\"}"]}
+        token: { get_input: token }
+        ddi_path: { get_input: postprocessing_ddi_project_path }
+        encrypt: {get_input: postprocessing_encrypt_dataset_result}
+        compress: {get_input: postprocessing_compress_dataset_result}
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: CreateStagingAreaResultDir
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
     #Cleanup the staging area
     DeleteCloudEventDataJob:
       type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
@@ -447,6 +551,9 @@ topology_template:
     dataset_tsunawi_results:
       description: DDI path to TsunAWI results
       value: { get_attribute: [ HPCToDDIJob, destination_path ] }
+    dataset_area_of_interest_results:
+      description: DDI path to Area of Interest results
+      value: { get_attribute: [ CloudToDDIJob, destination_path ] }
   workflows:
     # At deployment time, validating the input token and exchanging it
     # to get an access/refresh token for the orchestrator
@@ -464,21 +571,41 @@ topology_template:
             - set_state: started
     uninstall:
       steps:
-        DeleteCloudTransferredDataJob:
-          target: DeleteCloudTransferredDataJob
+        DeleteCloudEventDataJob_create:
+          target: DeleteCloudEventDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
           on_success:
-            - DeleteCloudTransferredDataJobd
-        DeleteCloudTransferredDataJobd:
-          target: DeleteCloudTransferredDataJob
+            - DeleteCloudEventDataJob_created
+        DeleteCloudEventDataJob_created:
+          target: DeleteCloudEventDataJob
           activities:
             - set_state: created
           on_success:
-            - DeleteCloudTransferredDataJob_submit
-        DeleteCloudTransferredDataJob_submit:
-          target: DeleteCloudTransferredDataJob
+            - DeleteCloudEventDataJob_submit
+        DeleteCloudEventDataJob_submit:
+          target: DeleteCloudEventDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+           - DeleteCloudTsunawiDataJob_create
+        DeleteCloudTsunawiDataJob_create:
+          target: DeleteCloudTsunawiDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudTsunawiDataJob_created
+        DeleteCloudTsunawiDataJob_created:
+          target: DeleteCloudTsunawiDataJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudTsunawiDataJob_submit
+        DeleteCloudTsunawiDataJob_submit:
+          target: DeleteCloudTsunawiDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
@@ -850,9 +977,130 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
-            - MountWRFDataset_refresh_token
-
-
+            - MountTsunAWIResultDataset_refresh_token
+        MountTsunAWIResultDataset_refresh_token:
+          target: MountTsunAWIResultDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountTsunAWIResultDataset_start
+        MountTsunAWIResultDataset_start:
+          target: MountTsunAWIResultDataset
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountTsunAWIResultDataset_started
+        MountTsunAWIResultDataset_started:
+          target: MountTsunAWIResultDataset
+          activities:
+            - set_state: started
+          on_success:
+            - FindTsunAWIResultFiles_start
+        FindTsunAWIResultFiles_start:
+          target: FindTsunAWIResultFiles
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - FindTsunAWIResultFiles_started
+        FindTsunAWIResultFiles_started:
+          target: FindTsunAWIResultFiles
+          activities:
+            - set_state: started
+          on_success:
+            - MoveTsunAWIResultFiles_start
+        MoveTsunAWIResultFiles_start:
+          target: MoveTsunAWIResultFiles
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveTsunAWIResultFiles_started
+        MoveTsunAWIResultFiles_started:
+          target: MoveTsunAWIResultFiles
+          activities:
+            - set_state: started
+          on_success:
+            - AreaOfInterest_create
+        AreaOfInterest_create:
+          target: AreaOfInterest
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - AreaOfInterest_start
+        AreaOfInterest_start:
+          target: AreaOfInterest
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - AreaOfInterest_started
+        AreaOfInterest_started:
+          target: AreaOfInterest
+          activities:
+            - set_state: started
+          on_success:
+            - CreateStagingAreaResultDir_start
+        CreateStagingAreaResultDir_start:
+          target: CreateStagingAreaResultDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateStagingAreaResultDir_started
+        CreateStagingAreaResultDir_started:
+          target: CreateStagingAreaResultDir
+          activities:
+            - set_state: started
+          on_success:
+            - MoveAreaOfInterestResults_start
+        MoveAreaOfInterestResults_start:
+          target: MoveAreaOfInterestResults
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveAreaOfInterestResults_started
+        MoveAreaOfInterestResults_started:
+          target: MoveAreaOfInterestResults
+          activities:
+            - set_state: started
+          on_success:
+            - CloudToDDIJob_create
+        CloudToDDIJob_create:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - CloudToDDIJob_submit
+        CloudToDDIJob_submit:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - CloudToDDIJob_submitted
+        CloudToDDIJob_submitted:
+          target: CloudToDDIJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - CloudToDDIJob_run
+        CloudToDDIJob_run:
+          target: CloudToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - CloudToDDIJob_executed
+        CloudToDDIJob_executed:
+          target: CloudToDDIJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountTransferredDataset_refresh_token_for_stop
+        MountTransferredDataset_refresh_token_for_stop:
+          target: MountTransferredDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountTransferredDataset_stop
         MountTransferredDataset_stop:
           target: MountTransferredDataset
           activities:
@@ -864,42 +1112,99 @@ topology_template:
           activities:
             - set_state: stopped
           on_success:
-            - DeleteCloudTransferredDataJob_create
-        DeleteCloudTransferredDataJob_create:
-          target: DeleteCloudTransferredDataJob
+            - MountTsunAWIResultDataset_refresh_token_for_stop
+        MountTsunAWIResultDataset_refresh_token_for_stop:
+          target: MountTsunAWIResultDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountTsunAWIResultDataset_stop
+        MountTsunAWIResultDataset_stop:
+          target: MountTsunAWIResultDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountTsunAWIResultDataset_stopped
+        MountTsunAWIResultDataset_stopped:
+          target: MountTsunAWIResultDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - DeleteCloudEventDataJob_create
+        DeleteCloudEventDataJob_create:
+          target: DeleteCloudEventDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
           on_success:
-            - DeleteCloudTransferredDataJob_created
-        DeleteCloudTransferredDataJob_created:
-          target: DeleteCloudTransferredDataJob
+            - DeleteCloudEventDataJob_created
+        DeleteCloudEventDataJob_created:
+          target: DeleteCloudEventDataJob
           activities:
             - set_state: created
           on_success:
-            - DeleteCloudTransferredDataJob_submit
-        DeleteCloudTransferredDataJob_submit:
-          target: DeleteCloudTransferredDataJob
+            - DeleteCloudEventDataJob_submit
+        DeleteCloudEventDataJob_submit:
+          target: DeleteCloudEventDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
-            - DeleteCloudTransferredDataJob_submitted
-        DeleteCloudTransferredDataJob_submitted:
-          target: DeleteCloudTransferredDataJob
+            - DeleteCloudEventDataJob_submitted
+        DeleteCloudEventDataJob_submitted:
+          target: DeleteCloudEventDataJob
           activities:
             - set_state: submitted
           on_success:
-            - DeleteCloudTransferredDataJob_run
-        DeleteCloudTransferredDataJob_run:
-          target: DeleteCloudTransferredDataJob
+            - DeleteCloudEventDataJob_run
+        DeleteCloudEventDataJob_run:
+          target: DeleteCloudEventDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
           on_success:
-            - DeleteCloudTransferredDataJob_executed
-        DeleteCloudTransferredDataJob_executed:
-          target: DeleteCloudTransferredDataJob
+            - DeleteCloudEventDataJob_executed
+        DeleteCloudEventDataJob_executed:
+          target: DeleteCloudEventDataJob
+          activities:
+            - set_state: executed
+          on_success:
+            - DeleteCloudTsunawiDataJob_create
+        DeleteCloudTsunawiDataJob_create:
+          target: DeleteCloudTsunawiDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudTsunawiDataJob_created
+        DeleteCloudTsunawiDataJob_created:
+          target: DeleteCloudTsunawiDataJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudTsunawiDataJob_submit
+        DeleteCloudTsunawiDataJob_submit:
+          target: DeleteCloudTsunawiDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudTsunawiDataJob_submitted
+        DeleteCloudTsunawiDataJob_submitted:
+          target: DeleteCloudTsunawiDataJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudTsunawiDataJob_run
+        DeleteCloudTsunawiDataJob_run:
+          target: DeleteCloudTsunawiDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudTsunawiDataJob_executed
+        DeleteCloudTsunawiDataJob_executed:
+          target: DeleteCloudTsunawiDataJob
           activities:
             - set_state: executed
     testShakemap:
@@ -972,41 +1277,41 @@ topology_template:
           activities:
             - set_state: stopped
           on_success:
-            - DeleteCloudTransferredDataJob_create
-        DeleteCloudTransferredDataJob_create:
-          target: DeleteCloudTransferredDataJob
+            - DeleteCloudEventDataJob_create
+        DeleteCloudEventDataJob_create:
+          target: DeleteCloudEventDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
           on_success:
-            - DeleteCloudTransferredDataJob_created
-        DeleteCloudTransferredDataJob_created:
-          target: DeleteCloudTransferredDataJob
+            - DeleteCloudEventDataJob_created
+        DeleteCloudEventDataJob_created:
+          target: DeleteCloudEventDataJob
           activities:
             - set_state: created
           on_success:
-            - DeleteCloudTransferredDataJob_submit
-        DeleteCloudTransferredDataJob_submit:
-          target: DeleteCloudTransferredDataJob
+            - DeleteCloudEventDataJob_submit
+        DeleteCloudEventDataJob_submit:
+          target: DeleteCloudEventDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
-            - DeleteCloudTransferredDataJob_submitted
-        DeleteCloudTransferredDataJob_submitted:
-          target: DeleteCloudTransferredDataJob
+            - DeleteCloudEventDataJob_submitted
+        DeleteCloudEventDataJob_submitted:
+          target: DeleteCloudEventDataJob
           activities:
             - set_state: submitted
           on_success:
-            - DeleteCloudTransferredDataJob_run
-        DeleteCloudTransferredDataJob_run:
-          target: DeleteCloudTransferredDataJob
+            - DeleteCloudEventDataJob_run
+        DeleteCloudEventDataJob_run:
+          target: DeleteCloudEventDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
           on_success:
-            - DeleteCloudTransferredDataJob_executed
-        DeleteCloudTransferredDataJob_executed:
-          target: DeleteCloudTransferredDataJob
+            - DeleteCloudEventDataJob_executed
+        DeleteCloudEventDataJob_executed:
+          target: DeleteCloudEventDataJob
           activities:
             - set_state: executed
