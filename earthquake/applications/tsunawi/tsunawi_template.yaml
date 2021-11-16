@@ -78,11 +78,21 @@ topology_template:
       type: string
       description:
       required: false
-      default: "laurentg/shakemapi:0.1.0"
-    postprocessing_ddi_path:
+      default: "laurentg/area_of_interest:0.1.0"
+    postprocessing_ddi_project_path:
       type: string
       description: Path where to transfer the post-processing results in DDI
       default: "project/proj19de37bda794a92aa6e514994bf0f930"
+      required: false
+    postprocessing_encrypt_dataset_result:
+      type: boolean
+      description: Encrypt the result dataset
+      default: false
+      required: false
+    postprocessing_compress_dataset_result:
+      type: boolean
+      description: Compress the result dataset
+      default: false
       required: false
   node_templates:
     # Validation of the token provided in input
@@ -138,6 +148,16 @@ topology_template:
             protocol: tcp
             network_name: PRIVATE
             initiator: source
+    # At the end of the workflow, the Cloud instance token should be refreshed
+    # before attempting to uninstall the compute instance
+    RefreshShakemapVMToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.RefreshTargetTokens
+      requirements:
+        - target:
+            type_requirement: target
+            node: ShakemapVM
+            capability: tosca.capabilities.Node
+            relationship: tosca.relationships.DependsOn
     Docker:
       type: org.ystia.docker.ansible.nodes.Docker
       requirements:
@@ -300,7 +320,7 @@ topology_template:
       properties:
         metadata: {concat: ["{\"creator\": [\"TsunAWI workflow\"], \"contributor\": [\"TsunAWI workflow\"], \"publisher\": [\"TsunAWI workflow\"], \"resourceType\": \"Dataset\", \"title\": \"Shakemap results - ", get_input: postprocessing_title_for_result_datasets, "\"}"]}
         token: { get_input: token }
-        ddi_path: { get_input: postprocessing_ddi_path }
+        ddi_path: { get_input: postprocessing_ddi_project_path }
         source_file_name: "shakemap_result.json"
       requirements:
         - cloud_area_directory_provider:
@@ -319,7 +339,7 @@ topology_template:
       requirements:
         - HPCResourceHPCJob:
             type_requirement: heappe_job
-            node: TsunAWI
+            node: TsunAWIJob
             capability: org.lexis.common.heappe.capabilities.HeappeJob
             relationship: org.lexis.common.dynamic.orchestration.relationships.HeappeJob
     TsunAWIJob:
@@ -428,7 +448,10 @@ topology_template:
       type: org.lexis.common.datatransfer.nodes.FindFilesInStagingAreaDirectory
       properties:
         shell_patterns:
-          - "*.nc"
+          - "stdout*"
+        #TODO: uncomment
+        #shell_patterns:
+        #  - "*.nc"
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
@@ -437,7 +460,7 @@ topology_template:
             relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
         - hostedOnComputeHost:
             type_requirement: host
-            node: ContinuumVM
+            node: ShakemapVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     MoveTsunAWIResultFiles:
@@ -610,7 +633,32 @@ topology_template:
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
-           - Compute_uninstall
+            - TsunAWIJob_delete
+        TsunAWIJob_delete:
+          target: TsunAWIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - TsunAWIJob_deleted
+        TsunAWIJob_deleted:
+          target: TsunAWIJob
+          activities:
+            - set_state: deleted
+          on_success:
+            - RefreshShakemapVMToken_start
+        RefreshShakemapVMToken_start:
+          target: RefreshShakemapVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshShakemapVMToken_started
+        RefreshShakemapVMToken_started:
+          target: RefreshShakemapVMToken
+          activities:
+            - set_state: started
+          on_success:
+            - Compute_uninstall
         Compute_uninstall:
           target: ShakemapVM
           activities:
@@ -730,21 +778,21 @@ topology_template:
             - set_state: executed
           on_success:
             - DDIToCloudTransferJob_create
-            - FindHPCLocationsJob_submit
-        FindHPCLocationsJob_submit:
-          target: FindHPCLocationsJob
+            - FindHPCLocationJob_submit
+        FindHPCLocationJob_submit:
+          target: FindHPCLocationJob
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
-            - FindHPCLocationsJob_run
-        FindHPCLocationsJob_run:
-          target: FindHPCLocationsJob
+            - FindHPCLocationJob_run
+        FindHPCLocationJob_run:
+          target: FindHPCLocationJob
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
           on_success:
-            - FindHPCLocationsJob_executed
-        FindHPCLocationsJob_executed:
-          target: FindHPCLocationsJob
+            - FindHPCLocationJob_executed
+        FindHPCLocationJob_executed:
+          target: FindHPCLocationJob
           activities:
             - set_state: executed
           on_success:
@@ -855,7 +903,7 @@ topology_template:
           on_success:
             - Shakemap_started
         Shakemap_started:
-          target: ShakemapService
+          target: Shakemap
           activities:
             - set_state: started
           on_success:
@@ -977,6 +1025,40 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - HPCToCloudTsunAWIJob_create
+        # Transfer HPC results from HPC to Cloud staging area
+        HPCToCloudTsunAWIJob_create:
+          target: HPCToCloudTsunAWIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - HPCToCloudTsunAWIJob_submit
+        HPCToCloudTsunAWIJob_submit:
+          target: HPCToCloudTsunAWIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - HPCToCloudTsunAWIJob_submitted
+        HPCToCloudTsunAWIJob_submitted:
+          target: HPCToCloudTsunAWIJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - HPCToCloudTsunAWIJob_run
+        HPCToCloudTsunAWIJob_run:
+          target: HPCToCloudTsunAWIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - HPCToCloudTsunAWIJob_executed
+        HPCToCloudTsunAWIJob_executed:
+          target: HPCToCloudTsunAWIJob
+          activities:
+            - set_state: executed
+          on_success:
             - MountTsunAWIResultDataset_refresh_token
         MountTsunAWIResultDataset_refresh_token:
           target: MountTsunAWIResultDataset
@@ -996,6 +1078,41 @@ topology_template:
             - set_state: started
           on_success:
             - FindTsunAWIResultFiles_start
+            - HPCToDDIJob_create
+        # Transfer HPC job results to DDI
+        HPCToDDIJob_create:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - HPCToDDIJob_submit
+        HPCToDDIJob_submit:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - HPCToDDIJob_submitted
+        HPCToDDIJob_submitted:
+          target: HPCToDDIJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - HPCToDDIJob_run
+        HPCToDDIJob_run:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - HPCToDDIJob_executed
+        HPCToDDIJob_executed:
+          target: HPCToDDIJob
+          activities:
+            - set_state: executed
+          on_success:
+            - CloudToDDIJob_create
         FindTsunAWIResultFiles_start:
           target: FindTsunAWIResultFiles
           activities:
@@ -1207,6 +1324,50 @@ topology_template:
           target: DeleteCloudTsunawiDataJob
           activities:
             - set_state: executed
+          on_success:
+            - TsunAWIJob_disable_file_transfer
+        TsunAWIJob_disable_file_transfer:
+          target: TsunAWIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - TsunAWIJob_delete
+        TsunAWIJob_delete:
+          target: TsunAWIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - TsunAWIJob_deleted
+        TsunAWIJob_deleted:
+          target: TsunAWIJob
+          activities:
+            - set_state: deleted
+          on_success:
+            - RefreshShakemapVMToken_start
+        RefreshShakemapVMToken_start:
+          target: RefreshShakemapVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshShakemapVMToken_started
+        RefreshShakemapVMToken_started:
+          target: RefreshShakemapVMToken
+          activities:
+            - set_state: started
+          on_success:
+            - Compute_uninstall
+        Compute_uninstall:
+          target: ShakemapVM
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: PublicNet
+          activities:
+            - delegate: uninstall
     testShakemap:
       steps:
         Shakemap_start:
@@ -1219,99 +1380,3 @@ topology_template:
           target: ShakemapService
           activities:
             - set_state: started
-    testStageShakemapResults:
-      steps:
-        StageShakemapResults_start:
-          target: StageShakemapResults
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - StageShakemapResults_started
-        StageShakemapResults_started:
-          target: StageShakemapResults
-          activities:
-            - set_state: started
-          on_success:
-            - ShakemapResultsCloudToDDIJob_create
-        ShakemapResultsCloudToDDIJob_create:
-          target: ShakemapResultsCloudToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - ShakemapResultsCloudToDDIJob_submit
-        ShakemapResultsCloudToDDIJob_submit:
-          target: ShakemapResultsCloudToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - ShakemapResultsCloudToDDIJob_submitted
-        ShakemapResultsCloudToDDIJob_submitted:
-          target: ShakemapResultsCloudToDDIJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - ShakemapResultsCloudToDDIJob_run
-        ShakemapResultsCloudToDDIJob_run:
-          target: ShakemapResultsCloudToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - ShakemapResultsCloudToDDIJob_executed
-        ShakemapResultsCloudToDDIJob_executed:
-          target: ShakemapResultsCloudToDDIJob
-          activities:
-            - set_state: executed
-          on_success:
-            - MountTransferredDataset_stop
-        MountTransferredDataset_stop:
-          target: MountTransferredDataset
-          activities:
-            - call_operation: Standard.stop
-          on_success:
-            - MountTransferredDataset_stopped
-        MountTransferredDataset_stopped:
-          target: MountTransferredDataset
-          activities:
-            - set_state: stopped
-          on_success:
-            - DeleteCloudEventDataJob_create
-        DeleteCloudEventDataJob_create:
-          target: DeleteCloudEventDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DeleteCloudEventDataJob_created
-        DeleteCloudEventDataJob_created:
-          target: DeleteCloudEventDataJob
-          activities:
-            - set_state: created
-          on_success:
-            - DeleteCloudEventDataJob_submit
-        DeleteCloudEventDataJob_submit:
-          target: DeleteCloudEventDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DeleteCloudEventDataJob_submitted
-        DeleteCloudEventDataJob_submitted:
-          target: DeleteCloudEventDataJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DeleteCloudEventDataJob_run
-        DeleteCloudEventDataJob_run:
-          target: DeleteCloudEventDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DeleteCloudEventDataJob_executed
-        DeleteCloudEventDataJob_executed:
-          target: DeleteCloudEventDataJob
-          activities:
-            - set_state: executed
