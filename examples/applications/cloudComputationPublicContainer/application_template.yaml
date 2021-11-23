@@ -107,7 +107,7 @@ topology_template:
         publisher:
           - "LEXIS Cloud Computation Container worflow"
         resourceType: "Dataset"
-        title: "LEXIS Cloud Computation Conatiner workflow results"
+        title: "LEXIS Cloud Computation Container workflow results"
       required: false
     computation_encrypt_dataset_result:
       type: boolean
