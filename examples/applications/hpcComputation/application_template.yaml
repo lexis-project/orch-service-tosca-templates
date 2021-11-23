@@ -52,15 +52,19 @@ topology_template:
       required: false
       default: "parameter"
     computation_heappe_parameter_value:
-        description: HEAppE Command Template parameter value
-        type: string
-        required: false
-    computation_decrypt_input:
+      description: HEAppE Command Template parameter value
+      type: string
+      required: false
+    computation_subdirectory_to_copy:
+      description: Relative path to a subddirectoy on the HPC job cluster file system, to copy
+      type: string
+      required: false
+    computation_decrypt_dataset_input:
       type: boolean
       description: Should the input dataset be decrypted
       default: false
       required: false
-    computation_uncompress_input:
+    computation_uncompress_dataset_input:
       type: boolean
       description: Should the input dataset be uncompressed
       default: false
@@ -143,8 +147,8 @@ topology_template:
         task: preprocessing
       properties:
         token: { get_input: token }
-        decrypt: {get_input: computation_decrypt_input}
-        uncompress: {get_input: computation_uncompress_input}
+        decrypt: {get_input: computation_decrypt_dataset_input}
+        uncompress: {get_input: computation_uncompress_dataset_input}
         ddi_dataset_path: { get_input: computation_dataset_input_path }
         task_name: { get_input: computation_heappe_command_template_name }
       requirements:
@@ -157,7 +161,7 @@ topology_template:
     HPCToDDIJob:
       type: org.lexis.common.ddi.nodes.HPCToDDIJob
       metadata:
-        task: preprocessing
+        task: computation
       properties:
         token: { get_input: token }
         encrypt: {get_input: computation_encrypt_dataset_result}
@@ -165,6 +169,7 @@ topology_template:
         metadata: { get_input: computation_metadata_dataset_result }
         ddi_path: { get_input: computation_ddi_project_path }
         task_name: { get_input: computation_heappe_command_template_name }
+        source_subdirectory: { get_input: computation_subdirectory_to_copy }
       requirements:
         - job:
             type_requirement: job

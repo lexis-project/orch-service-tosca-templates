@@ -84,3 +84,85 @@ Two branches run in parallel on the workflow:
   and deleting Cloud compute resources.
 
 ![cleanup](images/workflow6_cleanup.png)
+
+## Input properties
+
+The template expects the following input properties (mandatory inputs in **bold**):
+* **token**: OpenID Connect access token
+* **project_id**: LEXIS project identifier
+* **preprocessing_dataset_path_input_path**: Dataset containing input data
+* **preprocessing_container_image**: Preprocessing container repository path
+  * for example: `laurentg/lexistest:1.2` (see corresponding [Dockerfile](../cloudHPCComputation/Dockerfile))
+* **computation_heappe_command_template_name**: HEAppE Command Template Name
+* **computation_heappe_walltime_limit**: Maximum time for the HEAppE Command Template to run (in seconds)
+* **computation_heappe_number_of_cores**: Number of cores required
+* **postprocessing_container_image**:
+  * for example: `laurentg/lexistest:1.2` (see corresponding [Dockerfile](../cloudHPCComputation/Dockerfile))
+* **postprocessing_ddi_project_path**: Path where to transfer the post-processing results in DDI
+* preprocessing_decrypt_dataset_input: Should the input dataset be decrypted
+  * default: `false`
+* preprocessing_uncompress_dataset_input: The input dataset be uncompressed
+  * default: `false`
+* preprocessing_mount_point_input_dataset: Directory on the compute instance where to mount the dataset
+      default: `/mnt/lexis_test`
+* preprocessing_container_env_vars: Preprocessing container environment variables
+  * default:
+    * INPUT_DIR: "/input_dataset"
+    * RESULT_DIR: "/output"
+    * RESULT_FILE_NAME: "preprocessing_result.txt"
+* preprocessing_container_volumes: List of volumes to mount within the preprocessing container. Use docker CLI-style syntax: /host:/container[:mode]
+  * default:
+    * "/mnt/lexis_test:/input_dataset"
+    * "/lexistest/output:/output"
+* preprocessing_output_directory: Preprocessing output directory
+  * default: "/lexistest/output"
+* computation_heappe_parameter_name: HEAppE Command Template parameter name
+  * default: "parameter"
+* computation_heappe_parameter_value: HEAppE Command Template parameter value
+  * default: `""`
+* computation_subdirectory_to_copy: Relative path to a subddirectoy on the HPC job cluster file system, to copy
+  * default: `""`
+* computation_metadata_dataset_result: Metadata for the Computation results dataset to create in DDI
+  * default:
+    * creator:
+      * `LEXIS worflow`
+    * contributor:
+      * `LEXIS worflow`
+    * publisher:
+      * `LEXIS worflow`
+    * resourceType: `Dataset`
+    * title: `LEXIS HPC computation results`
+* postprocessing_container_env_vars: Postprocessing container environment variables
+  * default:
+    * `INPUT_DIR: "/input_dataset"`
+    * `RESULT_DIR: "/output"`
+    * `RESULT_FILE_NAME: "postprocessing_result.txt"`
+* postprocessing_container_volumes: List of volumes to mount within the postprocessing container. Use docker CLI-style syntax: /host:/container[:mode]
+  * default:
+    * `/input_computation_results:/input_dataset`
+    * `/output_postprocessing:/output`
+* postprocessing_input_directory: Postprocessing input directory
+  * default: `/input_computation_results`
+* postprocessing_output_directory: Postprocessing output directory
+  * default: `/output_postprocessing`
+* postprocessing_metadata_dataset_result: Metadata for the postprocessing results dataset to create in DDI
+  * default:
+    * creator:
+      * `LEXIS worflow`
+    * contributor:
+      * `LEXIS worflow`
+    * publisher:
+      * `LEXIS worflow`
+    * resourceType: "Dataset"
+    * title: "LEXIS workflow results"
+* postprocessing_encrypt_dataset_result: Encrypt the result dataset
+  * default: `false`
+* postprocessing_compress_dataset_result: Compress the result dataset
+  * default: `false`
+
+## Ouput attribute
+
+The following output attribute is provided:
+* attribute `destination_path` of component `HPCToDDIJob`: DDI path to HPC results
+* attribute `destination_path` of component `CloudToDDIJob`: DDI path to post-processing results
+

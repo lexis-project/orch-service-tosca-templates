@@ -20,8 +20,8 @@ The template expects the following input properties (mandatory inputs in **bold*
 * **computation_title_dataset_result**: Title of the result dataset to create in DDI
 * **computation_ddi_project_path**: Path of the project where to transfer the computation results in DDI: project/projxxx
 * **visualization_walltime_minutes**: Duration in minutes of the visualization session
-* preprocessing_decrypt_input: Should the input dataset be decrypted (default: false)
-* preprocessing_uncompress_input: Should the input dataset be uncompressed (default: false)
+* preprocessing_decrypt_dataset_input: Should the input dataset be decrypted (default: false)
+* preprocessing_uncompress_dataset_input: Should the input dataset be uncompressed (default: false)
 * computation_encrypt_dataset_result: Should the result dataset be encrypted (default: false)
 * computation_compress_dataset_result: Should the result dataset be compressed (default: false)
 * visualization_directory: Directory where visualization data will be accesible on a cloud instance (default: openfoam)

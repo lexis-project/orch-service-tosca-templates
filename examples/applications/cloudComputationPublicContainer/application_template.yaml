@@ -46,16 +46,21 @@ topology_template:
       type: string
       description: Dataset containing input data
       required: true
+    computation_container_image:
+      type: string
+      description: Computation container repository path
+      # default: "laurentg/lexistest:1.2"
+      required: true
     computation_ddi_project_path:
       type: string
       description: "Path where to transfer the computation results in DDI"
       required: true
-    computation_decrypt_input:
+    computation_decrypt_dataset_input:
       type: boolean
       description: Should the input dataset be decrypted
       default: false
       required: false
-    computation_uncompress_input:
+    computation_uncompress_dataset_input:
       type: boolean
       description: Should the input dataset be uncompressed
       default: false
@@ -64,11 +69,6 @@ topology_template:
       type: string
       description: Directory on the compute instance where to mount the dataset
       default: "/mnt/lexis_input"
-      required: false
-    computation_container_image:
-      type: string
-      description: Computation container repository path
-      default: "laurentg/lexistest:1.2"
       required: false
     computation_container_env_vars:
       type: map
@@ -172,8 +172,8 @@ topology_template:
       type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
         token: {get_input: token}
-        decrypt: {get_input: computation_decrypt_input}
-        uncompress: {get_input: computation_uncompress_input}
+        decrypt: {get_input: computation_decrypt_dataset_input}
+        uncompress: {get_input: computation_uncompress_dataset_input}
         ddi_dataset_path: { get_input: computation_dataset_path_input_path }
         cloud_staging_area_directory_path: "lexis_cloud_computation_container"
         timestamp_cloud_staging_area_directory: true

@@ -22,12 +22,14 @@ The template expects the following input properties (mandatory inputs in **bold*
 * **computation_heappe_walltime_limit**: Maximum time for the HEAppE Command Template to run (in seconds)
 * **computation_heappe_number_of_cores**: Number of cores required
 * computation_heappe_parameter_name: HEAppE Command Template parameter name
-  * default: `""`
+  * default: `"parameter"`
 * computation_heappe_parameter_value: HEAppE Command Template parameter value
   * default: `""`
-* computation_decrypt_input: Should the input dataset be decrypted
+* computation_subdirectory_to_copy: Relative path to a subddirectoy on the HPC job cluster file system, to copy
+  * default: `""`
+* computation_decrypt_dataset_input: Should the input dataset be decrypted
   * default: `false`
-* computation_uncompress_input: the input dataset be uncompressed
+* computation_uncompress_dataset_input: the input dataset be uncompressed
   * default: `false`
 * computation_metadata_dataset_result: Metadata for the computation results dataset to create in DDI
   * default:

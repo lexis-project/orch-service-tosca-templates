@@ -34,9 +34,9 @@ The template expects the following input properties (mandatory inputs in **bold*
     * default: `ubuntu`
 * computation_mount_point_input_dataset: Directory on the compute instance where to mount the dataset
     * default: `/mnt/lexis_input`
-* computation_decrypt_input: Should the input dataset be decrypted
+* computation_decrypt_dataset_input: Should the input dataset be decrypted
   * default: `false`
-* computation_uncompress_input: the input dataset be uncompressed
+* computation_uncompress_dataset_input: the input dataset be uncompressed
   * default: `false`
 * computation_mount_point_input_dataset: Directory on the compute instance where to mount the dataset (accessible to root only)
   * default: `/mnt/lexis_input`

@@ -84,12 +84,12 @@ topology_template:
       description: Directory on the compute instance where to mount the dataset (accessible to root only)
       default: "/mnt/lexis_input"
       required: false
-    computation_decrypt_input:
+    computation_decrypt_dataset_input:
       type: boolean
       description: Should the input dataset be decrypted
       default: false
       required: false
-    computation_uncompress_input:
+    computation_uncompress_dataset_input:
       type: boolean
       description: Should the input dataset be uncompressed
       default: false
@@ -170,8 +170,8 @@ topology_template:
       type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
         token: {get_input: token}
-        decrypt: {get_input: computation_decrypt_input}
-        uncompress: {get_input: computation_uncompress_input}
+        decrypt: {get_input: computation_decrypt_dataset_input}
+        uncompress: {get_input: computation_uncompress_dataset_input}
         ddi_dataset_path: { get_input: computation_dataset_path_input_path }
         cloud_staging_area_directory_path: "lexis_cloud_computation"
         timestamp_cloud_staging_area_directory: true

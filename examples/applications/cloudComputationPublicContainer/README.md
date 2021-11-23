@@ -21,15 +21,15 @@ The template expects the following input properties (mandatory inputs in **bold*
 *  **token**: OpenID Connect access token
 * **project_id**: LEXIS project identifier
 * **computation_dataset_path_input_path**: Dataset containing input data
+* **computation_container_image**: Computation container repository path
+  * for example: `laurentg/lexistest:1.2` (see corresponding [Dockerfile](../cloudHPCComputation/Dockerfile))
 * **computation_ddi_project_path**: Path where to transfer the computation results in DDI
-* computation_decrypt_input: Should the input dataset be decrypted
+* computation_decrypt_dataset_input: Should the input dataset be decrypted
   * default: `false`
-* computation_uncompress_input: the input dataset be uncompressed
+* computation_uncompress_dataset_input: the input dataset be uncompressed
   * default: `false`
 * computation_mount_point_input_dataset: Directory on the compute instance where to mount the dataset
   * default: `/mnt/lexis_input`
-* computation_container_image: Computation container repository path
-  * default: `laurentg/lexistest:1.2` (see corresponding [Dockerfile](../cloudHPCComputation/Dockerfile))
 * computation_container_env_vars: Computation container environment variables
   * default: map of environment variables expected by the container:
     * `INPUT_DIR: "/input_dataset"`
