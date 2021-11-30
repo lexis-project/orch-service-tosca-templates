@@ -16,7 +16,7 @@ The Run workflow is:
 The template expects the following input properties (mandatory inputs in **bold**):
 *  **token**: OpenID Connect access token
 * **project_id**: LEXIS project identifier
-* **computation_dataset_input_path**: Dataset containing input data
+* **computation_dataset_path_input_path**: Dataset containing input data
 * **computation_ddi_project_path**: Path where to transfer the computation results in DDI
 * **computation_heappe_command_template_name**: HEAppE Command Template Name
 * **computation_heappe_walltime_limit**: Maximum time for the HEAppE Command Template to run (in seconds)

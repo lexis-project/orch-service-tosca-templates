@@ -38,7 +38,7 @@ topology_template:
       description: Number of cores required
       type: integer
       required: true
-    computation_dataset_input_path:
+    computation_dataset_path_input_path:
       type: string
       description: Dataset containing input data
       required: true
@@ -111,7 +111,7 @@ topology_template:
       type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
       properties:
         token: {get_input: token}
-        dataset_path: {get_input: computation_dataset_input_path}
+        dataset_path: {get_input: computation_dataset_path_input_path}
     # Find the best HPC location depending on the input dataset and needed HPC resources
     FindHPCLocationJob:
       type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
@@ -149,7 +149,7 @@ topology_template:
         token: { get_input: token }
         decrypt: {get_input: computation_decrypt_dataset_input}
         uncompress: {get_input: computation_uncompress_dataset_input}
-        ddi_dataset_path: { get_input: computation_dataset_input_path }
+        ddi_dataset_path: { get_input: computation_dataset_path_input_path }
         task_name: { get_input: computation_heappe_command_template_name }
       requirements:
         - job:
