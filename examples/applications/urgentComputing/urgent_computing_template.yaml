@@ -1,0 +1,606 @@
+tosca_definitions_version: alien_dsl_3_0_0
+
+metadata:
+  template_name: org.lexis.common.UrgentComputingTemplate
+  template_version: 0.1.0-SNAPSHOT
+  template_author: lexis
+
+description: "LEXIS Urgent computing template"
+
+imports:
+  - yorc-types:1.1.0
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien-base-types:3.0.0
+  - org.lexis.common.heappe-types:1.0.8
+  - org.lexis.common.ddi-types:1.0.3
+  - org.lexis.common.dynamic-orchestration-types:1.0.3
+  - org.lexis.common.datatransfer:0.1.5-SNAPSHOT
+
+topology_template:
+  inputs:
+    token:
+      type: string
+      description: "OpenID Connect token"
+      required: true
+    project_id:
+      type: string
+      description: "LEXIS project identifier"
+      required: true
+    computation_dataset_path_input_path:
+      type: string
+      description: Dataset containing input data
+      required: true
+    computation_ddi_project_path:
+      type: string
+      description: "Path where to transfer the computation results in DDI"
+      required: true
+    computation_heappe_job:
+      type: org.lexis.common.heappe.types.JobSpecification
+      description: Description of the HEAppE job/tasks
+      default:
+        Name: TestJob
+        Project: "MyProject"
+        ClusterId: 2
+        Tasks:
+          - Name: TestTemplate
+            ClusterNodeTypeId: 2
+            CommandTemplateId: 1
+            TemplateParameterValues:
+              - CommandParameterIdentifier: inputParam
+                ParameterValue: inputParam
+            WalltimeLimit: 3600
+            MinCores: 1
+            MaxCores: 1
+            Priority: 4
+            StandardOutputFile: "stdout"
+            StandardErrorFile: "stderr"
+            ProgressFile: "stdprog"
+            LogFile: "stdlog"
+      required: false
+    computation_heappe_command_template_name:
+      type: string
+      description: Name of the HEAppE job HPC task providing results to
+      default: TestTemplate
+      required: false
+    computation_decrypt_dataset_input:
+      type: boolean
+      description: Should the input dataset be decrypted
+      default: false
+      required: false
+    computation_uncompress_dataset_input:
+      type: boolean
+      description: Should the input dataset be uncompressed
+      default: false
+      required: false
+    computation_encrypt_dataset_result:
+      type: boolean
+      description: Encrypt the result dataset
+      default: false
+      required: false
+    computation_compress_dataset_result:
+      type: boolean
+      description: Compress the result dataset
+      default: false
+      required: false
+    computation_metadata_dataset_result:
+      type: org.lexis.common.ddi.types.Metadata
+      description: Metadata for the computation results dataset to create in DDI
+      default:
+        creator:
+          - "Urgent computing worflow"
+        contributor:
+          - "Urgent computing worflow"
+        publisher:
+          - "Urgent computing worflow"
+        resourceType: "Dataset"
+        title: "Urgent computing workflow results"
+      required: false
+  node_templates:
+    # Validation of the token provided in input
+    # Exchanging this token to have an access and refresh tokens
+    # for any component needing it in the workflow
+    ValidateExchangeToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.ValidateAndExchangeToken
+      properties:
+        token: {get_input: token}
+        project_id: { get_input: project_id }
+
+    # Job gathering info on the input dataset:
+    # - on which locations it is available
+    # - size
+    # - number of files
+    # to take placement decisions on computing resources using this dataset
+    InputDatasetInfoJob:
+      type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
+      properties:
+        token: {get_input: token}
+        dataset_path: {get_input: computation_dataset_path_input_path}
+    # Find the best HPC location depending on the input dataset and needed HPC resources
+    FindHPCLocationJob:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
+      properties:
+        token: { get_input: token}
+        project_id: { get_input: project_id }
+      requirements:
+        - InputDataset:
+            type_requirement: input_dataset
+            node: InputDatasetInfoJob
+            capability: org.lexis.common.ddi.capabilities.DatasetInfo
+            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
+        - HPCResource1HPCJob:
+            type_requirement: heappe_job
+            node: HEAppEJob1
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.dynamic.orchestration.relationships.HeappeJob
+        # Relationship OptionalHeappeJob, in case there isn't a second cluster for a second HPC job
+        - HPCResource2HPCJob:
+            type_requirement: heappe_job
+            node: HEAppEJob2
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.dynamic.orchestration.relationships.OptionalHeappeJob
+    # First HEAppE job performing the HPC computation
+    HEAppEJob1:
+      type: org.lexis.common.heappe.nodes.Job
+      metadata:
+        task: computation
+      properties:
+        token: {get_input: token}
+        JobSpecification: { get_input: computation_heappe_job }
+    # Second HEAppE job performing the same HPC computation
+    HEAppEJob2:
+      type: org.lexis.common.heappe.nodes.Job
+      metadata:
+        task: computation
+      properties:
+        token: {get_input: token}
+        JobSpecification: { get_input: computation_heappe_job }
+    UrgentComputingMonitoringJob:
+      type: org.lexis.common.heappe.nodes.UrgentComputingMonitorJob
+      metadata:
+        task: computation
+      properties:
+        token: {get_input: token}
+        JobSpecification: { get_input: computation_heappe_job }
+        cancelRemainingJobs: true
+      requirements:
+        - HEAppEJob1:
+            type_requirement: heappe_job
+            node: HEAppEJob1
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.heappe.relationships.DependsOnJob
+        - HEAppEJob2:
+            type_requirement: heappe_job
+            node: HEAppEJob2
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.heappe.relationships.DependsOnJob
+    # Transfer the input dataset to the first job task input directory
+    DDIToHPCTaskJob1:
+      type: org.lexis.common.ddi.nodes.DDIToHPCTaskJob
+      metadata:
+        task: preprocessing
+      properties:
+        token: { get_input: token }
+        decrypt: {get_input: computation_decrypt_dataset_input}
+        uncompress: {get_input: computation_uncompress_dataset_input}
+        ddi_dataset_path: { get_input: computation_dataset_path_input_path }
+        task_name: { get_input: computation_heappe_command_template_name }
+      requirements:
+        - job:
+            type_requirement: job
+            node: HEAppEJob1
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.heappe.relationships.SendInputsToJob
+    # Transfer the input dataset to the second job task input directory
+    DDIToHPCTaskJob2:
+      type: org.lexis.common.ddi.nodes.DDIToHPCTaskJob
+      metadata:
+        task: preprocessing
+      properties:
+        token: { get_input: token }
+        decrypt: {get_input: computation_decrypt_dataset_input}
+        uncompress: {get_input: computation_uncompress_dataset_input}
+        ddi_dataset_path: { get_input: computation_dataset_path_input_path }
+        task_name: { get_input: computation_heappe_command_template_name }
+      requirements:
+        - job:
+            type_requirement: job
+            node: HEAppEJob2
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.heappe.relationships.SendInputsToJob
+
+    # DDI job managing the transfer of a HPC job task results to DDI
+    HPCToDDIJob:
+      type: org.lexis.common.ddi.nodes.HPCToDDIJob
+      properties:
+        token: {get_input: token}
+        encrypt: {get_input: computation_encrypt_dataset_result}
+        compress: {get_input: computation_compress_dataset_result}
+        metadata: { get_input: computation_metadata_dataset_result }
+        ddi_path: { get_input: computation_ddi_project_path }
+        task_name: { get_input: computation_heappe_command_template_name }
+      requirements:
+        - job:
+            type_requirement: job
+            node: UrgentComputingMonitoringJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.ddi.relationships.SendJobOutputs
+  #
+  # Component attribute values that will be exposed in the front-end
+  #
+  outputs:
+    computation_dataset_result_path:
+      description: DDI path to computation results
+      value: { get_attribute: [ HPCToDDIJob, destination_path ] }
+  #
+  # Sequences of operations on components
+  #
+  workflows:
+    # At deployment time, validating the input token and exchanging it
+    # to get an access/refresh token for the orchestrator
+    install:
+      steps:
+        ValidateExchangeToken_start:
+          target: ValidateExchangeToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ValidateExchangeToken_started
+        ValidateExchangeToken_started:
+          target: ValidateExchangeToken
+          activities:
+            - set_state: started
+    uninstall:
+      steps:
+        HEAppEJob1_delete:
+          target: HEAppEJob1
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - HEAppEJob1_deleted
+        HEAppEJob1_deleted:
+          target: HEAppEJob1
+          activities:
+            - set_state: deleted
+          on_success:
+              - HEAppEJob2_disable_file_transfer
+        HEAppEJob2_disable_file_transfer:
+          target: HEAppEJob2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - HEAppEJob2_delete
+        HEAppEJob2_delete:
+          target: HEAppEJob2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - HEAppEJob2_deleted
+        HEAppEJob2_deleted:
+          target: HEAppEJob2
+          activities:
+            - set_state: deleted
+          on_success:
+            - UrgentComputingMonitoringJob_delete
+        UrgentComputingMonitoringJob_delete:
+          target: UrgentComputingMonitoringJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - UrgentComputingMonitoringJob_deleted
+        UrgentComputingMonitoringJob_deleted:
+          target: UrgentComputingMonitoringJob
+          activities:
+            - set_state: deleted
+    #
+    # Workflow executed by LEXIS Portal
+    #
+    Run:
+      steps:
+        # Submit DDI job to get info on dataset (DDI location where it is available, size...)
+        InputDatasetInfoJob_submit:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - InputDatasetInfoJob_run
+        InputDatasetInfoJob_run:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - InputDatasetInfoJob_executed
+        InputDatasetInfoJob_executed:
+          target: InputDatasetInfoJob
+          activities:
+            - set_state: executed
+          on_success:
+            - FindHPCLocationJob_submit
+        # Submit the computation to find the best location from these inputs
+        FindHPCLocationJob_submit:
+          target: FindHPCLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindHPCLocationJob_run
+        FindHPCLocationJob_run:
+          target: FindHPCLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindHPCLocationJob_executed
+        FindHPCLocationJob_executed:
+          target: FindHPCLocationJob
+          activities:
+            - set_state: executed
+          on_success:
+            - HEAppEJob1_create
+            - HEAppEJob2_create
+        HEAppEJob1_create:
+          target: HEAppEJob1
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - HEAppEJob1_enable_file_transfer
+            - UrgentComputingMonitoringJob_create
+        HEAppEJob1_enable_file_transfer:
+          target: HEAppEJob1
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - DDIToHPCTaskJob1_create
+        DDIToHPCTaskJob1_create:
+          target: DDIToHPCTaskJob1
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToHPCTaskJob1_submit
+        DDIToHPCTaskJob1_submit:
+          target: DDIToHPCTaskJob1
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToHPCTaskJob1_submitted
+        DDIToHPCTaskJob1_submitted:
+          target: DDIToHPCTaskJob1
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToHPCTaskJob1_run
+        DDIToHPCTaskJob1_run:
+          target: DDIToHPCTaskJob1
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToHPCTaskJob1_executed
+        DDIToHPCTaskJob1_executed:
+          target: DDIToHPCTaskJob1
+          activities:
+            - set_state: executed
+          on_success:
+            - HEAppEJob1_submit
+        HEAppEJob1_submit:
+          target: HEAppEJob1
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - HEAppEJob1_submitted
+        HEAppEJob1_submitted:
+          target: HEAppEJob1
+          activities:
+            - set_state: submitted
+          on_success:
+            - HEAppEJob1_run
+        HEAppEJob1_run:
+          target: HEAppEJob1
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - HEAppEJob1_executed
+        HEAppEJob1_executed:
+          target: HEAppEJob1
+          activities:
+            - set_state: executed
+        HEAppEJob2_create:
+          target: HEAppEJob2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - HEAppEJob2_enable_file_transfer
+            - UrgentComputingMonitoringJob_create
+        HEAppEJob2_enable_file_transfer:
+          target: HEAppEJob2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - DDIToHPCTaskJob2_create
+        DDIToHPCTaskJob2_create:
+          target: DDIToHPCTaskJob2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToHPCTaskJob2_submit
+        DDIToHPCTaskJob2_submit:
+          target: DDIToHPCTaskJob2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToHPCTaskJob2_submitted
+        DDIToHPCTaskJob2_submitted:
+          target: DDIToHPCTaskJob2
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToHPCTaskJob2_run
+        DDIToHPCTaskJob2_run:
+          target: DDIToHPCTaskJob2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToHPCTaskJob2_executed
+        DDIToHPCTaskJob2_executed:
+          target: DDIToHPCTaskJob2
+          activities:
+            - set_state: executed
+          on_success:
+            - HEAppEJob2_submit
+        HEAppEJob2_submit:
+          target: HEAppEJob2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - HEAppEJob2_submitted
+        HEAppEJob2_submitted:
+          target: HEAppEJob2
+          activities:
+            - set_state: submitted
+          on_success:
+            - HEAppEJob2_run
+        HEAppEJob2_run:
+          target: HEAppEJob2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - HEAppEJob2_executed
+        HEAppEJob2_executed:
+          target: HEAppEJob2
+          activities:
+            - set_state: executed
+        UrgentComputingMonitoringJob_create:
+          target: UrgentComputingMonitoringJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - UrgentComputingMonitoringJob_submit
+        UrgentComputingMonitoringJob_submit:
+          target: UrgentComputingMonitoringJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - UrgentComputingMonitoringJob_submitted
+        UrgentComputingMonitoringJob_submitted:
+          target: UrgentComputingMonitoringJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - UrgentComputingMonitoringJob_run
+        UrgentComputingMonitoringJob_run:
+          target: UrgentComputingMonitoringJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - UrgentComputingMonitoringJob_executed
+        UrgentComputingMonitoringJob_executed:
+          target: UrgentComputingMonitoringJob
+          activities:
+            - set_state: executed
+          on_success:
+            - HPCToDDIJob_create
+        HPCToDDIJob_create:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - HPCToDDIJob_submit
+        HPCToDDIJob_submit:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - HPCToDDIJob_submitted
+        HPCToDDIJob_submitted:
+          target: HPCToDDIJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - HPCToDDIJob_run
+        HPCToDDIJob_run:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - HPCToDDIJob_executed
+        HPCToDDIJob_executed:
+          target: HPCToDDIJob
+          activities:
+            - set_state: executed
+          on_success:
+            - HEAppEJob1_disable_file_transfer
+        HEAppEJob1_disable_file_transfer:
+          target: HEAppEJob1
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - HEAppEJob1_delete
+        HEAppEJob1_delete:
+          target: HEAppEJob1
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - HEAppEJob1_deleted
+        HEAppEJob1_deleted:
+          target: HEAppEJob1
+          activities:
+            - set_state: deleted
+          on_success:
+              - HEAppEJob2_disable_file_transfer
+        HEAppEJob2_disable_file_transfer:
+          target: HEAppEJob2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - HEAppEJob2_delete
+        HEAppEJob2_delete:
+          target: HEAppEJob2
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - HEAppEJob2_deleted
+        HEAppEJob2_deleted:
+          target: HEAppEJob2
+          activities:
+            - set_state: deleted
+          on_success:
+            - UrgentComputingMonitoringJob_delete
+        UrgentComputingMonitoringJob_delete:
+          target: UrgentComputingMonitoringJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - UrgentComputingMonitoringJob_deleted
+        UrgentComputingMonitoringJob_deleted:
+          target: UrgentComputingMonitoringJob
+          activities:
+            - set_state: deleted
