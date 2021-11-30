@@ -72,7 +72,7 @@ topology_template:
     postprocessing_ddi_project_path:
       type: string
       description: "Path where to transfer the post-processing results in DDI"
-      required: results
+      required: true
     preprocessing_decrypt_dataset_input:
       type: boolean
       description: Should the input dataset be decrypted
