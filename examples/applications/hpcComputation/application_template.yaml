@@ -11,10 +11,10 @@ imports:
   - yorc-types:1.1.0
   - tosca-normative-types:1.0.0-ALIEN20
   - alien-base-types:3.0.0
-  - org.lexis.common.heappe-types:1.0.7
-  - org.lexis.common.ddi-types:1.0.2
-  - org.lexis.common.dynamic-orchestration-types:1.0.2
-  - org.lexis.common.datatransfer:0.1.4-SNAPSHOT
+  - org.lexis.common.heappe-types:1.0.8
+  - org.lexis.common.ddi-types:1.0.3
+  - org.lexis.common.dynamic-orchestration-types:1.0.3
+  - org.lexis.common.datatransfer:0.1.5-SNAPSHOT
 
 topology_template:
   inputs:
@@ -26,18 +26,6 @@ topology_template:
       type: string
       description: "LEXIS project identifier"
       required: true
-    computation_heappe_command_template_name:
-      type: string
-      description: HEAppE Command Template Name
-      required: true
-    computation_heappe_walltime_limit:
-      description: Maximum time for the HEAppE Command Template to run (in seconds)
-      type: integer
-      required: true
-    computation_heappe_number_of_cores:
-      description: Number of cores required
-      type: integer
-      required: true
     computation_dataset_path_input_path:
       type: string
       description: Dataset containing input data
@@ -46,17 +34,36 @@ topology_template:
       type: string
       description: "Path where to transfer the computation results in DDI"
       required: true
-    computation_heappe_parameter_name:
-      description: HEAppE Command Template parameter name
+    computation_heappe_command_template_name:
       type: string
+      description: HEAppE Command Template Name
       required: false
-      default: "parameter"
-    computation_heappe_parameter_value:
-      description: HEAppE Command Template parameter value
-      type: string
+      default: GenericCommandTemplate
+    computation_heappe_job:
+      type: org.lexis.common.heappe.types.JobSpecification
+      description: Description of the HEAppE job/tasks
       required: false
-    computation_subdirectory_to_copy:
-      description: Relative path to a subddirectoy on the HPC job cluster file system, to copy
+      default:
+        Name: GenericJob
+        Project: "Set by orchestrator"
+        ClusterId: 1
+        Tasks:
+          - Name: GenericCommandTemplate
+            ClusterNodeTypeId: 1
+            CommandTemplateId: 1
+            TemplateParameterValues:
+              - CommandParameterIdentifier: userScriptPath
+                ParameterValue: ""
+            WalltimeLimit: 3600
+            MinCores: 1
+            MaxCores: 1
+            Priority: 4
+            StandardOutputFile: "stdout"
+            StandardErrorFile: "stderr"
+            ProgressFile: "stdprog"
+            LogFile: "stdlog"
+    computation_hpc_subdirectory_to_stage:
+      description: Relative path to a subddirectoy on the HPC job cluster file system, to stage
       type: string
       required: false
     computation_decrypt_dataset_input:
@@ -74,13 +81,13 @@ topology_template:
       description: Metadata for the computation results dataset to create in DDI
       default:
         creator:
-          - "LEXIS HPC Computation worflow"
+          - "HPC Computation worflow"
         contributor:
-          - "LEXIS HPC Computation worflow"
+          - "HPC Computation worflow"
         publisher:
-          - "LEXIS HPC Computation worflow"
+          - "HPC Computation worflow"
         resourceType: "Dataset"
-        title: "LEXIS HPC Computation workflow results"
+        title: "HPC Computation workflow results"
       required: false
     computation_encrypt_dataset_result:
       type: boolean
@@ -92,6 +99,13 @@ topology_template:
       description: Compress the result dataset
       default: false
       required: false
+    computation_result_dataset_replication_sites:
+      description: "List of sites where the result dataset should be available (example: it4i, lrz)"
+      type: list
+      entry_schema:
+        type: string
+      required: false
+      default: []
   node_templates:
     # Validation of the token provided in input
     # Exchanging this token to have an access and refresh tokens
@@ -139,7 +153,7 @@ topology_template:
       properties:
         token: { get_input: token }
         listChangedFilesWhileRunning: false
-        JobSpecification: {concat: ["{\"Name\":\"HPCJob\",\"Project\":\"MyProject\",\"ClusterId\":\"1\",\"Tasks\":[{\"Name\":\"", get_input: computation_heappe_command_template_name, "\",\"MinCores\":\"", get_input: computation_heappe_number_of_cores ,"\",\"MaxCores\":\"", get_input: computation_heappe_number_of_cores,"\",\"WalltimeLimit\":\"", get_input: computation_heappe_walltime_limit, "\",\"TemplateParameterValues\":[{\"CommandParameterIdentifier\":\"", get_input: computation_heappe_parameter_name, "\",\"ParameterValue\":\"", get_input: computation_heappe_parameter_value, "\"}],\"Priority\":\"4\",\"JobArrays\":\"\",\"IsExclusive\":\"false\",\"IsRerunnable\":\"false\",\"CpuHyperThreading\":\"false\",\"StandardInputFile\":\"\",\"StandardOutputFile\":\"stdout\",\"StandardErrorFile\":\"stderr\",\"ProgressFile\":\"stdprog\",\"LogFile\":\"stdlog\",\"ClusterTaskSubdirectory\":\"\",\"ClusterNodeTypeId\":\"1\",\"CommandTemplateId\":\"1\"}]}"]}
+        JobSpecification: { get_input: computation_heappe_job }
     # Transfer the input dataset to the job task input directory
     DDIToHPCTaskJob:
       type: org.lexis.common.ddi.nodes.DDIToHPCTaskJob
@@ -169,13 +183,27 @@ topology_template:
         metadata: { get_input: computation_metadata_dataset_result }
         ddi_path: { get_input: computation_ddi_project_path }
         task_name: { get_input: computation_heappe_command_template_name }
-        source_subdirectory: { get_input: computation_subdirectory_to_copy }
+        source_subdirectory: { get_input: computation_hpc_subdirectory_to_stage }
       requirements:
         - job:
             type_requirement: job
             node: HEAppEJob
             capability: org.lexis.common.heappe.capabilities.HeappeJob
             relationship: org.lexis.common.ddi.relationships.SendJobOutputs
+    # Replicate result dataset to other sites if requested
+    ReplicateDatasetJob:
+      type: org.lexis.common.ddi.nodes.ReplicateDatasetJob
+      metadata:
+        task: computation
+      properties:
+        token: { get_input: token }
+        replication_sites: {get_input: computation_result_dataset_replication_sites}
+      requirements:
+        - dataset_provider:
+            type_requirement: dataset_provider
+            node: HPCToDDIJob
+            capability: org.lexis.common.ddi.capabilities.DataTransferDDI
+            relationship: tosca.relationships.DependsOn
   outputs:
     computation_dataset_result_path:
       description: DDI path to computation results
@@ -337,6 +365,34 @@ topology_template:
           activities:
             - set_state: executed
           on_success:
+            - ReplicateDatasetJob_create
+        # Replicate dataset to other sites
+        ReplicateDatasetJob_create:
+          target: ReplicateDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ReplicateDatasetJob_submit
+        ReplicateDatasetJob_submit:
+          target: ReplicateDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - ReplicateDatasetJob_run
+        ReplicateDatasetJob_run:
+          target: ReplicateDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - ReplicateDatasetJob_executed
+        ReplicateDatasetJob_executed:
+          target: ReplicateDatasetJob
+          activities:
+            - set_state: executed
+          on_success:
             - HEAppEJob_disable_file_transfer
         HEAppEJob_disable_file_transfer:
           target: HEAppEJob
@@ -409,6 +465,33 @@ topology_template:
             - HPCToDDIJob_executed
         HPCToDDIJob_executed:
           target: HPCToDDIJob
+          activities:
+            - set_state: executed
+    testReplicate:
+      steps:
+        ReplicateDatasetJob_create:
+          target: ReplicateDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ReplicateDatasetJob_submit
+        ReplicateDatasetJob_submit:
+          target: ReplicateDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - ReplicateDatasetJob_run
+        ReplicateDatasetJob_run:
+          target: ReplicateDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - ReplicateDatasetJob_executed
+        ReplicateDatasetJob_executed:
+          target: ReplicateDatasetJob
           activities:
             - set_state: executed
 

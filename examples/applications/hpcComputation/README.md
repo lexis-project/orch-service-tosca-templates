@@ -9,6 +9,7 @@ The Run workflow is:
 * transferring the input dataset from DDI to the HEAppE job input directory on the HPC cluster
 * submitting the HEAppE job and monitoring its execution until it ends
 * transferring the HEAppE job results from the HPC cluster to DDI
+* replicating these results to other sites if specified
 * deleting the HEAppE job
 
 ## Input properties
@@ -21,11 +22,29 @@ The template expects the following input properties (mandatory inputs in **bold*
 * **computation_heappe_command_template_name**: HEAppE Command Template Name
 * **computation_heappe_walltime_limit**: Maximum time for the HEAppE Command Template to run (in seconds)
 * **computation_heappe_number_of_cores**: Number of cores required
-* computation_heappe_parameter_name: HEAppE Command Template parameter name
-  * default: `"parameter"`
-* computation_heappe_parameter_value: HEAppE Command Template parameter value
-  * default: `""`
-* computation_subdirectory_to_copy: Relative path to a subddirectoy on the HPC job cluster file system, to copy
+* computation_heappe_command_template_name: HEAppE Command Template Name
+  * default: `GenericCommandTemplate`
+* computation_heappe_job: Description of the HEAppE job/tasks
+  * default:
+    * Name: `GenericJob`
+    * Project: `Set by orchestrator`
+    * ClusterId: `1`
+    * Tasks:
+      * Name: `GenericCommandTemplate`
+      * ClusterNodeTypeId: `1`
+      * CommandTemplateId: `1`
+      * TemplateParameterValues:
+        * CommandParameterIdentifier: `userScriptPath`
+          ParameterValue: ``
+      * WalltimeLimit: `3600`
+      * MinCores: `1`
+      * MaxCores: `1`
+      * Priority: `4`
+      * StandardOutputFile: `stdout`
+      * StandardErrorFile: `stderr`
+      * ProgressFile: `stdprog`
+      * LogFile: `stdlog`
+* computation_hpc_subdirectory_to_stage: Relative path to a subddirectoy on the HPC job cluster file system, to stage
   * default: `""`
 * computation_decrypt_dataset_input: Should the input dataset be decrypted
   * default: `false`
@@ -34,17 +53,19 @@ The template expects the following input properties (mandatory inputs in **bold*
 * computation_metadata_dataset_result: Metadata for the computation results dataset to create in DDI
   * default:
     * creator:
-      * `LEXIS HPC Computation worflow`
+      * `HPC Computation worflow`
     * contributor:
-      * `LEXIS HPC Computation worflow`
+      * `HPC Computation worflow`
     * publisher:
-      * `LEXIS HPC Computation worflow`
+      * `HPC Computation worflow`
     * resourceType: `Dataset`
-    * title: `LEXIS HPC Computation workflow results`
+    * title: `HPC Computation workflow results`
 * computation_encrypt_dataset_result: Encrypt the result dataset
   * default: `false`
 * computation_compress_dataset_result: Compress the result dataset
   * default: `false`
+* computation_result_dataset_replication_sites: List of sites where the result dataset should be available (example: it4i, lrz)
+  * default: []
 
 ## Ouput attribute
 

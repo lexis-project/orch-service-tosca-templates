@@ -9,6 +9,7 @@ Template of a generic LEXIS workflow, performing:
 * the post-processing of these computation results, running a post-processing docker container
 * the transfer of post-processing results from the cloud instance local storage to the Cloud Staging Area
 * the transfer of post-processing results from the Cloud Staging Area to DDI
+* the replication these results to other sites if specified
 
 See TOSCA code in [lexis_template.yaml](lexis_template.yaml).
 
@@ -116,11 +117,29 @@ The template expects the following input properties (mandatory inputs in **bold*
     * "/lexistest/output:/output"
 * preprocessing_output_directory: Preprocessing output directory
   * default: "/lexistest/output"
-* computation_heappe_parameter_name: HEAppE Command Template parameter name
-  * default: "parameter"
-* computation_heappe_parameter_value: HEAppE Command Template parameter value
-  * default: `""`
-* computation_subdirectory_to_copy: Relative path to a subddirectoy on the HPC job cluster file system, to copy
+* computation_heappe_command_template_name: HEAppE Command Template Name
+  * default: `GenericCommandTemplate`
+* computation_heappe_job: Description of the HEAppE job/tasks
+  * default:
+    * Name: `GenericJob`
+    * Project: `Set by orchestrator`
+    * ClusterId: `1`
+    * Tasks:
+      * Name: `GenericCommandTemplate`
+      * ClusterNodeTypeId: `1`
+      * CommandTemplateId: `1`
+      * TemplateParameterValues:
+        * CommandParameterIdentifier: `userScriptPath`
+          ParameterValue: ``
+      * WalltimeLimit: `3600`
+      * MinCores: `1`
+      * MaxCores: `1`
+      * Priority: `4`
+      * StandardOutputFile: `stdout`
+      * StandardErrorFile: `stderr`
+      * ProgressFile: `stdprog`
+      * LogFile: `stdlog`
+* computation_hpc_subdirectory_to_stage: Relative path to a subddirectoy on the HPC job cluster file system, to stage
   * default: `""`
 * computation_metadata_dataset_result: Metadata for the Computation results dataset to create in DDI
   * default:
@@ -131,7 +150,7 @@ The template expects the following input properties (mandatory inputs in **bold*
     * publisher:
       * `LEXIS worflow`
     * resourceType: `Dataset`
-    * title: `LEXIS HPC computation results`
+    * title: `LEXIS computation results`
 * postprocessing_container_env_vars: Postprocessing container environment variables
   * default:
     * `INPUT_DIR: "/input_dataset"`
@@ -159,6 +178,8 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `false`
 * postprocessing_compress_dataset_result: Compress the result dataset
   * default: `false`
+* postprocessing_result_dataset_replication_sites: List of sites where the result dataset should be available (example: it4i, lrz)
+  * default: []
 
 ## Ouput attribute
 

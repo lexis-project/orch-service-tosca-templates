@@ -16,10 +16,10 @@ imports:
   - docker-types:3.0.0
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
-  - org.lexis.common.heappe-types:1.0.7
-  - org.lexis.common.ddi-types:1.0.2
-  - org.lexis.common.dynamic-orchestration-types:1.0.2
-  - org.lexis.common.datatransfer:0.1.4-SNAPSHOT
+  - org.lexis.common.heappe-types:1.0.8
+  - org.lexis.common.ddi-types:1.0.3
+  - org.lexis.common.dynamic-orchestration-types:1.0.3
+  - org.lexis.common.datatransfer:0.1.5-SNAPSHOT
 
 topology_template:
   #
@@ -51,18 +51,6 @@ topology_template:
       type: string
       description: Preprocessing container repository path
       #default: "laurentg/lexistest:1.2"
-      required: true
-    computation_heappe_command_template_name:
-      type: string
-      description: HEAppE Command Template Name
-      required: true
-    computation_heappe_walltime_limit:
-      description: Maximum time for the HEAppE Command Template to run (in seconds)
-      type: integer
-      required: true
-    computation_heappe_number_of_cores:
-      description: Number of cores required
-      type: integer
       required: true
     postprocessing_container_image:
       type: string
@@ -114,17 +102,36 @@ topology_template:
       description: Preprocessing output directory
       default: "/lexistest/output"
       required: false
-    computation_heappe_parameter_name:
-      description: HEAppE Command Template parameter name
+    computation_heappe_command_template_name:
       type: string
+      description: HEAppE Command Template Name
       required: false
-      default: "parameter"
-    computation_heappe_parameter_value:
-      description: HEAppE Command Template parameter value
-      type: string
+      default: GenericCommandTemplate
+    computation_heappe_job:
+      type: org.lexis.common.heappe.types.JobSpecification
+      description: Description of the HEAppE job/tasks
       required: false
-    computation_subdirectory_to_copy:
-      description: Relative path to a subddirectoy on the HPC job cluster file system, to copy
+      default:
+        Name: GenericJob
+        Project: "Set by orchestrator"
+        ClusterId: 1
+        Tasks:
+          - Name: GenericCommandTemplate
+            ClusterNodeTypeId: 1
+            CommandTemplateId: 1
+            TemplateParameterValues:
+              - CommandParameterIdentifier: userScriptPath
+                ParameterValue: ""
+            WalltimeLimit: 3600
+            MinCores: 1
+            MaxCores: 1
+            Priority: 4
+            StandardOutputFile: "stdout"
+            StandardErrorFile: "stderr"
+            ProgressFile: "stdprog"
+            LogFile: "stdlog"
+    computation_hpc_subdirectory_to_stage:
+      description: Relative path to a subddirectoy on the HPC job cluster file system, to stage
       type: string
       required: false
     computation_metadata_dataset_result:
@@ -138,7 +145,7 @@ topology_template:
         publisher:
           - "LEXIS worflow"
         resourceType: "Dataset"
-        title: "LEXIS HPC computation results"
+        title: "LEXIS computation results"
       required: false
     postprocessing_container_env_vars:
       type: map
@@ -194,7 +201,13 @@ topology_template:
       description: Compress the result dataset
       default: false
       required: false
-
+    postprocessing_result_dataset_replication_sites:
+      description: "List of sites where the result dataset should be available (example: it4i, lrz)"
+      type: list
+      entry_schema:
+        type: string
+      required: false
+      default: []
   #
   # Components instantiating the types imported, and using the input values above
   # in properties definitions.
@@ -412,7 +425,7 @@ topology_template:
       properties:
         token: { get_input: token }
         listChangedFilesWhileRunning: false
-        JobSpecification: {concat: ["{\"Name\":\"HPCJob\",\"Project\":\"MyProject\",\"ClusterId\":\"1\",\"Tasks\":[{\"Name\":\"", get_input: computation_heappe_command_template_name, "\",\"MinCores\":\"", get_input: computation_heappe_number_of_cores ,"\",\"MaxCores\":\"", get_input: computation_heappe_number_of_cores,"\",\"WalltimeLimit\":\"", get_input: computation_heappe_walltime_limit, "\",\"TemplateParameterValues\":[{\"CommandParameterIdentifier\":\"", get_input: computation_heappe_parameter_name, "\",\"ParameterValue\":\"", get_input: computation_heappe_parameter_value, "\"}],\"Priority\":\"4\",\"JobArrays\":\"\",\"IsExclusive\":\"false\",\"IsRerunnable\":\"false\",\"CpuHyperThreading\":\"false\",\"StandardInputFile\":\"\",\"StandardOutputFile\":\"stdout\",\"StandardErrorFile\":\"stderr\",\"ProgressFile\":\"stdprog\",\"LogFile\":\"stdlog\",\"ClusterTaskSubdirectory\":\"\",\"ClusterNodeTypeId\":\"1\",\"CommandTemplateId\":\"1\"}]}"]}
+        JobSpecification: { get_input: computation_heappe_job }
 
     # Create a directory in staging area for HPC job inputs
     CreateStagingAreaHPCInputDir:
@@ -474,7 +487,7 @@ topology_template:
         metadata: { get_input: computation_metadata_dataset_result }
         ddi_path: { get_input: postprocessing_ddi_project_path }
         task_name: { get_input: computation_heappe_command_template_name }
-        source_subdirectory: { get_input: computation_subdirectory_to_copy }
+        source_subdirectory: { get_input: computation_hpc_subdirectory_to_stage }
       requirements:
         - job:
             type_requirement: job
@@ -490,7 +503,7 @@ topology_template:
         task_name: { get_input: computation_heappe_command_template_name }
         cloud_staging_area_directory_path: "lexis_test_hpc_results"
         timestamp_cloud_staging_area_directory: true
-        source_subdirectory: { get_input: computation_subdirectory_to_copy }
+        source_subdirectory: { get_input: computation_hpc_subdirectory_to_stage }
       requirements:
         - sameSite:
             type_requirement: os
@@ -619,6 +632,19 @@ topology_template:
             node: CreateStagingAreaResultDir
             capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
             relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
+
+    # Replicate result dataset to other sites if requested
+    ReplicateDatasetJob:
+      type: org.lexis.common.ddi.nodes.ReplicateDatasetJob
+      properties:
+        token: { get_input: token }
+        replication_sites: {get_input: postprocessing_result_dataset_replication_sites}
+      requirements:
+        - dataset_provider:
+            type_requirement: dataset_provider
+            node: CloudToDDIJob
+            capability: org.lexis.common.ddi.capabilities.DataTransferDDI
+            relationship: tosca.relationships.DependsOn
 
     # DDI job cleaning up the cloud staging area containing inputs
     CleanupCloudStagingAreaInputsJob:
@@ -1198,6 +1224,34 @@ topology_template:
             - CloudToDDIJob_executed
         CloudToDDIJob_executed:
           target: CloudToDDIJob
+          activities:
+            - set_state: executed
+          on_success:
+            - ReplicateDatasetJob_create
+        # Replicate dataset to other sites
+        ReplicateDatasetJob_create:
+          target: ReplicateDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ReplicateDatasetJob_submit
+        ReplicateDatasetJob_submit:
+          target: ReplicateDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - ReplicateDatasetJob_run
+        ReplicateDatasetJob_run:
+          target: ReplicateDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - ReplicateDatasetJob_executed
+        ReplicateDatasetJob_executed:
+          target: ReplicateDatasetJob
           activities:
             - set_state: executed
           on_success:
