@@ -13,6 +13,7 @@ The Run workflow is:
 * running the user-provided script to perform a computation on these inputs
 * copying computation results to the cloud staging area
 * transferring of these results from the cloud staging area to DDI
+* replicating these results to other sites if specified
 * cleaning up the cloud staging area and releasing the cloud compute instance
 
 ## Input properties
@@ -45,17 +46,19 @@ The template expects the following input properties (mandatory inputs in **bold*
 * computation_metadata_dataset_result: Metadata for the computation results dataset to create in DDI
   * default:
     * creator:
-      * `LEXIS Cloud Computation worflow`
+      * `Cloud Computation worflow`
     * contributor:
-      * `LEXIS Cloud Computation worflow`
+      * `Cloud Computation worflow`
     * publisher:
-      * `LEXIS Cloud Computation worflow`
+      * `Cloud Computation worflow`
     * resourceType: `Dataset`
-    * title: `LEXIS Cloud Computation workflow results`
+    * title: `Cloud Computation workflow results`
 * computation_encrypt_dataset_result: Encrypt the result dataset
   * default: `false`
 * computation_compress_dataset_result: Compress the result dataset
   * default: `false`
+* computation_result_dataset_replication_sites: List of sites where the result dataset should be available (example: it4i, lrz)
+  * default: []
 
 ## Ouput attribute
 

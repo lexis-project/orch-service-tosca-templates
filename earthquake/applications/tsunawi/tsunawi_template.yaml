@@ -198,6 +198,7 @@ topology_template:
         auto_remove: false
         cleanup: false
         detach: true
+        hostname: shakemapi
         image: {get_input: preprocessing_image_shakemap_service}
         keep_volumes: true
         restart_policy: no
@@ -392,7 +393,7 @@ topology_template:
       properties:
         token: {get_input: token}
         JobSpecification: { get_input: computation_tsunawi_job }
-        cancelRemainingJobs: true
+        cancelRemainingJobs: false
       requirements:
         - HEAppEJob1:
             type_requirement: heappe_job
@@ -1582,6 +1583,6 @@ topology_template:
           on_success:
             - Shakemap_started
         Shakemap_started:
-          target: ShakemapService
+          target: Shakemap
           activities:
             - set_state: started
