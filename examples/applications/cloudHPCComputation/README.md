@@ -9,6 +9,7 @@ Template of a generic LEXIS workflow, performing:
 * the post-processing of these computation results, running a post-processing docker container
 * the transfer of post-processing results from the cloud instance local storage to the Cloud Staging Area
 * the transfer of post-processing results from the Cloud Staging Area to DDI
+* the replication these results to other sites if specified
 
 See TOSCA code in [lexis_template.yaml](lexis_template.yaml).
 
@@ -84,3 +85,105 @@ Two branches run in parallel on the workflow:
   and deleting Cloud compute resources.
 
 ![cleanup](images/workflow6_cleanup.png)
+
+## Input properties
+
+The template expects the following input properties (mandatory inputs in **bold**):
+* **token**: OpenID Connect access token
+* **project_id**: LEXIS project identifier
+* **preprocessing_dataset_path_input_path**: Dataset containing input data
+* **preprocessing_container_image**: Preprocessing container repository path
+  * for example: `laurentg/lexistest:1.2` (see corresponding [Dockerfile](../cloudHPCComputation/Dockerfile))
+* **computation_heappe_command_template_name**: HEAppE Command Template Name
+* **computation_heappe_walltime_limit**: Maximum time for the HEAppE Command Template to run (in seconds)
+* **computation_heappe_number_of_cores**: Number of cores required
+* **postprocessing_container_image**:
+  * for example: `laurentg/lexistest:1.2` (see corresponding [Dockerfile](../cloudHPCComputation/Dockerfile))
+* **postprocessing_ddi_project_path**: Path where to transfer the post-processing results in DDI
+* preprocessing_decrypt_dataset_input: Should the input dataset be decrypted
+  * default: `false`
+* preprocessing_uncompress_dataset_input: The input dataset be uncompressed
+  * default: `false`
+* preprocessing_mount_point_input_dataset: Directory on the compute instance where to mount the dataset
+      default: `/mnt/lexis_test`
+* preprocessing_container_env_vars: Preprocessing container environment variables
+  * default:
+    * INPUT_DIR: "/input_dataset"
+    * RESULT_DIR: "/output"
+    * RESULT_FILE_NAME: "preprocessing_result.txt"
+* preprocessing_container_volumes: List of volumes to mount within the preprocessing container. Use docker CLI-style syntax: /host:/container[:mode]
+  * default:
+    * "/mnt/lexis_test:/input_dataset"
+    * "/lexistest/output:/output"
+* preprocessing_output_directory: Preprocessing output directory
+  * default: "/lexistest/output"
+* computation_heappe_command_template_name: HEAppE Command Template Name
+  * default: `GenericCommandTemplate`
+* computation_heappe_job: Description of the HEAppE job/tasks
+  * default:
+    * Name: `GenericJob`
+    * Project: `Set by orchestrator`
+    * ClusterId: `1`
+    * Tasks:
+      * Name: `GenericCommandTemplate`
+      * ClusterNodeTypeId: `1`
+      * CommandTemplateId: `1`
+      * TemplateParameterValues:
+        * CommandParameterIdentifier: `userScriptPath`
+          ParameterValue: ``
+      * WalltimeLimit: `3600`
+      * MinCores: `1`
+      * MaxCores: `1`
+      * Priority: `4`
+      * StandardOutputFile: `stdout`
+      * StandardErrorFile: `stderr`
+      * ProgressFile: `stdprog`
+      * LogFile: `stdlog`
+* computation_hpc_subdirectory_to_stage: Relative path to a subddirectoy on the HPC job cluster file system, to stage
+  * default: `""`
+* computation_metadata_dataset_result: Metadata for the Computation results dataset to create in DDI
+  * default:
+    * creator:
+      * `LEXIS worflow`
+    * contributor:
+      * `LEXIS worflow`
+    * publisher:
+      * `LEXIS worflow`
+    * resourceType: `Dataset`
+    * title: `LEXIS computation results`
+* postprocessing_container_env_vars: Postprocessing container environment variables
+  * default:
+    * `INPUT_DIR: "/input_dataset"`
+    * `RESULT_DIR: "/output"`
+    * `RESULT_FILE_NAME: "postprocessing_result.txt"`
+* postprocessing_container_volumes: List of volumes to mount within the postprocessing container. Use docker CLI-style syntax: /host:/container[:mode]
+  * default:
+    * `/input_computation_results:/input_dataset`
+    * `/output_postprocessing:/output`
+* postprocessing_input_directory: Postprocessing input directory
+  * default: `/input_computation_results`
+* postprocessing_output_directory: Postprocessing output directory
+  * default: `/output_postprocessing`
+* postprocessing_metadata_dataset_result: Metadata for the postprocessing results dataset to create in DDI
+  * default:
+    * creator:
+      * `LEXIS worflow`
+    * contributor:
+      * `LEXIS worflow`
+    * publisher:
+      * `LEXIS worflow`
+    * resourceType: "Dataset"
+    * title: "LEXIS workflow results"
+* postprocessing_encrypt_dataset_result: Encrypt the result dataset
+  * default: `false`
+* postprocessing_compress_dataset_result: Compress the result dataset
+  * default: `false`
+* postprocessing_result_dataset_replication_sites: List of sites where the result dataset should be available (example: it4i, lrz)
+  * default: []
+
+## Ouput attribute
+
+The following output attribute is provided:
+* attribute `destination_path` of component `HPCToDDIJob`: DDI path to HPC results
+* attribute `destination_path` of component `CloudToDDIJob`: DDI path to post-processing results
+

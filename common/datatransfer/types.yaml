@@ -2,14 +2,14 @@ tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
   template_name: org.lexis.common.datatransfer
-  template_version: 0.1.4-SNAPSHOT
+  template_version: 0.1.5-SNAPSHOT
   template_author: lexis
 
 description: Data transfer types
 
 imports:
-  - org.lexis.common.heappe-types:1.0.7
-  - org.lexis.common.ddi-types:1.0.2
+  - org.lexis.common.heappe-types:1.0.8
+  - org.lexis.common.ddi-types:1.0.3
   - org.ystia.docker.images:3.0.0-SNAPSHOT
   - yorc-types:1.1.0
 node_types:

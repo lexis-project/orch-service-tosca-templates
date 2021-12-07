@@ -1,0 +1,50 @@
+tosca_definitions_version: alien_dsl_3_0_0
+
+metadata:
+  template_name: org.lexis.common.tsunawi.shakemap
+  template_version: 0.0.1-SNAPSHOT
+  template_author: lexis
+
+description: Shakemap client component
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - yorc-types:1.1.0
+node_types:
+  org.lexis.common.tsunawi.nodes.Shakemap:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      shakemap_service_url:
+        type: string
+        description: Shakemap service url
+        required: false
+        default: "http://localhost:8082/shakemap"
+      gmpe:
+        type: string
+        description: "Ground motion prediction equation (example: BindiEtAl2014Rjb)"
+        required: true
+      imt:
+        type: string
+        description: "Intensity measure type (example: PGA)"
+        required: true
+      format:
+        type: string
+        description: Format (grid or contour). Use grid for regular spaced data, contour for contour data in GeoJSON format.
+        required: true
+      quakeml_file_path:
+        type: string
+        description: Pah to the quameml event XML file
+      shakemap_result_file_path:
+        type: string
+        description: Path to the file where shakemap results will be stored
+    interfaces:
+      Standard:
+        start:
+          inputs:
+            SHAKEMAP_SERVICE_URL: {get_property: [SELF, shakemap_service_url]}
+            GMPE_VALUE: {get_property: [SELF, gmpe]}
+            IMT_VALUE: {get_property: [SELF, imt]}
+            FORMAT_VALUE: {get_property: [SELF, format]}
+            QUAKEML_FILE_PATH: {get_property: [SELF, quakeml_file_path]}
+            SHAKEMAP_RESULT_FILE_PATH: {get_property: [SELF, shakemap_result_file_path]}
+          implementation: playbooks/compute_shakemap.yaml

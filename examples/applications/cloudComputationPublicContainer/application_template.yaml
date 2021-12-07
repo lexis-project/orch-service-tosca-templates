@@ -16,9 +16,9 @@ imports:
   - docker-types:3.0.0
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
-  - org.lexis.common.ddi-types:1.0.2
-  - org.lexis.common.dynamic-orchestration-types:1.0.2
-  - org.lexis.common.datatransfer:0.1.4-SNAPSHOT
+  - org.lexis.common.ddi-types:1.0.3
+  - org.lexis.common.dynamic-orchestration-types:1.0.3
+  - org.lexis.common.datatransfer:0.1.5-SNAPSHOT
 
 topology_template:
   #
@@ -46,16 +46,21 @@ topology_template:
       type: string
       description: Dataset containing input data
       required: true
+    computation_container_image:
+      type: string
+      description: Computation container repository path
+      # default: "laurentg/lexistest:1.2"
+      required: true
     computation_ddi_project_path:
       type: string
       description: "Path where to transfer the computation results in DDI"
       required: true
-    computation_decrypt_input:
+    computation_decrypt_dataset_input:
       type: boolean
       description: Should the input dataset be decrypted
       default: false
       required: false
-    computation_uncompress_input:
+    computation_uncompress_dataset_input:
       type: boolean
       description: Should the input dataset be uncompressed
       default: false
@@ -64,11 +69,6 @@ topology_template:
       type: string
       description: Directory on the compute instance where to mount the dataset
       default: "/mnt/lexis_input"
-      required: false
-    computation_container_image:
-      type: string
-      description: Computation container repository path
-      default: "laurentg/lexistest:1.2"
       required: false
     computation_container_env_vars:
       type: map
@@ -101,13 +101,13 @@ topology_template:
       description: Metadata for the computation results dataset to create in DDI
       default:
         creator:
-          - "LEXIS Cloud Computation Container worflow"
+          - "Cloud Computation Container worflow"
         contributor:
-          - "LEXIS Cloud Computation Container worflow"
+          - "Cloud Computation Container worflow"
         publisher:
-          - "LEXIS Cloud Computation Container worflow"
+          - "Cloud Computation Container worflow"
         resourceType: "Dataset"
-        title: "LEXIS Cloud Computation Conatiner workflow results"
+        title: "Cloud Computation Container workflow results"
       required: false
     computation_encrypt_dataset_result:
       type: boolean
@@ -119,6 +119,13 @@ topology_template:
       description: Compress the result dataset
       default: false
       required: false
+    computation_result_dataset_replication_sites:
+      description: "List of sites where the result dataset should be available (example: it4i, lrz)"
+      type: list
+      entry_schema:
+        type: string
+      required: false
+      default: []
 
   #
   # Components instantiating the types imported, and using the input values above
@@ -172,8 +179,8 @@ topology_template:
       type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
         token: {get_input: token}
-        decrypt: {get_input: computation_decrypt_input}
-        uncompress: {get_input: computation_uncompress_input}
+        decrypt: {get_input: computation_decrypt_dataset_input}
+        uncompress: {get_input: computation_uncompress_dataset_input}
         ddi_dataset_path: { get_input: computation_dataset_path_input_path }
         cloud_staging_area_directory_path: "lexis_cloud_computation_container"
         timestamp_cloud_staging_area_directory: true
@@ -346,6 +353,20 @@ topology_template:
             node: CreateStagingAreaResultDir
             capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
             relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
+    # Replicate result dataset to other sites if requested
+    ReplicateDatasetJob:
+      type: org.lexis.common.ddi.nodes.ReplicateDatasetJob
+      metadata:
+        task: computation
+      properties:
+        token: { get_input: token }
+        replication_sites: {get_input: computation_result_dataset_replication_sites}
+      requirements:
+        - dataset_provider:
+            type_requirement: dataset_provider
+            node: CloudToDDIJob
+            capability: org.lexis.common.ddi.capabilities.DataTransferDDI
+            relationship: tosca.relationships.DependsOn
 
     # DDI job cleaning up the cloud staging area
     CleanupCloudStagingAreaJob:
@@ -640,6 +661,34 @@ topology_template:
             - CloudToDDIJob_executed
         CloudToDDIJob_executed:
           target: CloudToDDIJob
+          activities:
+            - set_state: executed
+          on_success:
+            - ReplicateDatasetJob_create
+        # Replicate dataset to other sites
+        ReplicateDatasetJob_create:
+          target: ReplicateDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ReplicateDatasetJob_submit
+        ReplicateDatasetJob_submit:
+          target: ReplicateDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - ReplicateDatasetJob_run
+        ReplicateDatasetJob_run:
+          target: ReplicateDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - ReplicateDatasetJob_executed
+        ReplicateDatasetJob_executed:
+          target: ReplicateDatasetJob
           activities:
             - set_state: executed
           on_success:

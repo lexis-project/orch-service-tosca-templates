@@ -13,13 +13,13 @@ imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - docker-types:3.0.0
   - alien-base-types:3.0.0
-  - org.lexis.common.ddi-types:1.0.2
-  - org.lexis.common.heappe-types:1.0.7
-  - org.lexis.common.dynamic-orchestration-types:1.0.2
+  - org.lexis.common.ddi-types:1.0.3
+  - org.lexis.common.heappe-types:1.0.8
+  - org.lexis.common.dynamic-orchestration-types:1.0.3
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
-  - org.lexis.common.datatransfer:0.1.4-SNAPSHOT
-  - org.lexis.wp7.wps:0.1.3-SNAPSHOT
+  - org.lexis.common.datatransfer:0.1.5-SNAPSHOT
+  - org.lexis.wp7.wps:0.1.4-SNAPSHOT
   - org.lexis.wp7.dewetra:0.1.0
 
 topology_template:

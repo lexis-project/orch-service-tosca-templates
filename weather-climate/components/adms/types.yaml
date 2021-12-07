@@ -2,7 +2,7 @@ tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
   template_name: org.lexis.wp7.adms
-  template_version: 0.1.1
+  template_version: 0.1.2
   template_author: lexis
 
 description: ADMS types
@@ -10,7 +10,7 @@ description: ADMS types
 imports:
   - tosca-normative-types:1.0.0-ALIEN20
   - yorc-types:1.1.0
-  - org.lexis.common.ddi-types:1.0.2
+  - org.lexis.common.ddi-types:1.0.3
 node_types:
   org.lexis.wp7.nodes.ADMSRun:
     derived_from: tosca.nodes.SoftwareComponent

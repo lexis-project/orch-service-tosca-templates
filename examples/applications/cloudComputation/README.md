@@ -13,6 +13,7 @@ The Run workflow is:
 * running the user-provided script to perform a computation on these inputs
 * copying computation results to the cloud staging area
 * transferring of these results from the cloud staging area to DDI
+* replicating these results to other sites if specified
 * cleaning up the cloud staging area and releasing the cloud compute instance
 
 ## Input properties
@@ -34,9 +35,9 @@ The template expects the following input properties (mandatory inputs in **bold*
     * default: `ubuntu`
 * computation_mount_point_input_dataset: Directory on the compute instance where to mount the dataset
     * default: `/mnt/lexis_input`
-* computation_decrypt_input: Should the input dataset be decrypted
+* computation_decrypt_dataset_input: Should the input dataset be decrypted
   * default: `false`
-* computation_uncompress_input: the input dataset be uncompressed
+* computation_uncompress_dataset_input: the input dataset be uncompressed
   * default: `false`
 * computation_mount_point_input_dataset: Directory on the compute instance where to mount the dataset (accessible to root only)
   * default: `/mnt/lexis_input`
@@ -45,17 +46,19 @@ The template expects the following input properties (mandatory inputs in **bold*
 * computation_metadata_dataset_result: Metadata for the computation results dataset to create in DDI
   * default:
     * creator:
-      * `LEXIS Cloud Computation worflow`
+      * `Cloud Computation worflow`
     * contributor:
-      * `LEXIS Cloud Computation worflow`
+      * `Cloud Computation worflow`
     * publisher:
-      * `LEXIS Cloud Computation worflow`
+      * `Cloud Computation worflow`
     * resourceType: `Dataset`
-    * title: `LEXIS Cloud Computation workflow results`
+    * title: `Cloud Computation workflow results`
 * computation_encrypt_dataset_result: Encrypt the result dataset
   * default: `false`
 * computation_compress_dataset_result: Compress the result dataset
   * default: `false`
+* computation_result_dataset_replication_sites: List of sites where the result dataset should be available (example: it4i, lrz)
+  * default: []
 
 ## Ouput attribute
 

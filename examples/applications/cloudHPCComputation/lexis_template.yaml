@@ -16,10 +16,10 @@ imports:
   - docker-types:3.0.0
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
-  - org.lexis.common.heappe-types:1.0.7
-  - org.lexis.common.ddi-types:1.0.2
-  - org.lexis.common.dynamic-orchestration-types:1.0.2
-  - org.lexis.common.datatransfer:0.1.4-SNAPSHOT
+  - org.lexis.common.heappe-types:1.0.8
+  - org.lexis.common.ddi-types:1.0.3
+  - org.lexis.common.dynamic-orchestration-types:1.0.3
+  - org.lexis.common.datatransfer:0.1.5-SNAPSHOT
 
 topology_template:
   #
@@ -46,14 +46,27 @@ topology_template:
     preprocessing_dataset_path_input_path:
       type: string
       description: Dataset containing input data
-      default: "project/proj812b07ed780274387d12c665fa3a4f7f/03ecd6a8-b8c7-11eb-885c-0050568fcecc"
-      required: false
-    preprocessing_decrypt_input:
+      required: true
+    preprocessing_container_image:
+      type: string
+      description: Preprocessing container repository path
+      #default: "laurentg/lexistest:1.2"
+      required: true
+    postprocessing_container_image:
+      type: string
+      description: Postprocessing container repository path
+      #default: "laurentg/lexistest:1.2"
+      required: true
+    postprocessing_ddi_project_path:
+      type: string
+      description: "Path where to transfer the post-processing results in DDI"
+      required: true
+    preprocessing_decrypt_dataset_input:
       type: boolean
       description: Should the input dataset be decrypted
       default: false
       required: false
-    preprocessing_uncompress_input:
+    preprocessing_uncompress_dataset_input:
       type: boolean
       description: Should the input dataset be uncompressed
       default: false
@@ -62,11 +75,6 @@ topology_template:
       type: string
       description: Directory on the compute instance where to mount the dataset
       default: "/mnt/lexis_test"
-      required: false
-    preprocessing_container_image:
-      type: string
-      description: Preprocessing container repository path
-      default: "laurentg/lexistest:1.2"
       required: false
     preprocessing_container_env_vars:
       type: map
@@ -86,7 +94,7 @@ topology_template:
         List of volumes to mount within the preprocessing container.
         Use docker CLI-style syntax: /host:/container[:mode]
       default:
-        - "/mnt/lexis_test/32e5dff4-9e7d-11eb-a9c7-0050568fcecc:/input_dataset"
+        - "/mnt/lexis_test:/input_dataset"
         - "/lexistest/output:/output"
       required: false
     preprocessing_output_directory:
@@ -94,20 +102,26 @@ topology_template:
       description: Preprocessing output directory
       default: "/lexistest/output"
       required: false
+    computation_heappe_command_template_name:
+      type: string
+      description: HEAppE Command Template Name
+      required: false
+      default: GenericCommandTemplate
     computation_heappe_job:
       type: org.lexis.common.heappe.types.JobSpecification
       description: Description of the HEAppE job/tasks
+      required: false
       default:
-        Name: TestJob
-        Project: "MyProject"
-        ClusterId: 2
+        Name: GenericJob
+        Project: "Set by orchestrator"
+        ClusterId: 1
         Tasks:
-          - Name: TestTemplate
-            ClusterNodeTypeId: 2
+          - Name: GenericCommandTemplate
+            ClusterNodeTypeId: 1
             CommandTemplateId: 1
             TemplateParameterValues:
-              - CommandParameterIdentifier: inputParam
-                ParameterValue: inputParam
+              - CommandParameterIdentifier: userScriptPath
+                ParameterValue: ""
             WalltimeLimit: 3600
             MinCores: 1
             MaxCores: 1
@@ -116,37 +130,22 @@ topology_template:
             StandardErrorFile: "stderr"
             ProgressFile: "stdprog"
             LogFile: "stdlog"
-      required: false
-    computation_heappe_task_name:
+    computation_hpc_subdirectory_to_stage:
+      description: Relative path to a subddirectoy on the HPC job cluster file system, to stage
       type: string
-      description: Name of the HEAppE job HPC task providing results to postprocess
-      default: TestTemplate
       required: false
     computation_metadata_dataset_result:
       type: org.lexis.common.ddi.types.Metadata
       description: Metadata for the Computation results dataset to create in DDI
       default:
         creator:
-          - "LEXIS Test worflow"
+          - "LEXIS worflow"
         contributor:
-          - "LEXIS Test worflow"
+          - "LEXIS worflow"
         publisher:
-          - "LEXIS Test worflow"
+          - "LEXIS worflow"
         resourceType: "Dataset"
-        title: "LEXIS Test HPC computation results"
-      required: false
-    computation_result_files_to_postprocess:
-      type: list
-      entry_schema:
-        type: string
-      description: List of HPC result files to postprocess (shell patterns allowed)
-      default:
-        - "result*"
-      required: false
-    postprocessing_container_image:
-      type: string
-      description: Postprocessing container repository path
-      default: "laurentg/lexistest:1.2"
+        title: "LEXIS computation results"
       required: false
     postprocessing_container_env_vars:
       type: map
@@ -179,23 +178,18 @@ topology_template:
       description: Postprocessing output directory
       default: "/output_postprocessing"
       required: false
-    postprocessing_ddi_project_path:
-      type: string
-      description: "Path where to transfer the post-processing results in DDI"
-      default: "project/proj812b07ed780274387d12c665fa3a4f7f"
-      required: false
     postprocessing_metadata_dataset_result:
       type: org.lexis.common.ddi.types.Metadata
       description: Metadata for the postprocessing results dataset to create in DDI
       default:
         creator:
-          - "LEXIS Test worflow"
+          - "LEXIS worflow"
         contributor:
-          - "LEXIS Test worflow"
+          - "LEXIS worflow"
         publisher:
-          - "LEXIS Test worflow"
+          - "LEXIS worflow"
         resourceType: "Dataset"
-        title: "LEXIS Test workflow results"
+        title: "LEXIS workflow results"
       required: false
     postprocessing_encrypt_dataset_result:
       type: boolean
@@ -207,7 +201,13 @@ topology_template:
       description: Compress the result dataset
       default: false
       required: false
-
+    postprocessing_result_dataset_replication_sites:
+      description: "List of sites where the result dataset should be available (example: it4i, lrz)"
+      type: list
+      entry_schema:
+        type: string
+      required: false
+      default: []
   #
   # Components instantiating the types imported, and using the input values above
   # in properties definitions.
@@ -240,8 +240,8 @@ topology_template:
       type: org.lexis.common.ddi.nodes.DDIToCloudJob
       properties:
         token: {get_input: token}
-        decrypt: {get_input: preprocessing_decrypt_input}
-        uncompress: {get_input: preprocessing_uncompress_input}
+        decrypt: {get_input: preprocessing_decrypt_dataset_input}
+        uncompress: {get_input: preprocessing_uncompress_dataset_input}
         ddi_dataset_path: { get_input: preprocessing_dataset_path_input_path }
         cloud_staging_area_directory_path: "lexis_test_preprocessing"
         timestamp_cloud_staging_area_directory: true
@@ -423,7 +423,8 @@ topology_template:
       metadata:
         task: computation
       properties:
-        token: {get_input: token}
+        token: { get_input: token }
+        listChangedFilesWhileRunning: false
         JobSpecification: { get_input: computation_heappe_job }
 
     # Create a directory in staging area for HPC job inputs
@@ -463,7 +464,7 @@ topology_template:
       type: org.lexis.common.ddi.nodes.CloudToHPCJob
       properties:
         token: { get_input: token }
-        task_name: { get_input: computation_heappe_task_name }
+        task_name: { get_input: computation_heappe_command_template_name }
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
@@ -485,7 +486,8 @@ topology_template:
         compress: {get_input: postprocessing_compress_dataset_result}
         metadata: { get_input: computation_metadata_dataset_result }
         ddi_path: { get_input: postprocessing_ddi_project_path }
-        task_name: { get_input: computation_heappe_task_name }
+        task_name: { get_input: computation_heappe_command_template_name }
+        source_subdirectory: { get_input: computation_hpc_subdirectory_to_stage }
       requirements:
         - job:
             type_requirement: job
@@ -498,9 +500,10 @@ topology_template:
       type: org.lexis.common.ddi.nodes.HPCToCloudJob
       properties:
         token: { get_input: token }
-        task_name: { get_input: computation_heappe_task_name }
+        task_name: { get_input: computation_heappe_command_template_name }
         cloud_staging_area_directory_path: "lexis_test_hpc_results"
         timestamp_cloud_staging_area_directory: true
+        source_subdirectory: { get_input: computation_hpc_subdirectory_to_stage }
       requirements:
         - sameSite:
             type_requirement: os
@@ -549,7 +552,7 @@ topology_template:
       type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
         source_file:  "/mnt/lexis_test_hpc_results/*/*"
-        destination: { get_input: postprocessing_output_directory }
+        destination: { get_input: postprocessing_input_directory }
         as_user: "root"
       requirements:
         - hostedOnVirtualMachineHost:
@@ -629,6 +632,19 @@ topology_template:
             node: CreateStagingAreaResultDir
             capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
             relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
+
+    # Replicate result dataset to other sites if requested
+    ReplicateDatasetJob:
+      type: org.lexis.common.ddi.nodes.ReplicateDatasetJob
+      properties:
+        token: { get_input: token }
+        replication_sites: {get_input: postprocessing_result_dataset_replication_sites}
+      requirements:
+        - dataset_provider:
+            type_requirement: dataset_provider
+            node: CloudToDDIJob
+            capability: org.lexis.common.ddi.capabilities.DataTransferDDI
+            relationship: tosca.relationships.DependsOn
 
     # DDI job cleaning up the cloud staging area containing inputs
     CleanupCloudStagingAreaInputsJob:
@@ -1208,6 +1224,34 @@ topology_template:
             - CloudToDDIJob_executed
         CloudToDDIJob_executed:
           target: CloudToDDIJob
+          activities:
+            - set_state: executed
+          on_success:
+            - ReplicateDatasetJob_create
+        # Replicate dataset to other sites
+        ReplicateDatasetJob_create:
+          target: ReplicateDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ReplicateDatasetJob_submit
+        ReplicateDatasetJob_submit:
+          target: ReplicateDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - ReplicateDatasetJob_run
+        ReplicateDatasetJob_run:
+          target: ReplicateDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - ReplicateDatasetJob_executed
+        ReplicateDatasetJob_executed:
+          target: ReplicateDatasetJob
           activities:
             - set_state: executed
           on_success:

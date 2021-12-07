@@ -9,10 +9,10 @@ description: ""
 
 imports:
   - yorc-types:1.1.0
-  - org.lexis.common.heappe-types:1.0.7
-  - org.lexis.common.ddi-types:1.0.2
+  - org.lexis.common.heappe-types:1.0.8
+  - org.lexis.common.ddi-types:1.0.3
   - tosca-normative-types:1.0.0-ALIEN20
-  - org.lexis.common.datatransfer:0.1.4-SNAPSHOT
+  - org.lexis.common.datatransfer:0.1.5-SNAPSHOT
 
 topology_template:
   inputs:

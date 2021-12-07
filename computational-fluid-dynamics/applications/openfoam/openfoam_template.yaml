@@ -12,10 +12,10 @@ imports:
   - yorc-openstack-types:3.1.0
   - tosca-normative-types:1.0.0-ALIEN20
   - alien-base-types:3.0.0
-  - org.lexis.common.heappe-types:1.0.7
-  - org.lexis.common.ddi-types:1.0.2
-  - org.lexis.common.dynamic-orchestration-types:1.0.2
-  - org.lexis.common.datatransfer:0.1.4-SNAPSHOT
+  - org.lexis.common.heappe-types:1.0.8
+  - org.lexis.common.ddi-types:1.0.3
+  - org.lexis.common.dynamic-orchestration-types:1.0.3
+  - org.lexis.common.datatransfer:0.1.5-SNAPSHOT
   - org.lexis.common.visualization.xpra:0.1.0
 
 topology_template:
@@ -44,12 +44,12 @@ topology_template:
       type: string
       description: "Path of the project where to transfer the computation results in DDI: project/projxxx"
       required: true
-    preprocessing_decrypt_input:
+    preprocessing_decrypt_dataset_input:
       type: boolean
       description: Should the input dataset be decrypted
       default: false
       required: false
-    preprocessing_uncompress_input:
+    preprocessing_uncompress_dataset_input:
       type: boolean
       description: Should the input dataset be uncompressed
       default: false
@@ -163,8 +163,8 @@ topology_template:
         task: preprocessing
       properties:
         token: { get_input: token }
-        decrypt: {get_input: preprocessing_decrypt_input}
-        uncompress: {get_input: preprocessing_uncompress_input}
+        decrypt: {get_input: preprocessing_decrypt_dataset_input}
+        uncompress: {get_input: preprocessing_uncompress_dataset_input}
         ddi_dataset_path: { get_input: preprocessing_dataset_path_input_path }
         task_name: "OpenFoamParallel"
       requirements:
