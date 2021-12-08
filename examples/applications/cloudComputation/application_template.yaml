@@ -118,7 +118,7 @@ topology_template:
       default: false
       required: false
     computation_result_dataset_replication_sites:
-      description: "List of sites where the result dataset should be available (example: it4i, lrz)"
+      description: "List of sites where the result dataset should be available - WARNING: a replicated dataset can't be deleted - (example of values: it4i, lrz)"
       type: list
       entry_schema:
         type: string

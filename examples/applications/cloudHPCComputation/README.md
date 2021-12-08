@@ -95,8 +95,6 @@ The template expects the following input properties (mandatory inputs in **bold*
 * **preprocessing_container_image**: Preprocessing container repository path
   * for example: `laurentg/lexistest:1.2` (see corresponding [Dockerfile](../cloudHPCComputation/Dockerfile))
 * **computation_heappe_command_template_name**: HEAppE Command Template Name
-* **computation_heappe_walltime_limit**: Maximum time for the HEAppE Command Template to run (in seconds)
-* **computation_heappe_number_of_cores**: Number of cores required
 * **postprocessing_container_image**:
   * for example: `laurentg/lexistest:1.2` (see corresponding [Dockerfile](../cloudHPCComputation/Dockerfile))
 * **postprocessing_ddi_project_path**: Path where to transfer the post-processing results in DDI
@@ -178,7 +176,7 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `false`
 * postprocessing_compress_dataset_result: Compress the result dataset
   * default: `false`
-* postprocessing_result_dataset_replication_sites: List of sites where the result dataset should be available (example: it4i, lrz)
+* postprocessing_result_dataset_replication_sites: List of sites where the result dataset should be available - WARNING: a replicated dataset can't be deleted - (example of values: it4i, lrz)
   * default: []
 
 ## Ouput attribute

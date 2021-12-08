@@ -20,8 +20,6 @@ The template expects the following input properties (mandatory inputs in **bold*
 * **computation_dataset_path_input_path**: Dataset containing input data
 * **computation_ddi_project_path**: Path where to transfer the computation results in DDI
 * **computation_heappe_command_template_name**: HEAppE Command Template Name
-* **computation_heappe_walltime_limit**: Maximum time for the HEAppE Command Template to run (in seconds)
-* **computation_heappe_number_of_cores**: Number of cores required
 * computation_heappe_command_template_name: HEAppE Command Template Name
   * default: `GenericCommandTemplate`
 * computation_heappe_job: Description of the HEAppE job/tasks
@@ -64,7 +62,7 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `false`
 * computation_compress_dataset_result: Compress the result dataset
   * default: `false`
-* computation_result_dataset_replication_sites: List of sites where the result dataset should be available (example: it4i, lrz)
+* computation_result_dataset_replication_sites: List of sites where the result dataset should be available - WARNING: a replicated dataset can't be deleted - (example of values: it4i, lrz)
   * default: []
 
 ## Ouput attribute

@@ -57,7 +57,7 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `false`
 * computation_compress_dataset_result: Compress the result dataset
   * default: `false`
-* computation_result_dataset_replication_sites: List of sites where the result dataset should be available (example: it4i, lrz)
+* computation_result_dataset_replication_sites: List of sites where the result dataset should be available - WARNING: a replicated dataset can't be deleted - (example of values: it4i, lrz)
   * default: []
 
 ## Ouput attribute
