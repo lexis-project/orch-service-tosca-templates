@@ -5,7 +5,7 @@ metadata:
   template_version: 0.0.1-SNAPSHOT
   template_author: lexis
 
-description: Shakemap client component
+description: Shakemap and Loss calculator client components
 
 imports:
   - tosca-normative-types:1.0.0-ALIEN20
@@ -33,10 +33,12 @@ node_types:
         required: true
       quakeml_file_path:
         type: string
-        description: Pah to the quameml event XML file
+        description: Pah to the quakeml event XML file
+        required: true
       shakemap_result_file_path:
         type: string
         description: Path to the file where shakemap results will be stored
+        required: true
     interfaces:
       Standard:
         start:
@@ -48,3 +50,33 @@ node_types:
             QUAKEML_FILE_PATH: {get_property: [SELF, quakeml_file_path]}
             SHAKEMAP_RESULT_FILE_PATH: {get_property: [SELF, shakemap_result_file_path]}
           implementation: playbooks/compute_shakemap.yaml
+  org.lexis.common.tsunawi.nodes.LossCalculator:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      loss_calculator_service_url:
+        type: string
+        description: Loss calculator service url
+        required: false
+        default: "http://localhost:8000/loss"
+      quakeml_file_path:
+        type: string
+        description: Pah to the quakeml event XML file
+        required: true
+      loss_calculator_result_file_path:
+        type: string
+        description: Path to the file where loss calculator results will be stored
+        required: true
+      loss_computation_timeout:
+        type: integer
+        description: Computation timeout in seconds
+        default: 3600
+        required: false
+    interfaces:
+      Standard:
+        start:
+          inputs:
+            LOSS_CALCULATOR_SERVICE_URL: {get_property: [SELF, loss_calculator_service_url]}
+            QUAKEML_FILE_PATH: {get_property: [SELF, quakeml_file_path]}
+            LOSS_CALCULATOR_RESULT_FILE_PATH: {get_property: [SELF, loss_calculator_result_file_path]}
+            LOSS_COMPUTATION_TIMEOUT: {get_property: [SELF, loss_computation_timeout]}
+          implementation: playbooks/compute_loss.yaml

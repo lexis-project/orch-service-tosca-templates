@@ -1,0 +1,28 @@
+- name: Loss computation
+  hosts: all
+  strategy: linear
+  tasks:
+    - name: "Send request to loss calculator service"
+      uri:
+        url: "{{ LOSS_CALCULATOR_SERVICE_URL }}"
+        method: POST
+        status_code: [200, 201, 202]
+        validate_certs: no
+        headers:
+          Content-Type: "application/text"
+        src: "{{ QUAKEML_FILE_PATH }}"
+        remote_src: yes
+        return_content: yes
+        timeout: "{{ LOSS_COMPUTATION_TIMEOUT }}"
+      register: result
+    - name: Create the destination directory if need
+      file:
+        path: "{{LOSS_CALCULATOR_RESULT_FILE_PATH | dirname}}"
+        state: directory
+        mode: '0777'
+      become: true
+      become_method: sudo
+    - name: Copy content to result file
+      copy:
+        content: "{{ result.content }}"
+        dest: "{{ LOSS_CALCULATOR_RESULT_FILE_PATH }}"
