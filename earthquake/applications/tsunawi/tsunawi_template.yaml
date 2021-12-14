@@ -35,15 +35,15 @@ topology_template:
       type: string
       description: Input dataset containing the quakeml event
       required: true
-    preprocessing_dataset_path_loss_calculator_data_path:
-      type: string
-      description: "Zipped archive containing loss calculator data: exposure.csv, taxonomy_mapping.csv, intensity_measure_map.csv and fragilities"
-      required: true
-      # default: project/proj19de37bda794a92aa6e514994bf0f930/2ed9e8d4-5911-11ec-bdf5-b8599f568450/coquimbo_example.tar.gz
     postprocessing_title_for_result_datasets:
       type: string
       description: String used in result datatsets 
       required: true
+    preprocessing_dataset_path_loss_calculator_data_path:
+      type: string
+      description: "Zipped archive containing loss calculator data"
+      required: false
+      default: project/proj19de37bda794a92aa6e514994bf0f930/2c109690-5c52-11ec-bdf5-b8599f568450/losscalculator_data.tar.gz
     preprocessing_decrypt_dataset_loss_calculator_data:
       type: boolean
       description: Should the loss calculator data dataset be decrypted
@@ -63,7 +63,7 @@ topology_template:
       type: string
       description: Loss calculator service docker image
       required: false
-      default: "laurentg/losscalculator:0.0.1"
+      default: "laurentg/losscalculator:0.0.3"
     computation_heappe_command_template_name:
       type: string
       description: HEAppE Command Template Name
@@ -286,7 +286,7 @@ topology_template:
         docker_env_vars:
           SHAKEMAP_HOSTNAME: http://shakemapi:8082
         volumes:
-          - "/shakemap/data:/losscalculator_data"
+          - "/shakemap/data/losscalculator_data:/losscalculator_data"
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
@@ -385,12 +385,7 @@ topology_template:
       type: org.lexis.common.datatransfer.nodes.FindFilesInStagingAreaDirectory
       properties:
         shell_patterns:
-          - "taxonomy_*.csv"
-          - "shakemap_*.csv"
-          - "intensity_*.csv"
-          - "exposure*.csv"
-          - "run*.sh"
-          - "fragilities"
+          - "losscalculator_data"
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
@@ -662,7 +657,7 @@ topology_template:
       properties:
         auto_remove: false
         cleanup: false
-        detach: true
+        detach: false
         image: {get_input: postprocessing_image_area_of_interest}
         keep_volumes: true
         restart_policy: no
@@ -1221,7 +1216,7 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - LossComputation_start
+            - LossCalculatorService_start
         LossComputation_start:
           target: LossComputation
           activities:
