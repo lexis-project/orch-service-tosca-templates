@@ -16,7 +16,7 @@ imports:
   - org.lexis.common.ddi-types:1.0.3
   - org.lexis.common.heappe-types:1.0.8
   - org.lexis.common.dynamic-orchestration-types:1.0.3
-  - org.ystia.docker.containers.docker.generic:3.0.1-SNAPSHOT
+  - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
   - org.lexis.common.datatransfer:0.1.5-SNAPSHOT
   - org.lexis.common.tsunawi.shakemap:0.0.1-SNAPSHOT
@@ -31,79 +31,77 @@ topology_template:
       type: string
       description: "LEXIS project identifier"
       required: true
-    preprocessing_dataset_path_quakeml_input_data_path:
-      type: string
-      description: Input dataset containing the quakeml event
-      required: true
     postprocessing_title_for_result_datasets:
       type: string
       description: String used in result datatsets 
       required: true
-    preprocessing_dataset_path_loss_calculator_data_path:
+    preprocessing_event_dataset_metadata:
+      type: org.lexis.common.ddi.types.Metadata
+      description: "Dataset metadata"
+      required: false
+      default:
+        resourceType: "Earthquake event"
+    preprocessing_needed_files_patterns_in_dataset:
+      type: list
+      entry_schema:
+        type: string
+      description: "List of patterns of files that need to be available in dataset"
+      required: false
+      default:
+        - ".*.quakeml"
+    preprocessing_quakeml_file_pattern:
       type: string
-      description: "Zipped archive containing loss calculator data"
+      description: "Pattern of the quakeml event file"
       required: false
-      default: project/proj19de37bda794a92aa6e514994bf0f930/2c109690-5c52-11ec-bdf5-b8599f568450/losscalculator_data.tar.gz
-    preprocessing_decrypt_dataset_loss_calculator_data:
-      type: boolean
-      description: Should the loss calculator data dataset be decrypted
-      default: false
+      default: ".*.quakeml"
+    preprocessing_ground_motion_prediction_equation:
+      type: string
+      description: "Ground motion prediction equation (example: BindiEtAl2014Rjb)"
       required: false
-    preprocessing_uncompress_dataset_loss_calculator_data:
-      type: boolean
-      description: Should the loss calculator data be uncompressed
-      default: true
+      default: BindiEtAl2014Rjb
+    preprocessing_intensity_measure_type:
+      type: string
+      description: "Intensity measure type (example: PGA)"
       required: false
+      default: PGA
+    preprocessing_format:
+      type: string
+      description: "Format (grid or contour). Use grid for regular spaced data, contour for contour data in GeoJSON format."
+      required: false
+      default: grid
     preprocessing_image_shakemap_service:
       type: string
-      description: Shakemap service docker image
+      description:
       required: false
-      default: "laurentg/shakemapi:0.0.3"
-    preprocessing_image_loss_calculator_service:
-      type: string
-      description: Loss calculator service docker image
-      required: false
-      default: "laurentg/losscalculator:0.0.3"
-    computation_heappe_command_template_name:
-      type: string
-      description: HEAppE Command Template Name
-      required: false
-      default: GenericCommandTemplate
-    computation_hpc_subdirectory_to_stage:
-      description: Relative path to a subddirectoy on the HPC job cluster file system, to stage
-      type: string
-      required: false
-      default: output
+      default: "laurentg/shakemapi:0.0.1"
     computation_tsunawi_job:
       type: org.lexis.common.heappe.types.JobSpecification
       description: Description of the HEAppE job/tasks
-      required: false
       default:
-        Name: GenericJob
-        Project: "Set by orchestrator"
-        ClusterId: 1
+        Name: TsunAWI
+        Project: "MyProject"
+        ClusterId: 2
         Tasks:
-          - Name: GenericCommandTemplate
-            ClusterNodeTypeId: 1
-            CommandTemplateId: 1
+          - Name: TestTemplate
+            ClusterNodeTypeId: 7
+            CommandTemplateId: 9
             TemplateParameterValues:
-              - CommandParameterIdentifier: userScriptPath
-                ParameterValue: "/mnt/proj3/open-22-3/karolina_complete.sh"
-              - CommandParameterIdentifier: precise
-                ParameterValue: "TRUE"
+              - CommandParameterIdentifier: inputParam
+                ParameterValue: inputParam
             WalltimeLimit: 3600
-            MinCores: 128
-            MaxCores: 128
+            MinCores: 1
+            MaxCores: 1
             Priority: 4
             StandardOutputFile: "stdout"
             StandardErrorFile: "stderr"
             ProgressFile: "stdprog"
             LogFile: "stdlog"
+      required: false
     postprocessing_image_area_of_interest:
       type: string
       description:
       required: false
-      default: "nithador/ithaca_lexis"
+      default: "laurentg/area_of_interest:0.1.0"
     postprocessing_ddi_project_path:
       type: string
       description: Path where to transfer the post-processing results in DDI
@@ -128,72 +126,20 @@ topology_template:
       properties:
         token: {get_input: token}
         project_id: { get_input: project_id }
-
-    # Job gathering info on the input dataset:
-    # - on which locations it is available
-    # - size
-    # - number of files
-    # to take placement decisions on computing resources using this dataset
-    InputDatasetInfoJob:
-      type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
-      properties:
-        token: {get_input: token}
-        dataset_path: {get_input: preprocessing_dataset_path_quakeml_input_data_path}
-
-    # Find the best cloud location depending on the input dataset and needed cloud resources
+    # Find the best cloud location depending on the needed cloud resources
     FindCloudLocationJob:
       type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
       metadata:
         task: dynamic_orchestration
       properties:
-        token: {get_input: token}
+        token: { get_input: token }
         project_id: { get_input: project_id }
       requirements:
-        - InputDataset:
-            type_requirement: input_dataset
-            node: InputDatasetInfoJob
-            capability: org.lexis.common.ddi.capabilities.DatasetInfo
-            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
         - CloudResourceVM:
             type_requirement: cloud_instance
             node: ShakemapVM
             capability: tosca.capabilities.OperatingSystem
             relationship: org.lexis.common.dynamic.orchestration.relationships.CloudResource
-
-    # Transfer the earthquake event dataset to the cloud staging area
-    DDIToCloudTransferJob:
-      type: org.lexis.common.ddi.nodes.DDIToCloudJob
-      properties:
-        token: {get_input: token}
-        decrypt: false
-        uncompress: false
-        ddi_dataset_path: { get_input: preprocessing_dataset_path_quakeml_input_data_path }
-        cloud_staging_area_directory_path: "tsunawi_preprocessing"
-        timestamp_cloud_staging_area_directory: true
-      requirements:
-        - sameSite:
-            type_requirement: os
-            node: ShakemapVM
-            capability: tosca.capabilities.OperatingSystem
-            relationship: org.lexis.common.ddi.relationships.SameSite
-
-    # Transfer the loss calculator dataset to the cloud staging area
-    DDIToCloudLossCalculatorDataTransferJob:
-      type: org.lexis.common.ddi.nodes.DDIToCloudJob
-      properties:
-        token: {get_input: token}
-        decrypt: {get_input: preprocessing_decrypt_dataset_loss_calculator_data}
-        uncompress: {get_input: preprocessing_uncompress_dataset_loss_calculator_data}
-        ddi_dataset_path: { get_input: preprocessing_dataset_path_loss_calculator_data_path }
-        cloud_staging_area_directory_path: "tsunawi_preprocessing"
-        timestamp_cloud_staging_area_directory: true
-      requirements:
-        - sameSite:
-            type_requirement: os
-            node: ShakemapVM
-            capability: tosca.capabilities.OperatingSystem
-            relationship: org.lexis.common.ddi.relationships.SameSite
-
     # Floating IP address network
     PublicNet:
       type: yorc.nodes.openstack.FloatingIP
@@ -259,41 +205,42 @@ topology_template:
         cpu_share: 1.0
         shm_size: "1024 MB"
         volumes: []
+        docker_env_vars:
+          VS30PATH: /data/global_vs30.grd
         published_ports:
           - "8082:8082"
-          - "8000:8000"
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
             node: Docker
             capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
-    # Loss calculator service docker container
-    LossCalculatorService:
-      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
-      metadata:
-        task: preprocessing
+    # Wait for an earthquake event dataset to appear in DDI
+    WaitForDDIDatasetJob:
+      type: org.lexis.common.ddi.nodes.WaitForDDIDatasetJob
       properties:
-        auto_remove: false
-        cleanup: false
-        detach: true
-        image: {get_input: preprocessing_image_loss_calculator_service}
-        keep_volumes: true
-        restart_policy: no
-        cpu_share: 1.0
-        shm_size: "1024 MB"
-        network_mode: "container:ShakemapService-ShakemapService_0"
-        docker_env_vars:
-          SHAKEMAP_HOSTNAME: http://shakemapi:8082
-        volumes:
-          - "/shakemap/data/losscalculator_data:/losscalculator_data"
+        token: { get_input: token }
+        metadata: { get_input: preprocessing_event_dataset_metadata }
+        needed_files_patterns: { get_input: preprocessing_needed_files_patterns_in_dataset }
+    # Transfer the earthwuake event dataset to the cloud staging area
+    DDIToCloudTransferJob:
+      type: org.lexis.common.ddi.nodes.DDIRuntimeFilesToCloudJob
+      properties:
+        token: { get_input: token }
+        file_pattern: { get_input: preprocessing_quakeml_file_pattern }
+        cloud_staging_area_directory_path: "tsunawi"
+        timestamp_cloud_staging_area_directory: true
       requirements:
-        - hostedOnContainerRuntimeDockerHost:
-            type_requirement: host
-            node: Docker
-            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
-            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
-
+        - sameSite:
+            type_requirement: os
+            node: ShakemapVM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
+        - dataset_files:
+            type_requirement: dataset_files
+            node: WaitForDDIDatasetJob
+            capability: org.lexis.common.ddi.capabilities.DatasetFilesProvider
+            relationship: org.lexis.common.ddi.relationships.DatasetFilesProvider
     # Get details on how to access the cloud staging area
     GetDDIAccess:
       type: org.lexis.common.ddi.nodes.DDIAccess
@@ -303,7 +250,7 @@ topology_template:
             node: ShakemapVM
             capability: tosca.capabilities.OperatingSystem
             relationship: org.lexis.common.ddi.relationships.SameSite
-    # Mount the cloud staging area on the VM to access the event dataset
+    # Mount the cloud staging area on the VM to access the dataset
     MountTransferredDataset:
       type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
       properties:
@@ -318,28 +265,6 @@ topology_template:
         - data_transfer:
             type_requirement: data_transfer
             node: DDIToCloudTransferJob
-            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
-            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
-        - hostedOnComputeHost:
-            type_requirement: host
-            node: ShakemapVM
-            capability: tosca.capabilities.Container
-            relationship: tosca.relationships.HostedOn
-    # Mount the cloud staging area on the VM to access the Loss calculatordataset
-    MountLossCalculatorDataset:
-      type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
-      properties:
-        token: { get_input: token }
-        mount_point_directory: "/mnt/cloud_staging_area/tsunawi/losscalculator"
-      requirements:
-        - ddi_access:
-            type_requirement: ddi_access
-            node: GetDDIAccess
-            capability: org.lexis.common.ddi.capabilities.DDIAccess
-            relationship: org.lexis.common.ddi.relationships.DDIAccessProvider
-        - data_transfer:
-            type_requirement: data_transfer
-            node: DDIToCloudLossCalculatorDataTransferJob
             capability: org.lexis.common.ddi.capabilities.DataTransferCloud
             relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
         - hostedOnComputeHost:
@@ -380,44 +305,16 @@ topology_template:
             node: ShakemapVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
-    # Find the loss calculator data files in mounted filesystem
-    FindLossCalculatorDataFiles:
-      type: org.lexis.common.datatransfer.nodes.FindFilesInStagingAreaDirectory
+    # Run the client sending a request to shakemap service
+    Shakemap:
+      type: org.lexis.common.tsunawi.nodes.Shakemap
       properties:
-        shell_patterns:
-          - "losscalculator_data"
-      requirements:
-        - cloud_area_directory_provider:
-            type_requirement: cloud_area_directory_provider
-            node: MountLossCalculatorDataset
-            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
-            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
-        - hostedOnComputeHost:
-            type_requirement: host
-            node: ShakemapVM
-            capability: tosca.capabilities.Container
-            relationship: tosca.relationships.HostedOn
-    MoveLossCalculatorDataFromStagingArea:
-      type: org.lexis.common.datatransfer.nodes.MoveFilesFromProvider
-      properties:
-        destination_directory: "/shakemap/data"
-      requirements:
-        - files_provider:
-            type_requirement: files_provider
-            node: FindLossCalculatorDataFiles
-            capability: org.lexis.common.datatransfer.capabilities.FilesProvider
-            relationship: org.lexis.common.datatransfer.relationships.FilesProvider
-        - hostedOnComputeHost:
-            type_requirement: host
-            node: ShakemapVM
-            capability: tosca.capabilities.Container
-            relationship: tosca.relationships.HostedOn
-    # Run the client sending a request to loss calculator
-    LossComputation:
-      type: org.lexis.common.tsunawi.nodes.LossCalculator
-      properties:
+        shakemap_service_url: "http://localhost:8082/shakemap"
+        gmpe: { get_input: preprocessing_ground_motion_prediction_equation }
+        imt: { get_input: preprocessing_intensity_measure_type }
+        format: { get_input: preprocessing_format }
         quakeml_file_path: "/shakemap/event.quakeml"
-        loss_calculator_result_file_path: "/tsunawi/data/loss-result.gpkg"
+        shakemap_result_file_path: "/shakemap/shakemap_result.json"
       requirements:
         - hostedOnComputeHost:
             type_requirement: host
@@ -425,11 +322,11 @@ topology_template:
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     # Copy shakemap results to staging area
-    StageLossResults:
+    StageShakemapResults:
       type: org.lexis.common.datatransfer.nodes.CopyFilesToStagingAreaDirectory
       properties:
-        source_directory: "/tsunawi/data"
-        source_files: [ "*result.gpkg" ]
+        source_directory: "/shakemap"
+        source_files: [ "*result.json" ]
       requirements:
         - staging_area_directory:
             type_requirement: cloud_area_directory_provider
@@ -442,13 +339,13 @@ topology_template:
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
     # Stage shakemap results from the cloud stagig area to DDI
-    LossResultsCloudToDDIJob:
+    ShakemapResultsCloudToDDIJob:
       type: org.lexis.common.ddi.nodes.CloudToDDIJob
       properties:
-        metadata: {concat: ["{\"creator\": [\"TsunAWI workflow\"], \"contributor\": [\"TsunAWI workflow\"], \"publisher\": [\"TsunAWI workflow\"], \"resourceType\": \"Dataset\", \"title\": \"Loss computation results - ", get_input: postprocessing_title_for_result_datasets, "\"}"]}
+        metadata: {concat: ["{\"creator\": [\"TsunAWI workflow\"], \"contributor\": [\"TsunAWI workflow\"], \"publisher\": [\"TsunAWI workflow\"], \"resourceType\": \"Dataset\", \"title\": \"Shakemap results - ", get_input: postprocessing_title_for_result_datasets, "\"}"]}
         token: { get_input: token }
         ddi_path: { get_input: postprocessing_ddi_project_path }
-        source_file_name: "loss-result.gpkg"
+        source_file_name: "shakemap_result.json"
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
@@ -464,11 +361,6 @@ topology_template:
         token: {get_input: token}
         project_id: { get_input: project_id }
       requirements:
-        - InputDataset:
-            type_requirement: input_dataset
-            node: InputDatasetInfoJob
-            capability: org.lexis.common.ddi.capabilities.DatasetInfo
-            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
         - HPCResourceHPCJob:
             type_requirement: heappe_job
             node: TsunAWIJob1
@@ -513,48 +405,49 @@ topology_template:
             node: TsunAWIJob2
             capability: org.lexis.common.heappe.capabilities.HeappeJob
             relationship: org.lexis.common.heappe.relationships.DependsOnJob
-    # Transfer the input dataset to the job task input directory
+    # Transfer the DDI input dataset to the job task input directory
     DDIToHPCTaskJob1:
-      type: org.lexis.common.ddi.nodes.DDIToHPCTaskJob
-      metadata:
-        task: preprocessing
+      type: org.lexis.common.ddi.nodes.DDIRuntimeFilesToHPCTaskJob
       properties:
         token: { get_input: token }
-        decrypt: false
-        uncompress: false
-        ddi_dataset_path: { get_input: preprocessing_dataset_path_quakeml_input_data_path }
-        task_name: { get_input: computation_heappe_command_template_name }
+        task_name: TestTemplate
+        file_pattern: ".*.quakeml"
       requirements:
         - job:
             type_requirement: job
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
             node: TsunAWIJob1
-            capability: org.lexis.common.heappe.capabilities.HeappeJob
             relationship: org.lexis.common.heappe.relationships.SendInputsToJob
+        - dataset_files:
+            type_requirement: dataset_files
+            node: WaitForDDIDatasetJob
+            capability: org.lexis.common.ddi.capabilities.DatasetFilesProvider
+            relationship: org.lexis.common.ddi.relationships.DatasetFilesProvider
     DDIToHPCTaskJob2:
-      type: org.lexis.common.ddi.nodes.DDIToHPCTaskJob
-      metadata:
-        task: preprocessing
+      type: org.lexis.common.ddi.nodes.DDIRuntimeFilesToHPCTaskJob
       properties:
         token: { get_input: token }
-        decrypt: false
-        uncompress: false
-        ddi_dataset_path: { get_input: preprocessing_dataset_path_quakeml_input_data_path }
-        task_name: { get_input: computation_heappe_command_template_name }
+        task_name: TestTemplate
+        file_pattern: ".*.quakeml"
       requirements:
         - job:
             type_requirement: job
-            node: TsunAWIJob2
             capability: org.lexis.common.heappe.capabilities.HeappeJob
+            node: TsunAWIJob2
             relationship: org.lexis.common.heappe.relationships.SendInputsToJob
+        - dataset_files:
+            type_requirement: dataset_files
+            node: WaitForDDIDatasetJob
+            capability: org.lexis.common.ddi.capabilities.DatasetFilesProvider
+            relationship: org.lexis.common.ddi.relationships.DatasetFilesProvider
     # Transfer HPC job results to the cloud staging area
     HPCToCloudTsunAWIJob:
       type: org.lexis.common.ddi.nodes.HPCToCloudJob
       properties:
         token: { get_input: token }
-        task_name: { get_input: computation_heappe_command_template_name }
+        task_name: "TestTemplate"
         cloud_staging_area_directory_path: "tsunawi_results"
         timestamp_cloud_staging_area_directory: true
-        source_subdirectory: { get_input: computation_hpc_subdirectory_to_stage }
       requirements:
         - sameSite:
             type_requirement: os
@@ -577,8 +470,7 @@ topology_template:
         encrypt: false
         compress: false
         ddi_path: { get_input: postprocessing_ddi_project_path }
-        task_name: { get_input: computation_heappe_command_template_name }
-        source_subdirectory: { get_input: computation_hpc_subdirectory_to_stage }
+        task_name: "TestTemplate"
       requirements:
         - job:
             type_requirement: job
@@ -611,7 +503,10 @@ topology_template:
       type: org.lexis.common.datatransfer.nodes.FindFilesInStagingAreaDirectory
       properties:
         shell_patterns:
-          - "*.tiff"
+          - "stdout*"
+        #TODO: uncomment
+        #shell_patterns:
+        #  - "*.nc"
       requirements:
         - cloud_area_directory_provider:
             type_requirement: cloud_area_directory_provider
@@ -638,17 +533,6 @@ topology_template:
             node: ShakemapVM
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
-    CreatePostProcessDirs:
-      type: org.lexis.common.datatransfer.nodes.CreateDirectories
-      properties:
-        directories:
-          - "/tsunawi/results"
-      requirements:
-        - hostedOnVirtualMachineHost:
-            type_requirement: host
-            node: ShakemapVM
-            capability: tosca.capabilities.Container
-            relationship: tosca.relationships.HostedOn
     # Container computing area of interest from TsunAWI and shakemap results
     AreaOfInterest:
       type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
@@ -657,13 +541,13 @@ topology_template:
       properties:
         auto_remove: false
         cleanup: false
-        detach: false
+        detach: true
         image: {get_input: postprocessing_image_area_of_interest}
         keep_volumes: true
         restart_policy: no
         cpu_share: 1.0
         shm_size: "1024 MB"
-        volumes: ["/tsunawi/data:/external/input_data","/tsunawi/results:/external/output"]
+        volumes: ["/tsunawi/:/export/"]
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
@@ -690,7 +574,7 @@ topology_template:
     MoveAreaOfInterestResults:
       type: org.lexis.common.datatransfer.nodes.MoveToStagingAreaDirectory
       properties:
-        source_directory: "/tsunawi/results"
+        source_directory: "/tsunawi/"
       requirements:
         - staging_area_directory:
             type_requirement: cloud_area_directory_provider
@@ -728,16 +612,6 @@ topology_template:
             node: DDIToCloudTransferJob
             capability: org.lexis.common.ddi.capabilities.DataTransferCloud
             relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
-    DeleteCloudLossCalculationDataJob:
-      type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
-      properties:
-        token: { get_input: token }
-      requirements:
-        - cloud_area_dataset_provider:
-            type_requirement: cloud_area_dataset_provider
-            node: DDIToCloudLossCalculatorDataTransferJob
-            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
-            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
     DeleteCloudTsunawiDataJob:
       type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
       properties:
@@ -751,7 +625,7 @@ topology_template:
   outputs:
     dataset_shakemap_results:
       description: DDI path to Shakemap results
-      value: { get_attribute: [ LossResultsCloudToDDIJob, destination_path ] }
+      value: { get_attribute: [ ShakemapResultsCloudToDDIJob, destination_path ] }
     dataset_tsunawi_results:
       description: DDI path to TsunAWI results
       value: { get_attribute: [ HPCToDDIJob, destination_path ] }
@@ -790,26 +664,6 @@ topology_template:
             - DeleteCloudEventDataJob_submit
         DeleteCloudEventDataJob_submit:
           target: DeleteCloudEventDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DeleteCloudLossCalculationDataJob_create
-        DeleteCloudLossCalculationDataJob_create:
-          target: DeleteCloudLossCalculationDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DeleteCloudLossCalculationDataJob_created
-        DeleteCloudLossCalculationDataJob_created:
-          target: DeleteCloudLossCalculationDataJob
-          activities:
-            - set_state: created
-          on_success:
-            - DeleteCloudLossCalculationDataJob_submit
-        DeleteCloudLossCalculationDataJob_submit:
-          target: DeleteCloudLossCalculationDataJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
@@ -898,49 +752,6 @@ topology_template:
             - delegate: uninstall
     Run:
       steps:
-        # Submit DDI job to get info on dataset (DDI location where it is available, size...)
-        InputDatasetInfoJob_submit:
-          target: InputDatasetInfoJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - InputDatasetInfoJob_run
-        InputDatasetInfoJob_run:
-          target: InputDatasetInfoJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - InputDatasetInfoJob_executed
-        InputDatasetInfoJob_executed:
-          target: InputDatasetInfoJob
-          activities:
-            - set_state: executed
-          on_success:
-            - FindHPCLocationJob_submit
-        # Submit the computation to find the best HPC location for these inputs
-        FindHPCLocationJob_submit:
-          target: FindHPCLocationJob
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - FindHPCLocationJob_run
-            - FindCloudLocationJob_submit
-        FindHPCLocationJob_run:
-          target: FindHPCLocationJob
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - FindHPCLocationJob_executed
-        FindHPCLocationJob_executed:
-          target: FindHPCLocationJob
-          activities:
-            - set_state: executed
-          on_success:
-            - TsunAWIJob1_create
-            - TsunAWIJob2_create
-        # Submit the computation to find the best Cloud location for these inputs
         FindCloudLocationJob_submit:
           target: FindCloudLocationJob
           activities:
@@ -959,7 +770,6 @@ topology_template:
             - set_state: executed
           on_success:
             - Network_install
-            - DDIToCloudTransferJob_create
         Network_install:
           target: PublicNet
           activities:
@@ -1003,7 +813,6 @@ topology_template:
             - call_operation: Standard.create
           on_success:
             - ShakemapService_start
-            - MountTransferredDataset_create
         ShakemapService_start:
           target: ShakemapService
           activities:
@@ -1015,19 +824,61 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - LossCalculatorService_start
-        LossCalculatorService_start:
-          target: LossCalculatorService
+            - Shakemap_start
+            - WaitForDDIDatasetJob_create
+        WaitForDDIDatasetJob_create:
+          target: WaitForDDIDatasetJob
+          operation_host: ORCHESTRATOR
           activities:
-            - call_operation: Standard.start
+            - call_operation: Standard.create
           on_success:
-            - LossCalculatorService_started
-        LossCalculatorService_started:
-          target: LossCalculatorService
+            - WaitForDDIDatasetJob_submit
+        WaitForDDIDatasetJob_submit:
+          target: WaitForDDIDatasetJob
+          operation_host: ORCHESTRATOR
           activities:
-            - set_state: started
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
-            - LossComputation_start
+            - WaitForDDIDatasetJob_submitted
+        WaitForDDIDatasetJob_submitted:
+          target: WaitForDDIDatasetJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - WaitForDDIDatasetJob_run
+        WaitForDDIDatasetJob_run:
+          target: WaitForDDIDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - WaitForDDIDatasetJob_executed
+        WaitForDDIDatasetJob_executed:
+          target: WaitForDDIDatasetJob
+          activities:
+            - set_state: executed
+          on_success:
+            - DDIToCloudTransferJob_create
+            - FindHPCLocationJob_submit
+        FindHPCLocationJob_submit:
+          target: FindHPCLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindHPCLocationJob_run
+        FindHPCLocationJob_run:
+          target: FindHPCLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindHPCLocationJob_executed
+        FindHPCLocationJob_executed:
+          target: FindHPCLocationJob
+          activities:
+            - set_state: executed
+          on_success:
+            - TsunAWIJob1_create
+            - TsunAWIJob2_create
         DDIToCloudTransferJob_create:
           target: DDIToCloudTransferJob
           operation_host: ORCHESTRATOR
@@ -1042,7 +893,6 @@ topology_template:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
             - DDIToCloudTransferJob_submitted
-            - DDIToCloudLossCalculatorDataTransferJob_create
         DDIToCloudTransferJob_submitted:
           target: DDIToCloudTransferJob
           activities:
@@ -1062,39 +912,6 @@ topology_template:
             - set_state: executed
           on_success:
             - MountTransferredDataset_create
-        DDIToCloudLossCalculatorDataTransferJob_create:
-          target: DDIToCloudLossCalculatorDataTransferJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DDIToCloudLossCalculatorDataTransferJob_submit
-        DDIToCloudLossCalculatorDataTransferJob_submit:
-          target: DDIToCloudLossCalculatorDataTransferJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DDIToCloudLossCalculatorDataTransferJob_submitted
-        DDIToCloudLossCalculatorDataTransferJob_submitted:
-          target: DDIToCloudLossCalculatorDataTransferJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DDIToCloudLossCalculatorDataTransferJob_run
-        DDIToCloudLossCalculatorDataTransferJob_run:
-          target: DDIToCloudLossCalculatorDataTransferJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DDIToCloudLossCalculatorDataTransferJob_executed
-        DDIToCloudLossCalculatorDataTransferJob_executed:
-          target: DDIToCloudLossCalculatorDataTransferJob
-          activities:
-            - set_state: executed
-          on_success:
-            - MountLossCalculatorDataset_create
         GetDDIAccess_start:
           target: GetDDIAccess
           activities:
@@ -1137,7 +954,6 @@ topology_template:
             - set_state: started
           on_success:
             - FindQuakemlFile_start
-            - MountLossCalculatorDataset_create
         FindQuakemlFile_start:
           target: FindQuakemlFile
           activities:
@@ -1161,116 +977,60 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - LossComputation_start
-        MountLossCalculatorDataset_create:
-          target: MountLossCalculatorDataset
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - MountLossCalculatorDataset_created
-        MountLossCalculatorDataset_created:
-          target: MountLossCalculatorDataset
-          activities:
-            - set_state: created
-          on_success:
-            - MountLossCalculatorDataset_refresh_token
-        MountLossCalculatorDataset_refresh_token:
-          target: MountLossCalculatorDataset
-          activities:
-            - call_operation: custom.refresh_token
-          on_success:
-            - MountLossCalculatorDataset_start
-        MountLossCalculatorDataset_start:
-          target: MountLossCalculatorDataset
+            - Shakemap_start
+        Shakemap_start:
+          target: Shakemap
           activities:
             - call_operation: Standard.start
           on_success:
-            - MountLossCalculatorDataset_started
-        MountLossCalculatorDataset_started:
-          target: MountLossCalculatorDataset
+            - Shakemap_started
+        Shakemap_started:
+          target: Shakemap
           activities:
             - set_state: started
           on_success:
-            - MountTsunAWIResultDataset_refresh_token
-            - FindLossCalculatorDataFiles_start
-        FindLossCalculatorDataFiles_start:
-          target: FindLossCalculatorDataFiles
+            - StageShakemapResults_start
+        StageShakemapResults_start:
+          target: StageShakemapResults
           activities:
             - call_operation: Standard.start
           on_success:
-            - FindLossCalculatorDataFiles_started
-        FindLossCalculatorDataFiles_started:
-          target: FindLossCalculatorDataFiles
+            - StageShakemapResults_started
+        StageShakemapResults_started:
+          target: StageShakemapResults
           activities:
             - set_state: started
           on_success:
-            - MoveLossCalculatorDataFromStagingArea_start
-        MoveLossCalculatorDataFromStagingArea_start:
-          target: MoveLossCalculatorDataFromStagingArea
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - MoveLossCalculatorDataFromStagingArea_started
-        MoveLossCalculatorDataFromStagingArea_started:
-          target: MoveLossCalculatorDataFromStagingArea
-          activities:
-            - set_state: started
-          on_success:
-            - LossCalculatorService_start
-        LossComputation_start:
-          target: LossComputation
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - LossComputation_started
-        LossComputation_started:
-          target: LossComputation
-          activities:
-            - set_state: started
-          on_success:
-            - AreaOfInterest_create
-            - StageLossResults_start
-        StageLossResults_start:
-          target: StageLossResults
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - StageLossResults_started
-        StageLossResults_started:
-          target: StageLossResults
-          activities:
-            - set_state: started
-          on_success:
-            - LossResultsCloudToDDIJob_create
-        LossResultsCloudToDDIJob_create:
-          target: LossResultsCloudToDDIJob
+            - ShakemapResultsCloudToDDIJob_create
+        ShakemapResultsCloudToDDIJob_create:
+          target: ShakemapResultsCloudToDDIJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.create
           on_success:
-            - LossResultsCloudToDDIJob_submit
-        LossResultsCloudToDDIJob_submit:
-          target: LossResultsCloudToDDIJob
+            - ShakemapResultsCloudToDDIJob_submit
+        ShakemapResultsCloudToDDIJob_submit:
+          target: ShakemapResultsCloudToDDIJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
           on_success:
-            - LossResultsCloudToDDIJob_submitted
-        LossResultsCloudToDDIJob_submitted:
-          target: LossResultsCloudToDDIJob
+            - ShakemapResultsCloudToDDIJob_submitted
+        ShakemapResultsCloudToDDIJob_submitted:
+          target: ShakemapResultsCloudToDDIJob
           activities:
             - set_state: submitted
           on_success:
-            - LossResultsCloudToDDIJob_run
-        LossResultsCloudToDDIJob_run:
-          target: LossResultsCloudToDDIJob
+            - ShakemapResultsCloudToDDIJob_run
+        ShakemapResultsCloudToDDIJob_run:
+          target: ShakemapResultsCloudToDDIJob
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
           on_success:
-            - LossResultsCloudToDDIJob_executed
-        LossResultsCloudToDDIJob_executed:
-          target: LossResultsCloudToDDIJob
+            - ShakemapResultsCloudToDDIJob_executed
+        ShakemapResultsCloudToDDIJob_executed:
+          target: ShakemapResultsCloudToDDIJob
           activities:
             - set_state: executed
           on_success:
@@ -1562,18 +1322,6 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - CreatePostProcessDirs_start
-        CreatePostProcessDirs_start:
-          target: CreatePostProcessDirs
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CreatePostProcessDirs_started
-        CreatePostProcessDirs_started:
-          target: CreatePostProcessDirs
-          activities:
-            - set_state: started
-          on_success:
             - AreaOfInterest_create
         AreaOfInterest_create:
           target: AreaOfInterest
@@ -1667,24 +1415,6 @@ topology_template:
           activities:
             - set_state: stopped
           on_success:
-            - MountLossCalculatorDataset_refresh_token_for_stop
-        MountLossCalculatorDataset_refresh_token_for_stop:
-          target: MountLossCalculatorDataset
-          activities:
-            - call_operation: custom.refresh_token
-          on_success:
-            - MountLossCalculatorDataset_stop
-        MountLossCalculatorDataset_stop:
-          target: MountLossCalculatorDataset
-          activities:
-            - call_operation: Standard.stop
-          on_success:
-            - MountLossCalculatorDataset_stopped
-        MountLossCalculatorDataset_stopped:
-          target: MountLossCalculatorDataset
-          activities:
-            - set_state: stopped
-          on_success:
             - MountTsunAWIResultDataset_refresh_token_for_stop
         MountTsunAWIResultDataset_refresh_token_for_stop:
           target: MountTsunAWIResultDataset
@@ -1739,45 +1469,6 @@ topology_template:
             - DeleteCloudEventDataJob_executed
         DeleteCloudEventDataJob_executed:
           target: DeleteCloudEventDataJob
-          activities:
-            - set_state: executed
-          on_success:
-            - DeleteCloudLossCalculationDataJob_create
-        DeleteCloudLossCalculationDataJob_create:
-          target: DeleteCloudLossCalculationDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DeleteCloudLossCalculationDataJob_created
-        DeleteCloudLossCalculationDataJob_created:
-          target: DeleteCloudLossCalculationDataJob
-          activities:
-            - set_state: created
-          on_success:
-            - DeleteCloudLossCalculationDataJob_submit
-        DeleteCloudLossCalculationDataJob_submit:
-          target: DeleteCloudLossCalculationDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DeleteCloudLossCalculationDataJob_submitted
-        DeleteCloudLossCalculationDataJob_submitted:
-          target: DeleteCloudLossCalculationDataJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - DeleteCloudLossCalculationDataJob_run
-        DeleteCloudLossCalculationDataJob_run:
-          target: DeleteCloudLossCalculationDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DeleteCloudLossCalculationDataJob_executed
-        DeleteCloudLossCalculationDataJob_executed:
-          target: DeleteCloudLossCalculationDataJob
           activities:
             - set_state: executed
           on_success:
@@ -1883,3 +1574,15 @@ topology_template:
           target: PublicNet
           activities:
             - delegate: uninstall
+    testShakemap:
+      steps:
+        Shakemap_start:
+          target: Shakemap
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Shakemap_started
+        Shakemap_started:
+          target: Shakemap
+          activities:
+            - set_state: started

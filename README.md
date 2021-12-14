@@ -23,6 +23,12 @@ Repository of TOSCA components and Application Templates.
     * the transfer of a input dataset from DDI
     * a computation done by a Docker Container using these inputs
     * the transfer of result files produced by this container to DDI
+  * [Cloud Computation running a private Docker container archive in DDI](examples/applications/cloudComputationPrivateContainer/) performing:
+    * the transfer of a input dataset from DDI
+    * the transfer of a docker image archive from DDI
+    * the docker load of this archive
+    * a computation done by a Docker Container using these inputs
+    * the transfer of result files produced by this container to DDI
   * [Cloud Computation running a user-defined script](examples/applications/cloudComputation/) performing:
     * the transfer of a input dataset from DDI
     * a computation done by a user-defined script
