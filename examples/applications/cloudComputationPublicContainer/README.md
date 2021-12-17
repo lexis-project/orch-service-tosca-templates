@@ -36,6 +36,7 @@ The template expects the following input properties (mandatory inputs in **bold*
     * `INPUT_DIR: "/input_dataset"`
     * `RESULT_DIR: "/output"`
     * `RESULT_FILE_NAME: "computation_result.txt"`
+* computation_container_published_ports: List of ports to publish from the container to the host. Use docker CLI syntax: 8000, 9000:8000, or 0.0.0.0:9000:8000, where 8000 is a container port, 9000 is a host port, and 0.0.0.0 is a host interface.
 * computation_container_volumes: List of volumes to mount within the computation container (Use docker CLI-style syntax: /host:/container[:mode])
   * default:
     * `/mnt/lexis_input:/input_dataset`
