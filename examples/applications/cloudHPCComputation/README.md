@@ -109,6 +109,7 @@ The template expects the following input properties (mandatory inputs in **bold*
     * INPUT_DIR: "/input_dataset"
     * RESULT_DIR: "/output"
     * RESULT_FILE_NAME: "preprocessing_result.txt"
+* preprocessing_container_published_ports: List of ports to publish from the container to the host. Use docker CLI syntax: 8000, 9000:8000, or 0.0.0.0:9000:8000, where 8000 is a container port, 9000 is a host port, and 0.0.0.0 is a host interface.
 * preprocessing_container_volumes: List of volumes to mount within the preprocessing container. Use docker CLI-style syntax: /host:/container[:mode]
   * default:
     * "/mnt/lexis_test:/input_dataset"
@@ -154,6 +155,7 @@ The template expects the following input properties (mandatory inputs in **bold*
     * `INPUT_DIR: "/input_dataset"`
     * `RESULT_DIR: "/output"`
     * `RESULT_FILE_NAME: "postprocessing_result.txt"`
+* postprocessing_container_published_ports: List of ports to publish from the container to the host. Use docker CLI syntax: 8000, 9000:8000, or 0.0.0.0:9000:8000, where 8000 is a container port, 9000 is a host port, and 0.0.0.0 is a host interface.
 * postprocessing_container_volumes: List of volumes to mount within the postprocessing container. Use docker CLI-style syntax: /host:/container[:mode]
   * default:
     * `/input_computation_results:/input_dataset`

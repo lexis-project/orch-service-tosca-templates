@@ -86,6 +86,14 @@ topology_template:
         RESULT_DIR: "/output"
         RESULT_FILE_NAME: "preprocessing_result.txt"
       required: false
+    preprocessing_container_published_ports:
+      type: list
+      entry_schema:
+        type: string
+      description: >
+        List of ports to publish from the container to the host.
+        Use docker CLI syntax: 8000, 9000:8000, or 0.0.0.0:9000:8000, where 8000 is a container port, 9000 is a host port, and 0.0.0.0 is a host interface.
+      required: false
     preprocessing_container_volumes:
       type: list
       entry_schema:
@@ -167,6 +175,14 @@ topology_template:
       default:
         - "/input_computation_results:/input_dataset"
         - "/output_postprocessing:/output"
+      required: false
+    postprocessing_container_published_ports:
+      type: list
+      entry_schema:
+        type: string
+      description: >
+        List of ports to publish from the container to the host.
+        Use docker CLI syntax: 8000, 9000:8000, or 0.0.0.0:9000:8000, where 8000 is a container port, 9000 is a host port, and 0.0.0.0 is a host interface.
       required: false
     postprocessing_input_directory:
       type: string
@@ -378,6 +394,7 @@ topology_template:
         cpu_share: 1.0
         volumes: {get_input: preprocessing_container_volumes}
         docker_env_vars: {get_input: preprocessing_container_env_vars}
+        published_ports: {get_input: preprocessing_container_published_ports}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
@@ -576,6 +593,7 @@ topology_template:
         cpu_share: 1.0
         volumes: {get_input: postprocessing_container_volumes}
         docker_env_vars: {get_input: postprocessing_container_env_vars}
+        published_ports: {get_input: postprocessing_container_published_ports}
       requirements:
         - hostedOnContainerRuntimeDockerHost:
             type_requirement: host
