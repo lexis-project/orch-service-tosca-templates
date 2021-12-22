@@ -43,7 +43,7 @@ The template expects the following input properties (mandatory inputs in **bold*
     * `INPUT_DIR: "/input_dataset"`
     * `RESULT_DIR: "/output"`
     * `RESULT_FILE_NAME: "computation_result.txt"`
-* computation_container_published_ports:List of ports to publish from the container to the host. Use docker CLI syntax: 8000, 9000:8000, or 0.0.0.0:9000:8000, where 8000 is a container port, 9000 is a host port, and 0.0.0.0 is a host interface.
+* computation_container_published_ports: List of ports to publish from the container to the host. Use docker CLI syntax: 8000, 9000:8000, or 0.0.0.0:9000:8000, where 8000 is a container port, 9000 is a host port, and 0.0.0.0 is a host interface.
 * computation_output_directory: Computation output directory
   * default: `/lexis/output`
 * computation_metadata_dataset_result: Metadata for the computation results dataset to create in DDI
