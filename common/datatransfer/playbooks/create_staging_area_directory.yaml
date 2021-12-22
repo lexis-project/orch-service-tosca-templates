@@ -25,9 +25,18 @@
     - name: Get staging area destination directory
       set_fact:
         STAGING_AREA_DIRECTORY: "{{ current_staging_area_directory }}/{{ NEW_STAGING_AREA_DIRECTORY }}"
-    - name: Get mounted directory directory
+    - name: Get mounted directory
       set_fact:
         current_mounted_directory: "{{ mounted_directory_absolute_path | regex_replace('\\/$', '') | trim}}"
+    - name: Get mount point details
+      stat:
+        path: "{{ current_mounted_directory }}"
+      register: statmount
+    - name: Use dir name if mount point is a file
+      set_fact:
+        current_mounted_directory: "{{ current_mounted_directory | dirname }}"
+        STAGING_AREA_DIRECTORY: "{{ current_staging_area_directory | dirname }}/{{ NEW_STAGING_AREA_DIRECTORY }}"
+      when:  statmount.stat.isdir is defined and not statmount.stat.isdir
     - name: Get destination directory absolute path
       set_fact:
         DIRECTORY_ABSOLUTE_PATH: "{{ current_mounted_directory }}/{{ NEW_STAGING_AREA_DIRECTORY }}"
