@@ -38,3 +38,10 @@ Repository of TOSCA components and Application Templates.
     * the transfer of a input dataset from DDI to this HEAppE job
     * the submission and monitoring of this HEAppE job until it ends
     * the transfer of result files produced by this HEAppE job to DDI
+  * [Service provided by a public Docker container on a Cloud instance](examples/applications/cloudServicePublicContainer/) performing:
+    * the transfer of a input dataset from DDI
+    * running in detached mode a Docker container, until the user decides to delete the workflow execution
+  * [Service provided by a private Docker container archive in DDI](examples/applications/cloudServicePrivateContainer/) performing:
+    * the transfer of a input dataset from DDI
+    * the transfer of a docker image archive from DDI
+    * running in detached mode the Docker container using this image, until the user decides to delete the workflow execution
