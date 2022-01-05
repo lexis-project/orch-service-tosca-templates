@@ -1,4 +1,4 @@
-# Template of a Cloud Computation using a private Docker container
+# Template of a service provided by a private Docker container on a Cloud instance
 
 Template of a LEXIS workflow allowing to transfer a dataset from DDI to a Cloud
 Compute instance on which a on which a service will be launched by a Docker container created from a private image archive stored in DDI:
