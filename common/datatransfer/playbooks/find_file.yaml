@@ -5,9 +5,20 @@
   become_user: "{{ user_name }}"
   become_method: sudo
   tasks:
+    - name: Get input
+      set_fact:
+        input_directory: "{{ directory }}"
+    - name: Get input details
+      stat:
+        path: "{{ input_directory }}"
+      register: statinput
+    - name: Use dir name if input is a file
+      set_fact:
+        input_directory: "{{ input_directory | dirname }}"
+      when:  statinput.stat.isdir is defined and not statinput.stat.isdir
     - name: Find files
       find:
-        paths: "{{directory}}"
+        paths: "{{input_directory}}"
         patterns: "{{patterns | from_json |join(',') }}"
         file_type: any
         recurse: true

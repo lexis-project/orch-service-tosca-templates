@@ -2,7 +2,7 @@ tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
   template_name: org.lexis.common.datatransfer
-  template_version: 0.1.6-SNAPSHOT
+  template_version: 0.1.7-SNAPSHOT
   template_author: lexis
 
 description: Data transfer types
