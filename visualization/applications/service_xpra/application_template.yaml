@@ -1,0 +1,471 @@
+tosca_definitions_version: alien_dsl_3_0_0
+
+metadata:
+  template_name: org.lexis.common.ServiceVisualizationTemplate
+  template_version: 0.1.0-SNAPSHOT
+  template_author: lexis
+
+description: "Visualization Service available until the user deletes the workflow execution"
+
+imports:
+  - yorc-types:1.1.0
+  - yorc-openstack-types:3.1.0
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien-base-types:3.0.0
+  - org.lexis.common.ddi-types:1.0.3
+  - org.lexis.common.dynamic-orchestration-types:1.0.3
+  - org.lexis.common.datatransfer:0.1.7-SNAPSHOT
+  - org.lexis.common.visualization.xpra:0.1.1
+
+topology_template:
+  inputs:
+    token:
+      type: string
+      description: "OpenID Connect token"
+      required: true
+    project_id:
+      type: string
+      description: "LEXIS project identifier"
+      required: true
+    visualization_dataset_path_input_path:
+      type: string
+      description: Dataset path in DDI containing visualization data
+      required: true
+    visualization_decrypt_input:
+      type: boolean
+      description: Should the input dataset be decrypted
+      default: false
+      required: false
+    visualization_uncompress_input:
+      type: boolean
+      description: Should the input dataset be uncompressed
+      default: false
+      required: false
+    visualization_directory:
+      type: string
+      description: Directory where visualization data will be accesible on a cloud instance
+      default: "visualization"
+      required: false
+    visualization_port:
+      type: integer
+      description: "Port to use to expose the remote display (should be > 1024)"
+      default: 8080
+      required: false
+  node_templates:
+    # Validation of the token provided in input
+    # Exchanging this token to have an access and refresh tokens
+    # for any component needing it in the workflow
+    ValidateExchangeToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.ValidateAndExchangeToken
+      properties:
+        token: {get_input: token}
+        project_id: { get_input: project_id }
+
+    # Job gathering info on the input dataset:
+    # - on which locations it is available
+    # - size
+    # - number of files
+    # to take placement decisions on computing resources using this dataset
+    InputDatasetInfoJob:
+      type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
+      properties:
+        token: {get_input: token}
+        dataset_path: {get_input: visualization_dataset_path_input_path}
+
+    # Find the best cloud location depending on the input dataset and needed cloud resources
+    FindCloudLocationJob:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
+      properties:
+        token: { get_input: token }
+        project_id: { get_input: project_id }
+      requirements:
+        - InputDataset:
+            type_requirement: input_dataset
+            node: InputDatasetInfoJob
+            capability: org.lexis.common.ddi.capabilities.DatasetInfo
+            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
+        - CloudResourceVM:
+            type_requirement: cloud_instance
+            node: VisualizationVM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.dynamic.orchestration.relationships.CloudResource
+
+    # Floating IP address to allocate
+    PublicNet:
+      type: yorc.nodes.openstack.FloatingIP
+
+    # Compute instance to allocate
+    VisualizationVM:
+      type: tosca.nodes.Compute
+      requirements:
+        - networkPublicNetConnection:
+            type_requirement: network
+            node: PublicNet
+            capability: yorc.capabilities.openstack.FIPConnectivity
+            relationship: tosca.relationships.Network
+      capabilities:
+        host:
+          properties:
+            num_cpus: 4
+            disk_size: "40 GB"
+        os:
+          properties:
+            type: linux
+            # Using ubuntu for the paraview install
+            distribution: ubuntu
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        endpoint:
+          properties:
+            secure: true
+            protocol: tcp
+            network_name: PRIVATE
+            initiator: source
+
+    # At the end of the workflow, the Cloud instance token should be refreshed
+    # before attempting to uninstall the compute instance
+    RefreshVMToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.RefreshTargetTokens
+      requirements:
+        - target:
+            type_requirement: target
+            node: VisualizationVM
+            capability: tosca.capabilities.Node
+            relationship: tosca.relationships.DependsOn
+
+    # Transfer the dataset from DDI to Cloud staging area
+    DDIToCloudDatasetJob:
+      type: org.lexis.common.ddi.nodes.DDIToCloudJob
+      properties:
+        token: { get_input: token }
+        decrypt: {get_input: visualization_decrypt_input}
+        uncompress: {get_input: visualization_uncompress_input}
+        ddi_dataset_path: { get_input: visualization_dataset_path_input_path }
+        cloud_staging_area_directory_path: "visualization"
+        timestamp_cloud_staging_area_directory: true
+      requirements:
+        - sameSite:
+            type_requirement: os
+            node: VisualizationVM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
+
+    # Get access details to the cloud staging area
+    GetDDIAccess:
+      type: org.lexis.common.ddi.nodes.DDIAccess
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: os
+            node: VisualizationVM
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
+
+    # Mount the cloud staging area directory on the Compute instance
+    MountDataset:
+      type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
+      properties:
+        token: { get_input: token }
+        mount_point_directory: "/mnt/visualization"
+      requirements:
+        - ddi_access:
+            type_requirement: ddi_access
+            node: GetDDIAccess
+            capability: org.lexis.common.ddi.capabilities.DDIAccess
+            relationship: org.lexis.common.ddi.relationships.DDIAccessProvider
+        - data_transfer:
+            type_requirement: data_transfer
+            node: DDIToCloudDatasetJob
+            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: VisualizationVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    
+    # Create a directory where to store visualization data accessible to the user
+    CreateVisualizationDir:
+      type: org.lexis.common.datatransfer.nodes.CreateDirectories
+      properties:
+        directories: {concat: ["[\"", get_input: visualization_directory, "\"]"]}
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: VisualizationVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+    # Move results from the mount point as it is accessible to root only
+    MoveVisualizationData:
+      type: org.lexis.common.datatransfer.nodes.MoveFile
+      properties:
+        source_file:  "/mnt/visualization/*/*"
+        destination: {get_input: visualization_directory}
+        as_user: "root"
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: VisualizationVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+    # Component running the remote visualization
+    XpraService:
+      metadata:
+        task: visualization
+      type: org.lexis.common.visualization.xpra.nodes.Xpra
+      properties:
+        port: { get_input: visualization_port }
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: VisualizationVM
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    DeleteCloudDataJob:
+      type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - cloud_area_dataset_provider:
+            type_requirement: cloud_area_dataset_provider
+            node: DDIToCloudDatasetJob
+            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
+  outputs:
+    visualization_url:
+      description: URL of the remote visualization session
+      value: { get_attribute: [ XpraService, url ] }
+  workflows:
+    # At deployment time, validating the input token and exchanging it
+    # to get an access/refresh token for the orchestrator
+    install:
+      steps:
+        ValidateExchangeToken_start:
+          target: ValidateExchangeToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ValidateExchangeToken_started
+        ValidateExchangeToken_started:
+          target: ValidateExchangeToken
+          activities:
+            - set_state: started
+    
+    # Run workflow called by LEXIS Portal
+    Run:
+      steps:
+        # Submit DDI job to get info on dataset (DDI location where it is available, size...)
+        InputDatasetInfoJob_submit:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - InputDatasetInfoJob_run
+        InputDatasetInfoJob_run:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - InputDatasetInfoJob_executed
+        InputDatasetInfoJob_executed:
+          target: InputDatasetInfoJob
+          activities:
+            - set_state: executed
+          on_success:
+            - FindCloudLocationJob_submit
+        # Submit the computation to find the best location from these inputs
+        FindCloudLocationJob_submit:
+          target: FindCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindCloudLocationJob_run
+        FindCloudLocationJob_run:
+          target: FindCloudLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindCloudLocationJob_executed
+        FindCloudLocationJob_executed:
+          target: FindCloudLocationJob
+          activities:
+            - set_state: executed
+          on_success:
+            - DDIToCloudDatasetJob_create
+            - PublicNet_install
+        # Transfer the dataset from DDI to the Cloud staging area
+        DDIToCloudDatasetJob_create:
+          target: DDIToCloudDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToCloudDatasetJob_submit
+        DDIToCloudDatasetJob_submit:
+          target: DDIToCloudDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToCloudDatasetJob_run
+        DDIToCloudDatasetJob_run:
+          target: DDIToCloudDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToCloudDatasetJob_executed
+        DDIToCloudDatasetJob_executed:
+          target: DDIToCloudDatasetJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountDataset_create
+        # Get a floating IP address for the Cloud Compute instance
+        PublicNet_install:
+          target: PublicNet
+          activities:
+            - delegate: install
+          on_success:
+            - VisualizationVM_install
+        # Create the compute instance
+        VisualizationVM_install:
+          target: VisualizationVM
+          activities:
+            - delegate: install
+          on_success:
+            - GetDDIAccess_start
+        # Get access details for the cloud staging area
+        GetDDIAccess_start:
+          target: GetDDIAccess
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetDDIAccess_started
+        GetDDIAccess_started:
+          target: GetDDIAccess
+          activities:
+            - set_state: started
+          on_success:
+            - MountDataset_create
+        # Mount the dataset from the staging area on the compute instance
+        MountDataset_create:
+          target: MountDataset
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - MountDataset_created
+        MountDataset_created:
+          target: MountDataset
+          activities:
+            - set_state: created
+          on_success:
+            - MountDataset_refresh_token
+        MountDataset_refresh_token:
+          target: MountDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountDataset_start
+        MountDataset_start:
+          target: MountDataset
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountDataset_started
+        MountDataset_started:
+          target: MountDataset
+          activities:
+            - set_state: started
+          on_success:
+            - CreateVisualizationDir_start
+        # Create a directory where tp store visualization data
+        CreateVisualizationDir_start:
+          target: CreateVisualizationDir
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - CreateVisualizationDir_started
+        CreateVisualizationDir_started:
+          target: CreateVisualizationDir
+          activities:
+            - set_state: started
+          on_success:
+            - MoveVisualizationData_start
+        # Move visualization date from the mount point
+        MoveVisualizationData_start:
+          target: MoveVisualizationData
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MoveVisualizationData_started
+        MoveVisualizationData_started:
+          target: MoveVisualizationData
+          activities:
+            - set_state: started
+          on_success:
+            - XpraService_create
+        # Submit the visualization job
+        XpraService_create:
+          target: XpraService
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - XpraService_start
+        XpraService_start:
+          target: XpraService
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - XpraService_started
+        XpraService_started:
+          target: XpraService
+          activities:
+            - set_state: started
+    # Uninstall workflow releases resources if ever the Run workflow failed before
+    uninstall:
+      steps:
+        DeleteCloudDataJob_create:
+          target: DeleteCloudDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudDataJob_submit
+        DeleteCloudDataJob_submit:
+          target: DeleteCloudDataJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - RefreshVMToken_start
+        RefreshVMToken_start:
+          target: RefreshVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
+          on_success:
+            - Compute_uninstall
+        Compute_uninstall:
+          target: VisualizationVM
+          activities:
+            - delegate: uninstall
+          on_success:
+            - PublicNet_uninstall
+        PublicNet_uninstall:
+          target: PublicNet
+          activities:
+            - delegate: uninstall
