@@ -13,9 +13,10 @@ Repository of TOSCA components and Application Templates.
   * Computational Fluid Dynamics:
     * [OpenFOAM](computational-fluid-dynamics/applications/openfoam) workflow
   * Remote visualization:
-    * [Xpra](visualization/applications/xpra) Remote visualization on cloud compute instance with [Xpra](https://xpra.org/)
+    * [Xpra](visualization/applications/xpra) - Remote visualization on cloud compute instance with [Xpra](https://xpra.org/)
+    * [Xpra service](visualization/applications/service_xpra) - Service providing remote visualization on cloud compute instance with [Xpra](https://xpra.org/), until the user decides to delete the workflow execution
 * Examples of generic templates:
-  * [LEXIS template](examples/applications/cloudHPCComputation/): generic LEXIS application template with:
+  * [LEXIS template](examples/applications/cloudHPCComputation/) - Generic LEXIS application template with:
     * a pre-processing container executed on a Cloud Compute Instance
     * a computation performed on HPC using [HEAppE](https://heappe.eu)
     * data transfers using [LEXIS Data Transfer Infrastructure](https://lexis-project.eu/web/lexis-platform/data-management-layer/) APIs
