@@ -82,7 +82,7 @@
       when: domainname == ""
     - name: Get Host private IP address which TLS connections are accepted
       set_fact:
-        subjectAltName: "IP:{{ IP_ADDRESS }},IP:127.0.0.1,DNS:localhost"
+        subjectAltName: "IP:{{ PRIVATE_ADDRESS }},IP:127.0.0.1,DNS:localhost"
       when: domainname == ""
     - name: Add Host public IP address to subjectAltName
       set_fact:
