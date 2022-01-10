@@ -68,7 +68,7 @@ topology_template:
       type: string
       description: HEAppE Command Template Name
       required: false
-      default: GenericCommandTemplate
+      default: TsunAWI
     computation_hpc_subdirectory_to_stage:
       description: Relative path to a subddirectoy on the HPC job cluster file system, to stage
       type: string
@@ -83,14 +83,16 @@ topology_template:
         Project: "Set by orchestrator"
         ClusterId: 1
         Tasks:
-          - Name: GenericCommandTemplate
+          - Name: TsunAWI
             ClusterNodeTypeId: 1
             CommandTemplateId: 1
+            TaskParalizationParameters:
+              - MPIProcesses: 128
+                OpenMPThreads: 1
+                MaxCores: 128
             TemplateParameterValues:
-              - CommandParameterIdentifier: userScriptPath
-                ParameterValue: "/mnt/proj3/open-22-3/karolina_complete.sh"
               - CommandParameterIdentifier: precise
-                ParameterValue: "TRUE"
+                ParameterValue: "FALSE"
             WalltimeLimit: 3600
             MinCores: 128
             MaxCores: 128
