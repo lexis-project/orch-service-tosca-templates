@@ -39,6 +39,8 @@ Repository of TOSCA components and Application Templates.
     * the transfer of a input dataset from DDI to this HEAppE job
     * the submission and monitoring of this HEAppE job until it ends
     * the transfer of result files produced by this HEAppE job to DDI
+  * [HPC Computation with failover using HEAppE](examples/applications/hpcComputationFailover/) performing:
+    * same as above, with the ability to store in DDI checkpoint files produced by the HEAppE during its execution, and failover to another HPC location in case of failure.
   * [Service provided by a public Docker container on a Cloud instance](examples/applications/cloudServicePublicContainer/) performing:
     * the transfer of a input dataset from DDI
     * running in detached mode a Docker container, until the user decides to delete the workflow execution

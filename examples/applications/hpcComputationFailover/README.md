@@ -1,4 +1,4 @@
-# HPC Computation template
+# HPC Computation with failover template
 
 Template of a LEXIS workflow allowing to transfer a dataset from DDI to a HEAppE Job, performing a computation.
 
