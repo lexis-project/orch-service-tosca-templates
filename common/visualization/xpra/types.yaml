@@ -2,7 +2,7 @@ tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
   template_name: org.lexis.common.visualization.xpra
-  template_version: 0.1.0
+  template_version: 0.1.1
   template_author: lexis
 
 description: Xpra types - remote display server and client
@@ -34,19 +34,22 @@ node_types:
         type: string
         required: false
     attributes:
-      endpoint: {get_operation_output: [SELF, Standard, start, ENDPOINT]}
-      url: { concat: ["https://", get_attribute: [HOST, public_ip_address], ":", get_property: [SELF, port], get_attribute: [SELF, endpoint] ] }
+      url: {get_operation_output: [SELF, Standard, start, URL]}
     interfaces:
       Standard:
         create:
           implementation: playbooks/create.yaml
         start:
           inputs:
+            USER: {get_secret: ["/secret/dns/mapping/creds", "data=user"]}
+            PASS: {get_secret: ["/secret/dns/mapping/creds", "data=password"]}
+            REPOSITORY: "https://code.it4i.cz/lexis/wp4/dns.git"
+            MAPPING_FILE: "dns_mapping.yaml"
             PORT: { get_property: [SELF, port] }
             CA_PEM: { get_property: [SELF, ca_pem] }
             CA_KEY: { get_property: [SELF, ca_key] }
             CA_PASS: { get_property: [SELF, ca_passphrase] }
-            IP_ADDRESS: { get_attribute: [HOST, ip_address] }
+            PRIVATE_ADDRESS: { get_attribute: [HOST, private_address] }
             PUBLIC_ADDRESS: { get_attribute: [HOST, public_address] }
           implementation: playbooks/start.yaml
         stop:
@@ -81,8 +84,7 @@ node_types:
         required: false
     attributes:
       submit_date_epoch: { get_operation_output: [SELF, tosca.interfaces.node.lifecycle.Runnable, submit, XPRA_SUBMIT_DATE_EPOCH] }
-      endpoint: {get_operation_output: [SELF, tosca.interfaces.node.lifecycle.Runnable, submit, ENDPOINT]}
-      url: { concat: ["https://", get_attribute: [HOST, public_ip_address], ":", get_property: [SELF, port], get_attribute: [SELF, endpoint] ] }
+      url: {get_operation_output: [SELF, tosca.interfaces.node.lifecycle.Runnable, submit, URL]}
     interfaces:
       Standard:
         create:
@@ -92,11 +94,15 @@ node_types:
       tosca.interfaces.node.lifecycle.Runnable:
         submit:
           inputs:
+            USER: {get_secret: ["/secret/dns/mapping/creds", "data=user"]}
+            PASS: {get_secret: ["/secret/dns/mapping/creds", "data=password"]}
+            REPOSITORY: "https://code.it4i.cz/lexis/wp4/dns.git"
+            MAPPING_FILE: "dns_mapping.yaml"
             PORT: { get_property: [SELF, port] }
             CA_PEM: { get_property: [SELF, ca_pem] }
             CA_KEY: { get_property: [SELF, ca_key] }
             CA_PASS: { get_property: [SELF, ca_passphrase] }
-            IP_ADDRESS: { get_attribute: [HOST, ip_address] }
+            PRIVATE_ADDRESS: { get_attribute: [HOST, private_address] }
             PUBLIC_ADDRESS: { get_attribute: [HOST, public_address] }
           implementation: playbooks/submit_xpra.yaml
         run:

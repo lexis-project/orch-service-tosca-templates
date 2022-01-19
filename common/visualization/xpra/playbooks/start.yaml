@@ -2,6 +2,45 @@
   hosts: all
   strategy: free
   tasks:
+    - name: Get connection settings
+      set_fact:
+        connSettings: "https://{{USER}}:{{PASS}}@"
+      no_log: true
+    - name: Git checkout
+      git:
+        repo: "{{ REPOSITORY | replace('https://', connSettings) }}"
+        dest: "{{ansible_env.HOME}}/dns"
+        accept_hostkey: yes
+      environment:
+        GIT_TERMINAL_PROMPT: 0 # reports "terminal prompts disabled" on missing password
+      no_log: true
+    - name: Get file content
+      slurp:
+        src: "{{ansible_env.HOME}}/dns/dns_mapping.yaml"
+      register: dns_slurp
+    - name: Decode file content
+      set_fact:
+        dnsMapping: "{{ dns_slurp['content'] | b64decode | from_yaml}}"
+        domainname: ""
+        mapping_defined: false
+    - name: Check if private address mapping is defined
+      set_fact:
+        mapping_defined: true
+      loop: "{{ lookup('dict', dnsMapping, wantlist=True) }}"
+      when: PRIVATE_ADDRESS in item.key
+    - name: Get domain name 
+      set_fact:
+        domainname: "{{ dnsMapping[PRIVATE_ADDRESS] }}"
+      when: mapping_defined
+    - name: Use DNS name as external acccess host
+      set_fact:
+        EXTERNAL_ACCESS_HOST: "{{ domainname }}"
+      when: domainname != ""
+    - name: No DNS, use VM public address as external acccess host
+      set_fact:
+        EXTERNAL_ACCESS_HOST: "{{ PUBLIC_ADDRESS }}"
+      when: domainname == ""
+
     - name: "Copy certificate authority"
       copy:
         content: "{{ CA_PEM }}"
@@ -9,7 +48,7 @@
         owner: "{{ ansible_env.USER }}"
         group: "{{ ansible_env.USER }}"
         mode: 0400
-      when: CA_PEM != ""
+      when: CA_PEM != "" and domainname == ""
 
     - name: "Copy certificate authority private key"
       copy:
@@ -18,35 +57,37 @@
         owner: "{{ ansible_env.USER }}"
         group: "{{ ansible_env.USER }}"
         mode: 0400
-      when: CA_PEM != ""
+      when: CA_PEM != "" and domainname == ""
 
     - name: Create certificate authority key
       openssl_privatekey:
         path: "{{ ansible_env.HOME }}/.xpra-ca.key"
-      when: CA_PEM == ""
+      when: CA_PEM == "" and domainname == ""
     - name: create the certificate authority CSR
       openssl_csr:
         path: "{{ ansible_env.HOME }}/.xpra-ca.csr"
         privatekey_path: "{{ ansible_env.HOME }}/.xpra-ca.key"
         common_name: "LEXISxpra"
-      when: CA_PEM == ""
+      when: CA_PEM == "" and domainname == ""
     - name: sign the CA CSR
       openssl_certificate:
         path: "{{ ansible_env.HOME }}/.xpra-ca.pem"
         csr_path: "{{ ansible_env.HOME }}/.xpra-ca.csr"
         privatekey_path: "{{ ansible_env.HOME }}/.xpra-ca.key"
         provider: selfsigned
-      when: CA_PEM == ""
+      when: CA_PEM == "" and domainname == ""
     - name: create host CSR signing key
       openssl_privatekey:
         path: "{{ ansible_env.HOME }}/.xpra-host-key.pem"
+      when: domainname == ""
     - name: Get Host private IP address which TLS connections are accepted
       set_fact:
-        subjectAltName: "IP:{{ IP_ADDRESS }},IP:127.0.0.1,DNS:localhost"
+        subjectAltName: "IP:{{ PRIVATE_ADDRESS }},IP:127.0.0.1,DNS:localhost"
+      when: domainname == ""
     - name: Add Host public IP address to subjectAltName
       set_fact:
         subjectAltName: "IP:{{ PUBLIC_ADDRESS }},{{ subjectAltName }}"
-      when: PUBLIC_ADDRESS is defined and PUBLIC_ADDRESS != ''
+      when: PUBLIC_ADDRESS is defined and PUBLIC_ADDRESS != '' and domainname == ""
     - name: create the CSR for the Xpra server
       openssl_csr:
         path: "{{ ansible_env.HOME }}/.xpra-host.csr"
@@ -61,6 +102,7 @@
         extended_key_usage:
           - clientAuth
           - serverAuth
+      when: domainname == ""
     - name: sign the CSR for the Xpra server with passphrase
       openssl_certificate:
         path: "{{ansible_env.HOME}}/.xpra-ssl-cert-xpra.pem"
@@ -69,7 +111,7 @@
         ownca_path: "{{ ansible_env.HOME }}/.xpra-ca.pem"
         ownca_privatekey_path: "{{ ansible_env.HOME }}/.xpra-ca.key"
         ownca_privatekey_passphrase: "{{ CA_PASS }}"
-      when: CA_PASS != ""
+      when: CA_PASS != "" and domainname == ""
     - name: sign the CSR for the Xpra server
       openssl_certificate:
         path: "{{ansible_env.HOME}}/.xpra-ssl-cert-xpra.pem"
@@ -77,18 +119,20 @@
         provider: ownca
         ownca_path: "{{ ansible_env.HOME }}/.xpra-ca.pem"
         ownca_privatekey_path: "{{ ansible_env.HOME }}/.xpra-ca.key"
-      when: CA_PASS == ""
+      when: CA_PASS == "" and domainname == ""
 
     - name: Generate a random password
       shell: openssl rand -hex 10 | tr -d '\n' > {{ansible_env.HOME}}/.xpra-password.txt
+      when: domainname == ""
     - name: Get file content
       slurp:
         src: "{{ansible_env.HOME}}/.xpra-password.txt"
       register: pass_slurp
+      when: domainname == ""
     - name: Decode file content
       set_fact:
         RAND_PASS: "{{ pass_slurp['content'] | b64decode }}"
-
+      when: domainname == ""
     - name: Get xpra certificate
       copy:
         src: /etc/xpra/ssl-cert.pem
@@ -97,8 +141,18 @@
         remote_src: yes
       become: yes
       become_method: sudo
-    - name: Start Xpra
+      when: domainname == ""
+    - name: Start Xpra in secure mode
       command: "xpra start --bind-wss=0.0.0.0:{{ PORT }} --exit-with-children --start-child=\"paraview\" --html=on --pidfile=/tmp/xprapid --wss-auth=file:filename={{ansible_env.HOME}}/.xpra-password.txt --ssl-cert {{ansible_env.HOME}}/.xpra-ssl-cert-xpra.pem --ssl-key {{ansible_env.HOME}}/.xpra-host-key.pem"
-    - name: Expose endpoint as operation output
+      when: domainname == ""
+    - name: Start Xpra in non-ssl mode
+      command: "xpra start --bind-tcp=0.0.0.0:{{ PORT }} --start-child=\"paraview\" --html=on"
+      when: domainname != ""
+    - name: Expose endpoint without DNS mapping as operation output
       set_fact:
-        ENDPOINT: "/index.html?password={{ RAND_PASS }}"
+        URL: "https://{{ EXTERNAL_ACCESS_HOST }}:{{ PORT }}/index.html?password={{ RAND_PASS }}"
+      when: domainname == ""
+    - name: Expose endpoint with DNS mapping as operation output
+      set_fact:
+        URL: "https://{{ EXTERNAL_ACCESS_HOST }}"
+      when: domainname != ""

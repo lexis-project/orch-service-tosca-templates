@@ -1,0 +1,56 @@
+- name: Compute external access
+  hosts: all
+  strategy: free
+  tasks:
+    - name: Check if the URL must be computed
+      set_fact:
+        computeURL: "{{ COMPUTE_URL | bool }}"
+        EXTERNAL_ACCESS_HOST: "{{ PUBLIC_ADDRESS }}"
+        URL: ""
+    - meta: end_play
+      when: not computeURL
+
+    - name: Get connection settings
+      set_fact:
+        connSettings: "https://{{USER}}:{{PASS}}@"
+      no_log: true
+    - name: Git checkout
+      git:
+        repo: "{{ REPOSITORY | replace('https://', connSettings) }}"
+        dest: "{{ansible_env.HOME}}/dns"
+        accept_hostkey: yes
+      environment:
+        GIT_TERMINAL_PROMPT: 0 # reports "terminal prompts disabled" on missing password
+      no_log: true
+    - name: Get file content
+      slurp:
+        src: "{{ansible_env.HOME}}/dns/dns_mapping.yaml"
+      register: dns_slurp
+    - name: Decode file content
+      set_fact:
+        dnsMapping: "{{ dns_slurp['content'] | b64decode | from_yaml}}"
+        domainname: ""
+        mapping_defined: false
+    - name: Check if private address mapping is defined
+      set_fact:
+        mapping_defined: true
+      loop: "{{ lookup('dict', dnsMapping, wantlist=True) }}"
+      when: PRIVATE_ADDRESS in item.key
+    - name: Get domain name 
+      set_fact:
+        domainname: "{{ dnsMapping[PRIVATE_ADDRESS] }}"
+      when: mapping_defined
+    - name: Use DNS name as external acccess host
+      set_fact:
+        EXTERNAL_ACCESS_HOST: "{{ domainname }}"
+      when: domainname != ""
+    - name: Initialize URL domain
+      set_fact:
+        domainPort: "{{ EXTERNAL_ACCESS_HOST }}"
+    - name: Add port 
+      set_fact:
+        domainPort: "{{ EXTERNAL_ACCESS_HOST }}:{{ PORT }}"
+      when: PORT != ""
+    - name: Compute URL 
+      set_fact:
+        URL: "{{ PROTOCOL }}://{{ domainPort }}"

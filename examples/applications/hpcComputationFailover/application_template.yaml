@@ -1,11 +1,11 @@
 tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
-  template_name: org.lexis.common.HPCComputationTemplate
+  template_name: org.lexis.common.HPCComputationFailoverTemplate
   template_version: 0.1.0-SNAPSHOT
   template_author: lexis
 
-description: "LEXIS HPC Computation template"
+description: "LEXIS HPC Computation with failover template"
 
 imports:
   - yorc-types:1.1.0
@@ -26,6 +26,10 @@ topology_template:
       type: string
       description: "LEXIS project identifier"
       required: true
+    project_name:
+      type: string
+      description: "LEXIS project short name"
+      required: true
     computation_dataset_path_input_path:
       type: string
       description: Dataset containing input data
@@ -34,6 +38,16 @@ topology_template:
       type: string
       description: "Path where to transfer the computation results in DDI"
       required: true
+    computation_checkpoint_file_patterns:
+      type: list
+      entry_schema:
+        type: string
+      description: |
+        List of checkpoint file patterns to store while the job is running, like mydir/f.*.dat to store mydir/f1.dat and mydir/f2.dat 
+      required: true
+      #default:
+      #  - "mydir/f.*.dat"
+      #  - "otherdir/res.*.dat"
     computation_heappe_command_template_name:
       type: string
       description: HEAppE Command Template Name
@@ -63,7 +77,7 @@ topology_template:
             ProgressFile: "stdprog"
             LogFile: "stdlog"
     computation_hpc_subdirectory_to_stage:
-      description: Relative path to a subddirectoy on the HPC job cluster file system, to stage
+      description: Relative path to a subddirectoy on the HPC job cluster file system, to stage in DDI
       type: string
       required: false
     computation_decrypt_dataset_input:
@@ -75,6 +89,19 @@ topology_template:
       type: boolean
       description: Should the input dataset be uncompressed
       default: false
+      required: false
+    computation_metadata_dataset_checkpoints:
+      type: org.lexis.common.ddi.types.Metadata
+      description: Metadata for the computation checkpoints dataset to create in DDI
+      default:
+        creator:
+          - "HPC Computation worflow"
+        contributor:
+          - "HPC Computation worflow"
+        publisher:
+          - "HPC Computation worflow"
+        resourceType: "Dataset"
+        title: "HPC Computation workflow checkpoints"
       required: false
     computation_metadata_dataset_result:
       type: org.lexis.common.ddi.types.Metadata
@@ -154,6 +181,22 @@ topology_template:
         token: { get_input: token }
         listChangedFilesWhileRunning: false
         JobSpecification: { get_input: computation_heappe_job }
+    StoreCheckpoints:
+      type: org.lexis.common.ddi.nodes.StoreRunningHPCJobFilesToDDIJob
+      properties:
+        token: { get_input: token }
+        metadata: { get_input: computation_metadata_dataset_checkpoints }
+        project: { get_input: project_name }
+        last_modification_elapsed_time_minutes: 2
+        task_name: { get_input: computation_heappe_command_template_name }
+        keep_directory_tree: true
+        needed_files_patterns: { get_input: computation_checkpoint_file_patterns }
+      requirements:
+        - job:
+            type_requirement: job
+            node: HEAppEJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.ddi.relationships.SendJobOutputs
     # Transfer the input dataset to the job task input directory
     DDIToHPCTaskJob:
       type: org.lexis.common.ddi.nodes.DDIToHPCTaskJob
@@ -204,10 +247,150 @@ topology_template:
             node: HPCToDDIJob
             capability: org.lexis.common.ddi.capabilities.DataTransferDDI
             relationship: tosca.relationships.DependsOn
+    # Job gathering info on the checkpoint dataset:
+    # - on which locations it is available
+    # - size
+    # - number of files
+    # to take placement decisions on computing resources using this dataset
+    CheckpointDatasetInfoJob:
+      type: org.lexis.common.ddi.nodes.GetDDIRuntimeDatasetInfoJob
+      properties:
+        token: {get_input: token}
+      requirements:
+        - data_transfer:
+            type_requirement: data_transfer
+            node: StoreCheckpoints
+            capability: org.lexis.common.ddi.capabilities.DataTransferDDI
+            relationship: tosca.relationships.DependsOn
+    FindFailoverHPCLocationJob:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
+      properties:
+        token: { get_input: token}
+        project_id: { get_input: project_id }
+      requirements:
+        - InputDataset:
+            type_requirement: input_dataset
+            node: InputDatasetInfoJob
+            capability: org.lexis.common.ddi.capabilities.DatasetInfo
+            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
+        - HPCResourceHPCJob:
+            type_requirement: heappe_job
+            node: FailoverHEAppEJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.dynamic.orchestration.relationships.HeappeJob
+        - PreviousRequest:
+            type_requirement: previous_request
+            node: FindHPCLocationJob
+            capability: org.lexis.common.dynamic.orchestration.capabilities.SetLocation
+            relationship: tosca.relationships.DependsOn
+    # HEAppE job performing the HPC computation after failover
+    FailoverHEAppEJob:
+      type: org.lexis.common.heappe.nodes.Job
+      metadata:
+        task: computation
+      properties:
+        token: { get_input: token }
+        listChangedFilesWhileRunning: false
+        JobSpecification: { get_input: computation_heappe_job }
+    StoreFailoverCheckpoints:
+      type: org.lexis.common.ddi.nodes.StoreRunningHPCJobFilesToDDIJob
+      properties:
+        token: { get_input: token }
+        metadata: { get_input: computation_metadata_dataset_checkpoints }
+        project: { get_input: project_name }
+        last_modification_elapsed_time_minutes: 2
+        task_name: { get_input: computation_heappe_command_template_name }
+        keep_directory_tree: true
+        needed_files_patterns: { get_input: computation_checkpoint_file_patterns }
+      requirements:
+        - job:
+            type_requirement: job
+            node: FailoverHEAppEJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.ddi.relationships.SendJobOutputs
+    # Transfer the input dataset to the job task input directory
+    DDIToHPCFailoverTaskJob:
+      type: org.lexis.common.ddi.nodes.DDIToHPCTaskJob
+      properties:
+        token: { get_input: token }
+        decrypt: {get_input: computation_decrypt_dataset_input}
+        uncompress: {get_input: computation_uncompress_dataset_input}
+        ddi_dataset_path: { get_input: computation_dataset_path_input_path }
+        task_name: { get_input: computation_heappe_command_template_name }
+      requirements:
+        - job:
+            type_requirement: job
+            node: FailoverHEAppEJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.heappe.relationships.SendInputsToJob
+    # Transfer the input dataset to the job task input directory
+    DDICheckpointToHPCTaskJob:
+      type: org.lexis.common.ddi.nodes.DDIRuntimeToHPCTaskJob
+      properties:
+        token: { get_input: token }
+        decrypt: false
+        uncompress: false
+        task_name: { get_input: computation_heappe_command_template_name }
+      requirements:
+        - job:
+            type_requirement: job
+            node: FailoverHEAppEJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.heappe.relationships.SendInputsToJob
+        - data_transfer:
+            type_requirement: data_transfer
+            node: StoreCheckpoints
+            capability: org.lexis.common.ddi.capabilities.DataTransferDDI
+            relationship: tosca.relationships.DependsOn
+      # Transfer HEAppE HPC job results to DDI
+    HPCToDDIFailoverJob:
+      type: org.lexis.common.ddi.nodes.HPCToDDIJob
+      metadata:
+        task: preprocessing
+      properties:
+        token: { get_input: token }
+        encrypt: {get_input: computation_encrypt_dataset_result}
+        compress: {get_input: computation_compress_dataset_result}
+        metadata: { get_input: computation_metadata_dataset_result }
+        ddi_path: { get_input: computation_ddi_project_path }
+        task_name: { get_input: computation_heappe_command_template_name }
+        source_subdirectory: { get_input: computation_hpc_subdirectory_to_stage }
+      requirements:
+        - job:
+            type_requirement: job
+            node: FailoverHEAppEJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.ddi.relationships.SendJobOutputs
+    # Replicate failover result dataset to other sites if requested
+    ReplicateFailoverDatasetJob:
+      type: org.lexis.common.ddi.nodes.ReplicateDatasetJob
+      metadata:
+        task: computation
+      properties:
+        token: { get_input: token }
+        replication_sites: {get_input: computation_result_dataset_replication_sites}
+      requirements:
+        - dataset_provider:
+            type_requirement: dataset_provider
+            node: HPCToDDIFailoverJob
+            capability: org.lexis.common.ddi.capabilities.DataTransferDDI
+            relationship: tosca.relationships.DependsOn
   outputs:
     computation_dataset_result_path:
       description: DDI path to computation results
       value: { get_attribute: [ HPCToDDIJob, destination_path ] }
+    computation_dataset_checkpoint_path:
+      description: DDI path to checkpoint dataset
+      value: { get_attribute: [ StoreCheckpoints, destination_path ] }
+    computation_failover_dataset_checkpoint_path:
+      description: DDI path to checkpoint dataset
+      value: { get_attribute: [ StoreFailoverCheckpoints, destination_path ] }
+    computation_dataset_failover_result_path:
+      description: DDI path to result dataset
+      value: { get_attribute: [ HPCToDDIFailoverJob, destination_path ] }
+
   workflows:
     # At deployment time, validating the input token and exchanging it
     # to get an access/refresh token for the orchestrator
@@ -325,6 +508,7 @@ topology_template:
             - set_state: submitted
           on_success:
             - HEAppEJob_run
+            - StoreCheckpoints_create
         HEAppEJob_run:
           target: HEAppEJob
           operation_host: ORCHESTRATOR
@@ -332,12 +516,41 @@ topology_template:
             - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
           on_success:
             - HEAppEJob_executed
+          on_failure:
+            - FindFailoverHPCLocationJob_submit
         HEAppEJob_executed:
           target: HEAppEJob
           activities:
             - set_state: executed
           on_success:
             - HPCToDDIJob_create
+        StoreCheckpoints_create:
+          target: StoreCheckpoints
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - StoreCheckpoints_submit
+        StoreCheckpoints_submit:
+          target: StoreCheckpoints
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - StoreCheckpoints_run
+        StoreCheckpoints_run:
+          target: StoreCheckpoints
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - StoreCheckpoints_executed
+        StoreCheckpoints_executed:
+          target: StoreCheckpoints
+          activities:
+            - set_state: executed
+          on_success:
+            - FailoverHEAppEJob_create
         # Transfer HPC results to DDI
         HPCToDDIJob_create:
           target: HPCToDDIJob
@@ -406,6 +619,202 @@ topology_template:
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.delete
+        # Submit the computation to find the best location from these inputs
+        FindFailoverHPCLocationJob_submit:
+          target: FindFailoverHPCLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindFailoverHPCLocationJob_run
+        FindFailoverHPCLocationJob_run:
+          target: FindFailoverHPCLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindFailoverHPCLocationJob_executed
+        FindFailoverHPCLocationJob_executed:
+          target: FindFailoverHPCLocationJob
+          activities:
+            - set_state: executed
+          on_success:
+            - FailoverHEAppEJob_create
+        # Create failover job
+        FailoverHEAppEJob_create:
+          target: FailoverHEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - FailoverHEAppEJob_enable_file_transfer
+        FailoverHEAppEJob_enable_file_transfer:
+          target: FailoverHEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - DDIToHPCFailoverTaskJob_create
+        DDIToHPCFailoverTaskJob_create:
+          target: DDIToHPCFailoverTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToHPCFailoverTaskJob_submit
+        DDIToHPCFailoverTaskJob_submit:
+          target: DDIToHPCFailoverTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToHPCFailoverTaskJob_submitted
+        DDIToHPCFailoverTaskJob_submitted:
+          target: DDIToHPCFailoverTaskJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToHPCFailoverTaskJob_run
+        DDIToHPCFailoverTaskJob_run:
+          target: DDIToHPCFailoverTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToHPCFailoverTaskJob_executed
+        DDIToHPCFailoverTaskJob_executed:
+          target: DDIToHPCFailoverTaskJob
+          activities:
+            - set_state: executed
+          on_success:
+            - DDICheckpointToHPCTaskJob_create
+        # checkpoints transfered after the input dataset
+        # to override file solution.log also present with initial values in the input dataset
+        DDICheckpointToHPCTaskJob_create:
+          target: DDICheckpointToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDICheckpointToHPCTaskJob_submit
+        DDICheckpointToHPCTaskJob_submit:
+          target: DDICheckpointToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDICheckpointToHPCTaskJob_submitted
+        DDICheckpointToHPCTaskJob_submitted:
+          target: DDICheckpointToHPCTaskJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDICheckpointToHPCTaskJob_run
+        DDICheckpointToHPCTaskJob_run:
+          target: DDICheckpointToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDICheckpointToHPCTaskJob_executed
+        DDICheckpointToHPCTaskJob_executed:
+          target: DDICheckpointToHPCTaskJob
+          activities:
+            - set_state: executed
+          on_success:
+            - FailoverHEAppEJob_submit
+        FailoverHEAppEJob_submit:
+          target: FailoverHEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FailoverHEAppEJob_submitted
+        FailoverHEAppEJob_submitted:
+          target: FailoverHEAppEJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - FailoverHEAppEJob_run
+            - StoreFailoverCheckpoints_create
+        FailoverHEAppEJob_run:
+          target: FailoverHEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FailoverHEAppEJob_executed
+        FailoverHEAppEJob_executed:
+          target: FailoverHEAppEJob
+          activities:
+            - set_state: executed
+          on_success:
+            - HPCToDDIFailoverJob_create
+        # Transfer HPC results to DDI
+        HPCToDDIFailoverJob_create:
+          target: HPCToDDIFailoverJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - HPCToDDIFailoverJob_submit
+        HPCToDDIFailoverJob_submit:
+          target: HPCToDDIFailoverJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - HPCToDDIFailoverJob_run
+        HPCToDDIFailoverJob_run:
+          target: HPCToDDIFailoverJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - HPCToDDIFailoverJob_executed
+        HPCToDDIFailoverJob_executed:
+          target: HPCToDDIFailoverJob
+          activities:
+            - set_state: executed
+          on_success:
+            - FailoverHEAppEJob_disable_file_transfer
+        StoreFailoverCheckpoints_create:
+          target: StoreFailoverCheckpoints
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - StoreFailoverCheckpoints_submit
+        StoreFailoverCheckpoints_submit:
+          target: StoreFailoverCheckpoints
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - StoreFailoverCheckpoints_run
+        StoreFailoverCheckpoints_run:
+          target: StoreFailoverCheckpoints
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - StoreFailoverCheckpoints_executed
+        StoreFailoverCheckpoints_executed:
+          target: StoreFailoverCheckpoints
+          activities:
+            - set_state: executed
+          on_success:
+            - FailoverHEAppEJob_disable_file_transfer
+        FailoverHEAppEJob_disable_file_transfer:
+          target: FailoverHEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - FailoverHEAppEJob_delete
+        FailoverHEAppEJob_delete:
+          target: FailoverHEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
     uninstall:
       steps:
         HEAppEJob_delete:
@@ -413,6 +822,14 @@ topology_template:
           operation_host: ORCHESTRATOR
           activities:
             - call_operation: Standard.delete
+          on_success:
+            - FailoverHEAppEJob_delete
+        FailoverHEAppEJob_delete:
+          target: HEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+
     testEnableFT:
       steps:
         HEAppEJob_enable_file_transfer:

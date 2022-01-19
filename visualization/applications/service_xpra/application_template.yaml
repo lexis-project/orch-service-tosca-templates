@@ -1,11 +1,11 @@
 tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
-  template_name: org.lexis.common.VisualizationTemplate
+  template_name: org.lexis.common.ServiceVisualizationTemplate
   template_version: 0.1.0-SNAPSHOT
   template_author: lexis
 
-description: "Visualization template"
+description: "Visualization Service available until the user deletes the workflow execution"
 
 imports:
   - yorc-types:1.1.0
@@ -31,10 +31,6 @@ topology_template:
       type: string
       description: Dataset path in DDI containing visualization data
       required: true
-    visualization_walltime_minutes:
-      type: integer
-      description: "Duration in minutes of the visualization session"
-      required: true
     visualization_decrypt_input:
       type: boolean
       description: Should the input dataset be decrypted
@@ -49,23 +45,6 @@ topology_template:
       type: string
       description: Directory where visualization data will be accesible on a cloud instance
       default: "visualization"
-      required: false
-    visualization_mount_point:
-      type: string
-      description: Directory where visualization data will be mounted from Cloud staging area
-      default: "/mnt/visualization"
-      required: false
-    visualization_ca_pem:
-      description: "PEM-encoded certificate authority content, will be generated if not provided"
-      type: string
-      required: false
-    visualization_ca_key:
-      description: "Certificate authority private key content, will be generated if not provided"
-      type: string
-      required: false
-    visualization_ca_passphrase:
-      description: "Certificate authority private key passphrase"
-      type: string
       required: false
     visualization_port:
       type: integer
@@ -129,8 +108,8 @@ topology_template:
       capabilities:
         host:
           properties:
+            num_cpus: 4
             disk_size: "40 GB"
-            mem_size: "8 GB"
         os:
           properties:
             type: linux
@@ -191,7 +170,7 @@ topology_template:
       type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
       properties:
         token: { get_input: token }
-        mount_point_directory: { get_input: visualization_mount_point }
+        mount_point_directory: "/mnt/visualization"
       requirements:
         - ddi_access:
             type_requirement: ddi_access
@@ -225,7 +204,7 @@ topology_template:
     MoveVisualizationData:
       type: org.lexis.common.datatransfer.nodes.MoveFile
       properties:
-        source_file:  {concat: [get_input: visualization_mount_point, "/*/*" ] }
+        source_file:  "/mnt/visualization/*/*"
         destination: {get_input: visualization_directory}
         as_user: "root"
       requirements:
@@ -235,17 +214,13 @@ topology_template:
             capability: tosca.capabilities.Container
             relationship: tosca.relationships.HostedOn
 
-    # Job running the remote visualization for a given time
-    XpraJob:
+    # Component running the remote visualization
+    XpraService:
       metadata:
         task: visualization
-      type: org.lexis.common.visualization.xpra.nodes.XpraCloudJob
+      type: org.lexis.common.visualization.xpra.nodes.Xpra
       properties:
         port: { get_input: visualization_port }
-        walltime_minutes: { get_input: visualization_walltime_minutes }
-        ca_pem: { get_input: visualization_ca_pem }
-        ca_key: { get_input: visualization_ca_key }
-        ca_passphrase: { get_input: visualization_ca_passphrase }
       requirements:
         - hostedOnComputeHost:
             type_requirement: host
@@ -265,7 +240,7 @@ topology_template:
   outputs:
     visualization_url:
       description: URL of the remote visualization session
-      value: { get_attribute: [ XpraJob, url ] }
+      value: { get_attribute: [ XpraService, url ] }
   workflows:
     # At deployment time, validating the input token and exchanging it
     # to get an access/refresh token for the orchestrator
@@ -437,148 +412,24 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - XpraJob_create
+            - XpraService_create
         # Submit the visualization job
-        XpraJob_create:
-          target: XpraJob
+        XpraService_create:
+          target: XpraService
           activities:
             - call_operation: Standard.create
           on_success:
-            - XpraJob_submit
-        XpraJob_submit:
-          target: XpraJob
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - XpraJob_run
-        XpraJob_run:
-          target: XpraJob
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - XpraJob_executed
-        XpraJob_executed:
-          target: XpraJob
-          activities:
-            - set_state: executed
-          on_success:
-            - Compute_uninstall
-            - MountDataset_refresh_token_for_stop
-        MountDataset_refresh_token_for_stop:
-          target: MountDataset
-          activities:
-            - call_operation: custom.refresh_token
-          on_success:
-            - MountDataset_stop
-        MountDataset_stop:
-          target: MountDataset
-          activities:
-            - call_operation: Standard.stop
-          on_success:
-            - MountDataset_stopped
-        MountDataset_stopped:
-          target: MountDataset
-          activities:
-            - set_state: stopped
-          on_success:
-            - DeleteCloudDataJob_create
-        DeleteCloudDataJob_create:
-          target: DeleteCloudDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DeleteCloudDataJob_submit
-        DeleteCloudDataJob_submit:
-          target: DeleteCloudDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DeleteCloudDataJob_run
-        DeleteCloudDataJob_run:
-          target: DeleteCloudDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DeleteCloudDataJob_executed
-        DeleteCloudDataJob_executed:
-          target: DeleteCloudDataJob
-          activities:
-            - set_state: executed
-          on_success:
-            - RefreshVMToken_start
-        RefreshVMToken_start:
-          target: RefreshVMToken
+            - XpraService_start
+        XpraService_start:
+          target: XpraService
           activities:
             - call_operation: Standard.start
           on_success:
-            - RefreshVMToken_started
-        RefreshVMToken_started:
-          target: RefreshVMToken
+            - XpraService_started
+        XpraService_started:
+          target: XpraService
           activities:
             - set_state: started
-          on_success:
-            - Compute_uninstall
-        # Job is done, releasing resources
-        Compute_uninstall:
-          target: VisualizationVM
-          activities:
-            - delegate: uninstall
-          on_success:
-            - PublicNet_uninstall
-        PublicNet_uninstall:
-          target: PublicNet
-          activities:
-            - delegate: uninstall
-    # Unmount dataset from cloud staging area
-    unmountCloudStagingAreaDataset:
-      steps:
-        MountDataset_refresh_token_for_stop:
-          target: MountDataset
-          activities:
-            - call_operation: custom.refresh_token
-          on_success:
-            - MountDataset_stop
-        MountDataset_stop:
-          target: MountDataset
-          activities:
-            - call_operation: Standard.stop
-          on_success:
-            - MountDataset_stopped
-        MountDataset_stopped:
-          target: MountDataset
-          activities:
-            - set_state: stopped
-    # Cleanup the cloud staging area
-    cleanupCloudStagingArea:
-      steps:
-        DeleteCloudDataJob_create:
-          target: DeleteCloudDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - DeleteCloudDataJob_submit
-        DeleteCloudDataJob_submit:
-          target: DeleteCloudDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - DeleteCloudDataJob_run
-        DeleteCloudDataJob_run:
-          target: DeleteCloudDataJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - DeleteCloudDataJob_executed
-        DeleteCloudDataJob_executed:
-          target: DeleteCloudDataJob
-          activities:
-            - set_state: executed
     # Uninstall workflow releases resources if ever the Run workflow failed before
     uninstall:
       steps:

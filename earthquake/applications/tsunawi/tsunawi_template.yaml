@@ -18,7 +18,7 @@ imports:
   - org.lexis.common.dynamic-orchestration-types:1.0.3
   - org.ystia.docker.containers.docker.generic:3.0.1-SNAPSHOT
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
-  - org.lexis.common.datatransfer:0.1.6-SNAPSHOT
+  - org.lexis.common.datatransfer:0.1.7-SNAPSHOT
   - org.lexis.common.tsunawi.shakemap:0.0.1-SNAPSHOT
 
 topology_template:
@@ -68,7 +68,7 @@ topology_template:
       type: string
       description: HEAppE Command Template Name
       required: false
-      default: GenericCommandTemplate
+      default: TsunAWI
     computation_hpc_subdirectory_to_stage:
       description: Relative path to a subddirectoy on the HPC job cluster file system, to stage
       type: string
@@ -83,14 +83,16 @@ topology_template:
         Project: "Set by orchestrator"
         ClusterId: 1
         Tasks:
-          - Name: GenericCommandTemplate
+          - Name: TsunAWI
             ClusterNodeTypeId: 1
             CommandTemplateId: 1
+            TaskParalizationParameters:
+              - MPIProcesses: 128
+                OpenMPThreads: 1
+                MaxCores: 128
             TemplateParameterValues:
-              - CommandParameterIdentifier: userScriptPath
-                ParameterValue: "/mnt/proj3/open-22-3/karolina_complete.sh"
               - CommandParameterIdentifier: precise
-                ParameterValue: "TRUE"
+                ParameterValue: "FALSE"
             WalltimeLimit: 3600
             MinCores: 128
             MaxCores: 128
@@ -480,6 +482,12 @@ topology_template:
             node: TsunAWIJob2
             capability: org.lexis.common.heappe.capabilities.HeappeJob
             relationship: org.lexis.common.dynamic.orchestration.relationships.OptionalHeappeJob
+        # Relationship OptionalHeappeJob, in case there isn't a second cluster for a third HPC job
+        - HPCResource3HPCJob:
+            type_requirement: heappe_job
+            node: TsunAWIJob3
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.dynamic.orchestration.relationships.OptionalHeappeJob
     TsunAWIJob1:
       type: org.lexis.common.heappe.nodes.Job
       metadata:
@@ -488,6 +496,13 @@ topology_template:
         token: { get_input: token }
         JobSpecification: { get_input: computation_tsunawi_job }
     TsunAWIJob2:
+      type: org.lexis.common.heappe.nodes.Job
+      metadata:
+        task: computation
+      properties:
+        token: { get_input: token }
+        JobSpecification: { get_input: computation_tsunawi_job }
+    TsunAWIJob3:
       type: org.lexis.common.heappe.nodes.Job
       metadata:
         task: computation
@@ -511,6 +526,11 @@ topology_template:
         - HEAppEJob2:
             type_requirement: heappe_job
             node: TsunAWIJob2
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.heappe.relationships.DependsOnJob
+        - HEAppEJob3:
+            type_requirement: heappe_job
+            node: TsunAWIJob3
             capability: org.lexis.common.heappe.capabilities.HeappeJob
             relationship: org.lexis.common.heappe.relationships.DependsOnJob
     # Transfer the input dataset to the job task input directory
@@ -544,6 +564,22 @@ topology_template:
         - job:
             type_requirement: job
             node: TsunAWIJob2
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.heappe.relationships.SendInputsToJob
+    DDIToHPCTaskJob3:
+      type: org.lexis.common.ddi.nodes.DDIToHPCTaskJob
+      metadata:
+        task: preprocessing
+      properties:
+        token: { get_input: token }
+        decrypt: false
+        uncompress: false
+        ddi_dataset_path: { get_input: preprocessing_dataset_path_quakeml_input_data_path }
+        task_name: { get_input: computation_heappe_command_template_name }
+      requirements:
+        - job:
+            type_requirement: job
+            node: TsunAWIJob3
             capability: org.lexis.common.heappe.capabilities.HeappeJob
             relationship: org.lexis.common.heappe.relationships.SendInputsToJob
     # Transfer HPC job results to the cloud staging area
@@ -860,6 +896,19 @@ topology_template:
           activities:
             - set_state: deleted
           on_success:
+            - TsunAWIJob3_delete
+        TsunAWIJob3_delete:
+          target: TsunAWIJob3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - TsunAWIJob3_deleted
+        TsunAWIJob3_deleted:
+          target: TsunAWIJob3
+          activities:
+            - set_state: deleted
+          on_success:
             - UrgentComputingMonitoringJob_delete
         UrgentComputingMonitoringJob_delete:
           target: UrgentComputingMonitoringJob
@@ -940,6 +989,7 @@ topology_template:
           on_success:
             - TsunAWIJob1_create
             - TsunAWIJob2_create
+            - TsunAWIJob3_create
         # Submit the computation to find the best Cloud location for these inputs
         FindCloudLocationJob_submit:
           target: FindCloudLocationJob
@@ -1419,6 +1469,78 @@ topology_template:
           target: TsunAWIJob2
           activities:
             - set_state: executed
+        TsunAWIJob3_create:
+          target: TsunAWIJob3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - TsunAWIJob3_enable_file_transfer
+            - UrgentComputingMonitoringJob_create
+        TsunAWIJob3_enable_file_transfer:
+          target: TsunAWIJob3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - DDIToHPCTaskJob3_create
+        DDIToHPCTaskJob3_create:
+          target: DDIToHPCTaskJob3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToHPCTaskJob3_submit
+        DDIToHPCTaskJob3_submit:
+          target: DDIToHPCTaskJob3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToHPCTaskJob3_submitted
+        DDIToHPCTaskJob3_submitted:
+          target: DDIToHPCTaskJob3
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToHPCTaskJob3_run
+        DDIToHPCTaskJob3_run:
+          target: DDIToHPCTaskJob3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToHPCTaskJob3_executed
+        DDIToHPCTaskJob3_executed:
+          target: DDIToHPCTaskJob3
+          activities:
+            - set_state: executed
+          on_success:
+            - TsunAWIJob3_submit
+        TsunAWIJob3_submit:
+          target: TsunAWIJob3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - TsunAWIJob3_submitted
+        TsunAWIJob3_submitted:
+          target: TsunAWIJob3
+          activities:
+            - set_state: submitted
+          on_success:
+            - TsunAWIJob3_run
+        TsunAWIJob3_run:
+          target: TsunAWIJob3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - TsunAWIJob3_executed
+        TsunAWIJob3_executed:
+          target: TsunAWIJob3
+          activities:
+            - set_state: executed
         UrgentComputingMonitoringJob_create:
           target: UrgentComputingMonitoringJob
           operation_host: ORCHESTRATOR
@@ -1857,6 +1979,26 @@ topology_template:
             - TsunAWIJob2_deleted
         TsunAWIJob2_deleted:
           target: TsunAWIJob2
+          activities:
+            - set_state: deleted
+          on_success:
+            - TsunAWIJob3_disable_file_transfer
+        TsunAWIJob3_disable_file_transfer:
+          target: TsunAWIJob3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - TsunAWIJob3_delete
+        TsunAWIJob3_delete:
+          target: TsunAWIJob3
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+          on_success:
+            - TsunAWIJob3_deleted
+        TsunAWIJob3_deleted:
+          target: TsunAWIJob3
           activities:
             - set_state: deleted
           on_success:

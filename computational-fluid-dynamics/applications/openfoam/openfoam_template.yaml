@@ -15,8 +15,8 @@ imports:
   - org.lexis.common.heappe-types:1.0.8
   - org.lexis.common.ddi-types:1.0.3
   - org.lexis.common.dynamic-orchestration-types:1.0.3
-  - org.lexis.common.datatransfer:0.1.6-SNAPSHOT
-  - org.lexis.common.visualization.xpra:0.1.0
+  - org.lexis.common.datatransfer:0.1.7-SNAPSHOT
+  - org.lexis.common.visualization.xpra:0.1.1
 
 topology_template:
   inputs:
@@ -84,7 +84,7 @@ topology_template:
     visualization_port:
       type: integer
       description: "Port to use to expose the remote display (should be > 1024)"
-      default: 8765
+      default: 8080
       required: false
   node_templates:
     # Validation of the token provided in input

@@ -84,3 +84,19 @@
         state: present
         update_cache: yes
       when: ansible_os_family == 'Debian'
+    - name: RedHat -  install git for DNS mapping checks
+      dnf:
+        name:
+          - git
+        state: present
+      when: ansible_os_family == 'RedHat'
+    - name: Debian - install git for DNS mapping checks
+      apt:
+        name:
+          - git
+        state: present
+        update_cache: yes
+      register: apt_res
+      retries: 3
+      until: apt_res is success
+      when: ansible_os_family == 'Debian'

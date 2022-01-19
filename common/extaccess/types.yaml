@@ -1,0 +1,53 @@
+tosca_definitions_version: alien_dsl_3_0_0
+
+metadata:
+  template_name: org.lexis.common.extaccess
+  template_version: 0.1.0
+  template_author: lexis
+
+description: Compute the external access to a cloud instance
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - yorc-types:1.1.0
+node_types:
+  #
+  # External access computation
+  #
+  org.lexis.common.extaccess.nodes.ComputeAccess:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      compute_url:
+        description: If true, a URL will be computed and the url attribute will be set to this value
+        type: boolean
+        default: false
+        required: false
+      port:
+        type: string
+        description: Port to use in URL
+        required: false
+        default: ""
+      protocol:
+        type: string
+        description: Protocol to use in URL (http or https)
+        required: false
+        default: "https"
+    attributes:
+      url: {get_operation_output: [SELF, Standard, start, URL]}
+      external_access_host: {get_operation_output: [SELF, Standard, start, EXTERNAL_ACCESS_HOST]}
+    interfaces:
+      Standard:
+        create:
+          implementation: playbooks/create.yaml
+        start:
+          inputs:
+            USER: {get_secret: ["/secret/dns/mapping/creds", "data=user"]}
+            PASS: {get_secret: ["/secret/dns/mapping/creds", "data=password"]}
+            REPOSITORY: "https://code.it4i.cz/lexis/wp4/dns.git"
+            MAPPING_FILE: "dns_mapping.yaml"
+            COMPUTE_URL: { get_property: [SELF, compute_url] }
+            PORT: { get_property: [SELF, port] }
+            PROTOCOL: { get_property: [SELF, protocol] }
+            PRIVATE_ADDRESS: { get_attribute: [HOST, private_address] }
+            PUBLIC_ADDRESS: { get_attribute: [HOST, public_address] }
+          implementation: playbooks/start.yaml

@@ -1,11 +1,11 @@
 tosca_definitions_version: alien_dsl_3_0_0
 
 metadata:
-  template_name: org.lexis.common.CloudComputationPublicContainerTemplate
+  template_name: org.lexis.common.CloudServicePublicContainerTemplate
   template_version: 0.1.0-SNAPSHOT
   template_author: lexis
 
-description: "LEXIS Cloud Computation using a public container"
+description: "Service provided by a public container on a Cloud instance, until the user deletes the workflow execution"
 
 #
 # Imports from Alien4Cloud catalog providing definition of data types and node types
@@ -19,6 +19,7 @@ imports:
   - org.lexis.common.ddi-types:1.0.3
   - org.lexis.common.dynamic-orchestration-types:1.0.3
   - org.lexis.common.datatransfer:0.1.7-SNAPSHOT
+  - org.lexis.common.extaccess:0.1.0
 
 topology_template:
   #
@@ -48,12 +49,8 @@ topology_template:
       required: true
     computation_container_image:
       type: string
-      description: Computation container repository path
-      # default: "laurentg/lexistest:1.2"
-      required: true
-    computation_ddi_project_path:
-      type: string
-      description: "Path where to transfer the computation results in DDI"
+      description: Docker container repository path
+      # default: "httpd:2.4"
       required: true
     computation_decrypt_dataset_input:
       type: boolean
@@ -75,10 +72,6 @@ topology_template:
       description: Computation container environment variables
       entry_schema:
         type: string
-      default:
-        INPUT_DIR: "/input_dataset"
-        RESULT_DIR: "/output"
-        RESULT_FILE_NAME: "computation_result.txt"
       required: false
     computation_container_volumes:
       type: list
@@ -89,7 +82,6 @@ topology_template:
         Use docker CLI-style syntax: /host:/container[:mode]
       default:
         - "/mnt/lexis_input:/input_dataset"
-        - "/lexis/output:/output"
       required: false
     computation_container_published_ports:
       type: list
@@ -99,41 +91,21 @@ topology_template:
         List of ports to publish from the container to the host.
         Use docker CLI syntax: 8000, 9000:8000, or 0.0.0.0:9000:8000, where 8000 is a container port, 9000 is a host port, and 0.0.0.0 is a host interface.
       required: false
-    computation_output_directory:
+    computation_expose_url_in_outputs:
+      type: boolean
+      description: Expose a URL in workflow outputs
+      default: true
+      required: false
+    computation_exposed_url_port:
       type: string
-      description: Computation output directory
-      default: "/lexis/output"
+      description: Port to use in exposed URL
+      default: ""
       required: false
-    computation_metadata_dataset_result:
-      type: org.lexis.common.ddi.types.Metadata
-      description: Metadata for the computation results dataset to create in DDI
-      default:
-        creator:
-          - "Cloud Computation Container worflow"
-        contributor:
-          - "Cloud Computation Container worflow"
-        publisher:
-          - "Cloud Computation Container worflow"
-        resourceType: "Dataset"
-        title: "Cloud Computation Container workflow results"
+    computation_exposed_url_protocol:
+      type: string
+      description: Protocol to use in exposed URL
+      default: "https"
       required: false
-    computation_encrypt_dataset_result:
-      type: boolean
-      description: Encrypt the result dataset
-      default: false
-      required: false
-    computation_compress_dataset_result:
-      type: boolean
-      description: Compress the result dataset
-      default: false
-      required: false
-    computation_result_dataset_replication_sites:
-      description: "List of sites where the result dataset should be available - WARNING: a replicated dataset can't be deleted - (example of values: it4i, lrz)"
-      type: list
-      entry_schema:
-        type: string
-      required: false
-      default: []
 
   #
   # Components instantiating the types imported, and using the input values above
@@ -298,7 +270,7 @@ topology_template:
       properties:
         auto_remove: false
         cleanup: false
-        detach: false
+        detach: true
         image: {get_input: computation_container_image}
         keep_volumes: true
         restart_policy: no
@@ -313,69 +285,21 @@ topology_template:
             capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
             relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
 
-    # Component creating a directory on cloud staging area where to store results
-    CreateStagingAreaResultDir:
-      type: org.lexis.common.datatransfer.nodes.CreateStagingAreaDirectory
-      properties:
-        directory: "lexis_cloud_computation_container_results"
-      requirements:
-        - mountedCloudStagingArea:
-            type_requirement: mounted_staging_area
-            node: MountInputDataset
-            capability: org.lexis.common.ddi.capabilities.MountedStagingAreaAccess
-            relationship: org.lexis.common.datatransfer.relationships.MountedCloudStagingArea
-        - hostedOnComputeHost:
-            type_requirement: host
-            node: CloudComputeInstance
-            capability: tosca.capabilities.Container
-            relationship: tosca.relationships.HostedOn
-
-    # Copy computation results to the staging area
-    StageComputationResults:
-      type: org.lexis.common.datatransfer.nodes.CopyToStagingAreaDirectory
-      properties:
-        source_directory: { get_input: computation_output_directory }
-      requirements:
-        - staging_area_directory:
-            type_requirement: cloud_area_directory_provider
-            node: CreateStagingAreaResultDir
-            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
-            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
-        - hostedOnComputeHost:
-            type_requirement: host
-            node: CloudComputeInstance
-            capability: tosca.capabilities.Container
-            relationship: tosca.relationships.HostedOn
-
-    # DDI job transferring results from the cloud staging area to DDI
-    CloudToDDIJob:
-      type: org.lexis.common.ddi.nodes.CloudToDDIJob
-      properties:
-        metadata: { get_input: computation_metadata_dataset_result }
-        token: {get_input: token}
-        encrypt: {get_input: computation_encrypt_dataset_result}
-        compress: {get_input: computation_compress_dataset_result}
-        ddi_path: { get_input: computation_ddi_project_path }
-      requirements:
-        - cloud_area_directory_provider:
-            type_requirement: cloud_area_directory_provider
-            node: CreateStagingAreaResultDir
-            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
-            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
-    # Replicate result dataset to other sites if requested
-    ReplicateDatasetJob:
-      type: org.lexis.common.ddi.nodes.ReplicateDatasetJob
+    # TOSCA component exposing a URL with external access
+    ComputeExternalAccess:
+      type: org.lexis.common.extaccess.nodes.ComputeAccess
       metadata:
         task: computation
       properties:
-        token: { get_input: token }
-        replication_sites: {get_input: computation_result_dataset_replication_sites}
+        compute_url: { get_input: computation_expose_url_in_outputs }
+        port: { get_input: computation_exposed_url_port }
+        protocol: { get_input: computation_exposed_url_protocol }
       requirements:
-        - dataset_provider:
-            type_requirement: dataset_provider
-            node: CloudToDDIJob
-            capability: org.lexis.common.ddi.capabilities.DataTransferDDI
-            relationship: tosca.relationships.DependsOn
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: CloudComputeInstance
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
 
     # DDI job cleaning up the cloud staging area
     CleanupCloudStagingAreaJob:
@@ -393,9 +317,9 @@ topology_template:
   # Component attribute values that will be exposed in the front-end
   #
   outputs:
-    computation_dataset_result_path:
-      description: DDI path to computation results
-      value: { get_attribute: [ CloudToDDIJob, destination_path ] }
+    computation_URL:
+      description: URL
+      value: { get_attribute: [ ComputeExternalAccess, url ] }
   
   #
   # Sequences of operations on components
@@ -613,178 +537,29 @@ topology_template:
           activities:
             - set_state: started
           on_success:
-            - CreateStagingAreaResultDir_start
-        # Create a directory in cloud staging area and copy computation
-        # results there
-        CreateStagingAreaResultDir_start:
-          target: CreateStagingAreaResultDir
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CreateStagingAreaResultDir_started
-        CreateStagingAreaResultDir_started:
-          target: CreateStagingAreaResultDir
-          activities:
-            - set_state: started
-          on_success:
-            - StageComputationResults_start
-        StageComputationResults_start:
-          target: StageComputationResults
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - StageComputationResults_started
-        StageComputationResults_started:
-          target: StageComputationResults
-          activities:
-            - set_state: started
-          on_success:
-            - CloudToDDIJob_create
-        # Transfer computation results from Cloud staging area to DDI
-        CloudToDDIJob_create:
-          target: CloudToDDIJob
-          operation_host: ORCHESTRATOR
+            - ComputeExternalAccess_create
+        ComputeExternalAccess_create:
+          target: ComputeExternalAccess
           activities:
             - call_operation: Standard.create
           on_success:
-            - CloudToDDIJob_submit
-        CloudToDDIJob_submit:
-          target: CloudToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - CloudToDDIJob_submitted
-        CloudToDDIJob_submitted:
-          target: CloudToDDIJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - CloudToDDIJob_run
-        CloudToDDIJob_run:
-          target: CloudToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - CloudToDDIJob_executed
-        CloudToDDIJob_executed:
-          target: CloudToDDIJob
-          activities:
-            - set_state: executed
-          on_success:
-            - ReplicateDatasetJob_create
-        # Replicate dataset to other sites
-        ReplicateDatasetJob_create:
-          target: ReplicateDatasetJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - ReplicateDatasetJob_submit
-        ReplicateDatasetJob_submit:
-          target: ReplicateDatasetJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - ReplicateDatasetJob_run
-        ReplicateDatasetJob_run:
-          target: ReplicateDatasetJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - ReplicateDatasetJob_executed
-        ReplicateDatasetJob_executed:
-          target: ReplicateDatasetJob
-          activities:
-            - set_state: executed
-          on_success:
-            - MountInputDataset_refresh_token_before_stop
-        MountInputDataset_refresh_token_before_stop:
-          target: MountInputDataset
-          activities:
-            - call_operation: custom.refresh_token
-          on_success:
-            - MountInputDataset_stop
-        # Cleanup of ssh access to cloud staging area
-        MountInputDataset_stop:
-          target: MountInputDataset
-          activities:
-            - call_operation: Standard.stop
-          on_success:
-            - MountInputDataset_stopped
-        MountInputDataset_stopped:
-          target: MountInputDataset
-          activities:
-            - set_state: stopped
-          on_success:
-            - CleanupCloudStagingAreaJob_create
-        # Cleanup of cloud staging area files created by this workflow
-        CleanupCloudStagingAreaJob_create:
-          target: CleanupCloudStagingAreaJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - CleanupCloudStagingAreaJob_created
-        CleanupCloudStagingAreaJob_created:
-          target: CleanupCloudStagingAreaJob
+            - ComputeExternalAccess_created
+        ComputeExternalAccess_created:
+          target: ComputeExternalAccess
           activities:
             - set_state: created
           on_success:
-            - CleanupCloudStagingAreaJob_submit
-        CleanupCloudStagingAreaJob_submit:
-          target: CleanupCloudStagingAreaJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - CleanupCloudStagingAreaJob_submitted
-        CleanupCloudStagingAreaJob_submitted:
-          target: CleanupCloudStagingAreaJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - CleanupCloudStagingAreaJob_run
-        CleanupCloudStagingAreaJob_run:
-          target: CleanupCloudStagingAreaJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - CleanupCloudStagingAreaJob_executed
-        CleanupCloudStagingAreaJob_executed:
-          target: CleanupCloudStagingAreaJob
-          activities:
-            - set_state: executed
-          on_success:
-            - RefreshVMToken_start
-        RefreshVMToken_start:
-          target: RefreshVMToken
+            - ComputeExternalAccess_start
+        ComputeExternalAccess_start:
+          target: ComputeExternalAccess
           activities:
             - call_operation: Standard.start
           on_success:
-            - RefreshVMToken_started
-        RefreshVMToken_started:
-          target: RefreshVMToken
+            - ComputeExternalAccess_started
+        ComputeExternalAccess_started:
+          target: ComputeExternalAccess
           activities:
             - set_state: started
-          on_success:
-            - CloudComputeInstance_uninstall
-        # Delete Cloud Compute Instance
-        CloudComputeInstance_uninstall:
-          target: CloudComputeInstance
-          activities:
-            - delegate: uninstall
-          on_success:
-            - Network_uninstall
-        # Release Cloud floating IP address
-        Network_uninstall:
-          target: Network
-          activities:
-            - delegate: uninstall
     #
     # Worflow executed at undeployment time
     # Deleting infrastructure resources if not yet dene
@@ -828,170 +603,3 @@ topology_template:
           target: Network
           activities:
             - delegate: uninstall
-    #
-    # Test workflow to only execute a SSH-unmount
-    #
-    cleanupMountPoint:
-      steps:
-        MountInputDataset_refresh_token:
-          target: MountInputDataset
-          activities:
-            - call_operation: custom.refresh_token
-          on_success:
-            - MountInputDataset_stop
-        MountInputDataset_stop:
-          target: MountInputDataset
-          activities:
-            - call_operation: Standard.stop
-          on_success:
-            - MountInputDataset_stopped
-        MountInputDataset_stopped:
-          target: MountInputDataset
-          activities:
-            - set_state: stopped
-    #
-    # Test workflow to only execute the cloud staging area cleanup
-    #
-    cleanupStagingArea:
-      steps:
-        CleanupCloudStagingAreaJob_create:
-          target: CleanupCloudStagingAreaJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - CleanupCloudStagingAreaJob_created
-        CleanupCloudStagingAreaJob_created:
-          target: CleanupCloudStagingAreaJob
-          activities:
-            - set_state: created
-          on_success:
-            - CleanupCloudStagingAreaJob_submit
-        CleanupCloudStagingAreaJob_submit:
-          target: CleanupCloudStagingAreaJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - CleanupCloudStagingAreaJob_submitted
-        CleanupCloudStagingAreaJob_submitted:
-          target: CleanupCloudStagingAreaJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - CleanupCloudStagingAreaJob_run
-        CleanupCloudStagingAreaJob_run:
-          target: CleanupCloudStagingAreaJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - CleanupCloudStagingAreaJob_executed
-        CleanupCloudStagingAreaJob_executed:
-          target: CleanupCloudStagingAreaJob
-          activities:
-            - set_state: executed
-    #
-    # Test workflow to only execute the computation
-    #
-    testComputation:
-      steps:
-        # Create and run the computation container
-        ComputationContainer_create:
-          target: ComputationContainer
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - ComputationContainer_start
-        ComputationContainer_start:
-          target: ComputationContainer
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - ComputationContainer_started
-        ComputationContainer_started:
-          target: ComputationContainer
-          activities:
-            - set_state: started
-          on_success:
-            - CreateStagingAreaResultDir_start
-        # Create a directory in cloud staging area and copy computation
-        # results there
-        CreateStagingAreaResultDir_start:
-          target: CreateStagingAreaResultDir
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - CreateStagingAreaResultDir_started
-        CreateStagingAreaResultDir_started:
-          target: CreateStagingAreaResultDir
-          activities:
-            - set_state: started
-          on_success:
-            - StageComputationResults_start
-        StageComputationResults_start:
-          target: StageComputationResults
-          activities:
-            - call_operation: Standard.start
-          on_success:
-            - StageComputationResults_started
-        StageComputationResults_started:
-          target: StageComputationResults
-          activities:
-            - set_state: started
-          on_success:
-            - CloudToDDIJob_create
-        # Transfer computation results from Cloud staging area to DDI
-        CloudToDDIJob_create:
-          target: CloudToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: Standard.create
-          on_success:
-            - CloudToDDIJob_submit
-        CloudToDDIJob_submit:
-          target: CloudToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
-          on_success:
-            - CloudToDDIJob_submitted
-        CloudToDDIJob_submitted:
-          target: CloudToDDIJob
-          activities:
-            - set_state: submitted
-          on_success:
-            - CloudToDDIJob_run
-        CloudToDDIJob_run:
-          target: CloudToDDIJob
-          operation_host: ORCHESTRATOR
-          activities:
-            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
-          on_success:
-            - CloudToDDIJob_executed
-        CloudToDDIJob_executed:
-          target: CloudToDDIJob
-          activities:
-            - set_state: executed
-    #
-    # Test workflow to unmount the SSHFS filesystem
-    #
-    unmountSSHFS:
-      steps:
-        MountInputDataset_refresh_token_before_stop:
-          target: MountInputDataset
-          activities:
-            - call_operation: custom.refresh_token
-          on_success:
-            - MountInputDataset_stop
-        # Cleanup of ssh access to cloud staging area
-        MountInputDataset_stop:
-          target: MountInputDataset
-          activities:
-            - call_operation: Standard.stop
-          on_success:
-            - MountInputDataset_stopped
-        MountInputDataset_stopped:
-          target: MountInputDataset
-          activities:
-            - set_state: stopped
