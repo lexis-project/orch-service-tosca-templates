@@ -46,6 +46,10 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `false`
 * preprocessing_uncompress_dataset_geographical_data: Should the input dataset be uncompressed
   * default: `true`
+* computation_heappe_command_template_name: HEAppE Command Template Name
+  * default: `WRF Generic`
+* computation_email_for_HEAppE_notifications: E-mail where to receive notifications from HEAppE about the computation job (default, no email)
+  * default: `""`
 * postprocessing_dataset_continuum_static_data_path: Continuum static data dataset path in DDI
   * default: `project/proj2bdfd9ccf5a78c3ec68ee9e1d90d2c1c/7eb5e3ee-446d-11eb-8958-0050568fcecc`
 * postprocessing_dataset_continuum_hmc_initial_conditions_data_path: Continuum HMC initial conditions dataset path in DDI

@@ -45,6 +45,10 @@ The template expects the following input properties (mandatory inputs in **bold*
   * default: `false`
 * preprocessing_uncompress_dataset_geographical_data: Should the input dataset be uncompressed
   * default: `true`
+* computation_heappe_command_template_name: HEAppE Command Template Name
+  * default: `WRF Generic`
+* computation_email_for_HEAppE_notifications: E-mail where to receive notifications from HEAppE about the computation job (default, no email)
+  * default: `""`
 * postprocessing_image: Post-processing container repository path
   * default: `laurentg/risico:1.0.1`
 * postprocessing_ddi_project_path: Path where to transfer the post-processing results in DDI
