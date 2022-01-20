@@ -1,0 +1,631 @@
+tosca_definitions_version: alien_dsl_3_0_0
+
+metadata:
+  template_name: org.lexis.common.CloudComputationPrivateContainerNoInputOutputTemplate
+  template_version: 0.1.0-SNAPSHOT
+  template_author: lexis
+
+description: "LEXIS Cloud Computation using a private container that doesn't need inputs or outputs in DDI"
+
+#
+# Imports from Alien4Cloud catalog providing definition of data types and node types
+#
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - yorc-openstack-types:3.1.0
+  - docker-types:3.0.0
+  - org.ystia.docker.ansible:3.0.0-SNAPSHOT
+  - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
+  - org.lexis.common.ddi-types:1.0.3
+  - org.lexis.common.dynamic-orchestration-types:1.0.3
+  - org.lexis.common.datatransfer:0.1.7-SNAPSHOT
+
+topology_template:
+  #
+  # Input parameters.
+  # The only required parameter is the OpenID Connect token.
+  # Other parameters have default values.
+  #
+  # Naming convention expected by LEXIS Portal:
+  # - input parameters used in the pre-processing phase start with preprocessing_
+  # - input parameters uded in the HPC computation phase start with computation_
+  # - input parameters used in the postprocessing phase start with postprocessing_
+  # - Paths of DDI dataset are expect to follow the expression <phase>_dataset_*
+  #   for example: preprocessing_dataset_path_input_path
+  #
+  inputs:
+    token:
+      type: string
+      description: "OpenID Connect token"
+      required: true
+    project_id:
+      type: string
+      description: "LEXIS project identifier"
+      required: true
+    computation_dataset_path_docker_image_path:
+      type: string
+      description: Docker image tar archive path in DDI
+      required: true
+    computation_docker_image_name:
+      type: string
+      description: Name of docker image to load (name:tag)
+      required: true
+    computation_container_env_vars:
+      type: map
+      description: Computation container environment variables
+      entry_schema:
+        type: string
+      required: false
+    computation_container_published_ports:
+      type: list
+      entry_schema:
+        type: string
+      description: >
+        List of ports to publish from the container to the host.
+        Use docker CLI syntax: 8000, 9000:8000, or 0.0.0.0:9000:8000, where 8000 is a container port, 9000 is a host port, and 0.0.0.0 is a host interface.
+      required: false
+
+  #
+  # Components instantiating the types imported, and using the input values above
+  # in properties definitions.
+  # Relationships between these components describing which requirement of a commponent
+  # is fulfilled by which capability of another component
+  #
+  node_templates:
+    # Validation of the token provided in input
+    # Exchanging this token to have an access and refresh tokens
+    # for any component needing it in the workflow
+    ValidateExchangeToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.ValidateAndExchangeToken
+      properties:
+        token: {get_input: token}
+        project_id: { get_input: project_id }
+
+    # Job gathering info on the docker image dataset:
+    # - on which locations it is available
+    # - size
+    # - number of files
+    # to take placement decisions on computing resources using this dataset
+    DockerImageDatasetInfoJob:
+      type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
+      properties:
+        token: {get_input: token}
+        dataset_path: {get_input: computation_dataset_path_docker_image_path}
+
+    # Find the best cloud location depending on the input dataset and needed cloud resources
+    FindCloudLocation:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
+      properties:
+        token: {get_input: token}
+        project_id: { get_input: project_id }
+      requirements:
+        - InputDataset:
+            type_requirement: input_dataset
+            node: DockerImageDatasetInfoJob
+            capability: org.lexis.common.ddi.capabilities.DatasetInfo
+            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
+        - CloudResourceVM:
+            type_requirement: cloud_instance
+            node: CloudComputeInstance
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.dynamic.orchestration.relationships.CloudResource
+
+    # DDI job managing the transfer of the dataset container a docker image from DDI to cloud staging area
+    DDIToCloudDockerImageJob:
+      type: org.lexis.common.ddi.nodes.DDIToCloudJob
+      properties:
+        token: { get_input: token }
+        ddi_dataset_path: { get_input: computation_dataset_path_docker_image_path }
+        cloud_staging_area_directory_path: "lexis_cloud_computation_private_container"
+        timestamp_cloud_staging_area_directory: true
+      requirements:
+        - sameSite:
+            type_requirement: os
+            node: CloudComputeInstance
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
+
+    # Floating IP address network
+    Network:
+      type: yorc.nodes.openstack.FloatingIP
+
+    # Cloud Compute Instance
+    CloudComputeInstance:
+      type: tosca.nodes.Compute
+      requirements:
+        - networkPublicNetConnection:
+            type_requirement: network
+            node: Network
+            capability: yorc.capabilities.openstack.FIPConnectivity
+            relationship: tosca.relationships.Network
+      capabilities:
+        host:
+          properties:
+            num_cpus: 4
+            disk_size: "40 GB"
+        os:
+          properties:
+            type: linux
+
+    # At the end of the workflow, the Cloud instance token should be refreshed
+    # before attempting to uninstall the compute instance
+    RefreshVMToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.RefreshTargetTokens
+      requirements:
+        - target:
+            type_requirement: target
+            node: CloudComputeInstance
+            capability: tosca.capabilities.Node
+            relationship: tosca.relationships.DependsOn
+
+    # Component retrieving access details to the DDI REST APIs from the compute
+    # instance where it running
+    # Needed by component MountInputDataset below
+    GetDDIAccess:
+      type: org.lexis.common.ddi.nodes.DDIAccess
+      requirements:
+        - hostedOnComputeHost:
+            type_requirement: os
+            node: CloudComputeInstance
+            capability: tosca.capabilities.OperatingSystem
+            relationship: org.lexis.common.ddi.relationships.SameSite
+
+    # Docker service
+    Docker:
+      type: org.ystia.docker.ansible.nodes.Docker
+      requirements:
+        - hostedOnVirtualMachineHost:
+            type_requirement: host
+            node: CloudComputeInstance
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+    MountDockerImageDataset:
+      type: org.lexis.common.ddi.nodes.SSHFSMountStagingAreaDataset
+      properties:
+        token: { get_input: token }
+        mount_point_directory: "/mnt/cloud_staging_area/docker_image"
+      requirements:
+        - ddi_access:
+            type_requirement: ddi_access
+            node: GetDDIAccess
+            capability: org.lexis.common.ddi.capabilities.DDIAccess
+            relationship: org.lexis.common.ddi.relationships.DDIAccessProvider
+        - data_transfer:
+            type_requirement: data_transfer
+            node: DDIToCloudDockerImageJob
+            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: CloudComputeInstance
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    FindArchive:
+      type: org.lexis.common.datatransfer.nodes.FindDockerImageArchiveInStagingAreaDirectory
+      properties:
+        shell_patterns: ["*.tar*", "*.tgz"]
+      requirements:
+        - cloud_area_directory_provider:
+            type_requirement: cloud_area_directory_provider
+            node: MountDockerImageDataset
+            capability: org.lexis.common.ddi.capabilities.CloudAreaDirectoryProvider
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDirectoryProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: CloudComputeInstance
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+    ImageLoader:
+      type: org.ystia.docker.images.RuntimePathArchiveLoader
+      properties:
+        name: { get_input: computation_docker_image_name }
+        force_load: true
+      requirements:
+        - archive_provider:
+            type_requirement: archive_provider
+            node: FindArchive
+            capability: org.ystia.docker.images.capabilities.ArchiveProvider
+            relationship: org.ystia.docker.images.relationships.ArchiveProvider
+        - hostedOnComputeHost:
+            type_requirement: host
+            node: CloudComputeInstance
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+    # Computation docker container
+    ComputationContainer:
+      type: org.ystia.docker.containers.docker.generic.nodes.GenericContainer
+      metadata:
+        task: computation
+      properties:
+        auto_remove: false
+        cleanup: false
+        detach: false
+        image: {get_input: computation_docker_image_name}
+        keep_volumes: true
+        restart_policy: no
+        cpu_share: 1.0
+        docker_env_vars: {get_input: computation_container_env_vars}
+        published_ports: {get_input: computation_container_published_ports}
+      requirements:
+        - hostedOnContainerRuntimeDockerHost:
+            type_requirement: host
+            node: Docker
+            capability: org.alien4cloud.extended.container.capabilities.ApplicationHost
+            relationship: org.alien4cloud.extended.container.relationships.HostedOnContainerRuntime
+
+    # DDI job removing the docker image archive from the cloud staging area
+    DeleteCloudDataImageJob:
+      type: org.lexis.common.ddi.nodes.DeleteCloudDataJob
+      properties:
+        token: { get_input: token }
+      requirements:
+        - cloud_area_dataset_provider:
+            type_requirement: cloud_area_dataset_provider
+            node: DDIToCloudDockerImageJob
+            capability: org.lexis.common.ddi.capabilities.DataTransferCloud
+            relationship: org.lexis.common.ddi.relationships.CloudAreaDatasetProvider
+  
+  #
+  # Sequences of operations on components
+  #
+  workflows:
+    # At deployment time, validating the input token and exchanging it
+    # to get an access/refresh token for the orchestrator
+    install:
+      steps:
+        ValidateExchangeToken_start:
+          target: ValidateExchangeToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ValidateExchangeToken_started
+        ValidateExchangeToken_started:
+          target: ValidateExchangeToken
+          activities:
+            - set_state: started
+    #
+    # Workflow executed by LEXIS Portal
+    #
+    Run:
+      steps:
+        # Submit DDI job to get info on dataset (DDI location where it is available, size...)
+        DockerImageDatasetInfoJob_submit:
+          target: DockerImageDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DockerImageDatasetInfoJob_run
+        DockerImageDatasetInfoJob_run:
+          target: DockerImageDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DockerImageDatasetInfoJob_executed
+        DockerImageDatasetInfoJob_executed:
+          target: DockerImageDatasetInfoJob
+          activities:
+            - set_state: executed
+          on_success:
+            - FindCloudLocation_submit
+        # Submit the computation to find the best location from these inputs
+        FindCloudLocation_submit:
+          target: FindCloudLocation
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindCloudLocation_run
+        FindCloudLocation_run:
+          target: FindCloudLocation
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindCloudLocation_executed
+        FindCloudLocation_executed:
+          target: FindCloudLocation
+          activities:
+            - set_state: executed
+          on_success:
+            - DDIToCloudDockerImageJob_create
+            - Network_install
+        DDIToCloudDockerImageJob_create:
+          target: DDIToCloudDockerImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToCloudDockerImageJob_submit
+        DDIToCloudDockerImageJob_submit:
+          target: DDIToCloudDockerImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToCloudDockerImageJob_submitted
+        DDIToCloudDockerImageJob_submitted:
+          target: DDIToCloudDockerImageJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToCloudDockerImageJob_run
+        DDIToCloudDockerImageJob_run:
+          target: DDIToCloudDockerImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToCloudDockerImageJob_executed
+        DDIToCloudDockerImageJob_executed:
+          target: DDIToCloudDockerImageJob
+          activities:
+            - set_state: executed
+          on_success:
+            - MountDockerImageDataset_create
+        # Get a floating IP address for the Cloud Compute instance
+        Network_install:
+          target: Network
+          activities:
+            - delegate: install
+          on_success:
+            - CloudComputeInstance_install
+        # Create the compute instance
+        CloudComputeInstance_install:
+          target: CloudComputeInstance
+          activities:
+            - delegate: install
+          on_success:
+            - GetDDIAccess_start
+            - Docker_create
+        # Get details on DDI needed to mount cloud staging area filesystems on
+        # the Compute instance
+        GetDDIAccess_start:
+          target: GetDDIAccess
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - GetDDIAccess_started
+        GetDDIAccess_started:
+          target: GetDDIAccess
+          activities:
+            - set_state: started
+          on_success:
+            - MountDockerImageDataset_create
+        # Install Docker
+        Docker_create:
+          target: Docker
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - Docker_configure
+        Docker_configure:
+          target: Docker
+          activities:
+            - call_operation: Standard.configure
+          on_success:
+            - Docker_start
+        Docker_start:
+          target: Docker
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - Docker_started
+        Docker_started:
+          target: Docker
+          activities:
+            - set_state: started
+          on_success:
+            - MountDockerImageDataset_create
+        MountDockerImageDataset_create:
+          target: MountDockerImageDataset
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - MountDockerImageDataset_created
+        MountDockerImageDataset_created:
+          target: MountDockerImageDataset
+          activities:
+            - set_state: created
+          on_success:
+            - MountDockerImageDataset_refresh_token
+        MountDockerImageDataset_refresh_token:
+          target: MountDockerImageDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountDockerImageDataset_start
+        MountDockerImageDataset_start:
+          target: MountDockerImageDataset
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - MountDockerImageDataset_started
+        MountDockerImageDataset_started:
+          target: MountDockerImageDataset
+          activities:
+            - set_state: started
+          on_success:
+            - FindArchive_start
+        FindArchive_start:
+          target: FindArchive
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - FindArchive_started
+        FindArchive_started:
+          target: FindArchive
+          activities:
+            - set_state: started
+          on_success:
+            - ImageLoader_create
+        ImageLoader_create:
+          target: ImageLoader
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ImageLoader_created
+        ImageLoader_created:
+          target: ImageLoader
+          activities:
+            - set_state: created
+          on_success:
+            - ImageLoader_start
+        ImageLoader_start:
+          target: ImageLoader
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ImageLoader_started
+        ImageLoader_started:
+          target: ImageLoader
+          activities:
+            - set_state: started
+          on_success:
+            - ComputationContainer_create
+        # Create and run the computation container
+        ComputationContainer_create:
+          target: ComputationContainer
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ComputationContainer_start
+        ComputationContainer_start:
+          target: ComputationContainer
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ComputationContainer_started
+        ComputationContainer_started:
+          target: ComputationContainer
+          activities:
+            - set_state: started
+          on_success:
+            - MountDockerImageDataset_refresh_token_for_stop
+        MountDockerImageDataset_refresh_token_for_stop:
+          target: MountDockerImageDataset
+          activities:
+            - call_operation: custom.refresh_token
+          on_success:
+            - MountDockerImageDataset_stop
+        MountDockerImageDataset_stop:
+          target: MountDockerImageDataset
+          activities:
+            - call_operation: Standard.stop
+          on_success:
+            - MountDockerImageDataset_stopped
+        MountDockerImageDataset_stopped:
+          target: MountDockerImageDataset
+          activities:
+            - set_state: stopped
+          on_success:
+            - DeleteCloudDataImageJob_create
+        DeleteCloudDataImageJob_create:
+          target: DeleteCloudDataImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudDataImageJob_created
+        DeleteCloudDataImageJob_created:
+          target: DeleteCloudDataImageJob
+          activities:
+            - set_state: created
+          on_success:
+            - DeleteCloudDataImageJob_submit
+        DeleteCloudDataImageJob_submit:
+          target: DeleteCloudDataImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DeleteCloudDataImageJob_submitted
+        DeleteCloudDataImageJob_submitted:
+          target: DeleteCloudDataImageJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DeleteCloudDataImageJob_run
+        DeleteCloudDataImageJob_run:
+          target: DeleteCloudDataImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DeleteCloudDataImageJob_executed
+        DeleteCloudDataImageJob_executed:
+          target: DeleteCloudDataImageJob
+          activities:
+            - set_state: executed
+          on_success:
+            - RefreshVMToken_start
+        RefreshVMToken_start:
+          target: RefreshVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
+          on_success:
+            - CloudComputeInstance_uninstall
+        # Delete Cloud Compute Instance
+        CloudComputeInstance_uninstall:
+          target: CloudComputeInstance
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        # Release Cloud floating IP address
+        Network_uninstall:
+          target: Network
+          activities:
+            - delegate: uninstall
+    #
+    # Worflow executed at undeployment time
+    # Deleting infrastructure resources if not yet dene
+    # (if the Run workflow failed before the cleanup phase)
+    #
+    uninstall:
+      steps:
+        DeleteCloudDataImageJob_create:
+          target: DeleteCloudDataImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DeleteCloudDataImageJob_submit
+        DeleteCloudDataImageJob_submit:
+          target: DeleteCloudDataImageJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - RefreshVMToken_start
+        RefreshVMToken_start:
+          target: RefreshVMToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - RefreshVMToken_started
+        RefreshVMToken_started:
+          target: RefreshVMToken
+          activities:
+            - set_state: started
+          on_success:
+            - CloudComputeInstance_uninstall
+        CloudComputeInstance_uninstall:
+          target: CloudComputeInstance
+          activities:
+            - delegate: uninstall
+          on_success:
+            - Network_uninstall
+        Network_uninstall:
+          target: Network
+          activities:
+            - delegate: uninstall
