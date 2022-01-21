@@ -54,6 +54,11 @@ topology_template:
       description: Should the input dataset be uncompressed
       default: false
       required: false
+    computation_email_for_HEAppE_notifications:
+      type: string
+      description: E-mail where to receive notifications from HEAppE about the computation job (default, no email)
+      required: false
+      default: ""
     computation_encrypt_dataset_result:
       type: boolean
       description: Encrypt the result dataset
@@ -134,28 +139,7 @@ topology_template:
         token: { get_input: token }
         # TODO: set listChangedFilesWhileRunning to true for checkpointing
         listChangedFilesWhileRunning: false
-        JobSpecification:
-          Name: "OpenFoam"
-          Project: "MyProject"
-          ClusterId: 1
-          Tasks:
-            - Name: "OpenFoamParallel"
-              ClusterNodeTypeId: 1
-              CommandTemplateId: 6
-              WalltimeLimit: 14400
-              MinCores: 36
-              MaxCores: 36
-              Priority: 4
-              TaskParalizationParameters:
-                - MPIProcesses: 36
-                  MaxCores: 36
-              TemplateParameterValues:
-                - CommandParameterIdentifier: MPI_PROCESSES
-                  ParameterValue: "36"
-              StandardOutputFile: "stdout"
-              StandardErrorFile: "stderr"
-              ProgressFile: "stdprog"
-              LogFile: "stdlog"
+        JobSpecification: {concat: ["{\"Name\":\"OpenFoam\",\"Project\":\"MyProject\",\"ClusterId\":\"1\",\"NotificationEmail\":\"", get_input: computation_email_for_HEAppE_notifications ,"\",\"NotifyOnAbort\":\"true\",\"NotifyOnFinish\":\"true\",\"NotifyOnStart\":\"true\",\"Tasks\":[{\"Name\":\"OpenFoamParallel\",\"MinCores\":\"36\",\"MaxCores\":\"36\",\"WalltimeLimit\":\"14400\",\"TaskParalizationParameters\":[{\"MPIProcesses\":\"36\",\"MaxCores\":\"36\"}],\"TemplateParameterValues\":[{\"CommandParameterIdentifier\":\"MPI_PROCESSES\",\"ParameterValue\":\"36\"}],\"Priority\":\"4\",\"StandardOutputFile\":\"stdout\",\"StandardErrorFile\":\"stderr\",\"ProgressFile\":\"stdprog\",\"LogFile\":\"stdlog\",\"ClusterNodeTypeId\":\"1\",\"CommandTemplateId\":\"1\"}]}"]}
     # Transfer the input dataset to the job task input directory
     DDIToHPCTaskJob:
       type: org.lexis.common.ddi.nodes.DDIToHPCTaskJob

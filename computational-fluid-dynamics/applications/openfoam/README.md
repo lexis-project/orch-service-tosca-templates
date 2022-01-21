@@ -22,6 +22,8 @@ The template expects the following input properties (mandatory inputs in **bold*
 * **visualization_walltime_minutes**: Duration in minutes of the visualization session
 * preprocessing_decrypt_dataset_input: Should the input dataset be decrypted (default: false)
 * preprocessing_uncompress_dataset_input: Should the input dataset be uncompressed (default: false)
+* computation_email_for_HEAppE_notifications: E-mail where to receive notifications from HEAppE about the computation job (default, no email)
+    * default: `""`
 * computation_encrypt_dataset_result: Should the result dataset be encrypted (default: false)
 * computation_compress_dataset_result: Should the result dataset be compressed (default: false)
 * visualization_directory: Directory where visualization data will be accesible on a cloud instance (default: openfoam)
