@@ -1,10 +1,10 @@
 # Application templates
-Repository of TOSCA components and Application Templates.
+Repository of TOSCA components and Application Templates for LEXIS.
 
-# Acknowledgement
+## Acknowledgement
 This code repository is a result of the LEXIS project. The project has received funding from the European Union’s Horizon 2020 research and innovation program under grant agreement 825532.
 
-# Contents
+## Contents
 * Application templates:
   * Weather and climate:
     * [RISICO](weather-climate/applications/risico/) - Risks of wildlands fires simulations
