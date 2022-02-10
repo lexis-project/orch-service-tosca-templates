@@ -2,7 +2,7 @@
 Repository of TOSCA components and Application Templates for LEXIS.
 
 ## Acknowledgement
-This code repository is a result of the LEXIS project. The project has received funding from the European Union’s Horizon 2020 research and innovation program under grant agreement 825532.
+This code repository is a result / contains results of the LEXIS project. The project has received funding from the European Union’s Horizon 2020 Research and Innovation programme (2014-2020) under grant agreement No. 825532.
 
 ## Contents
 * Application templates:
