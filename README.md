@@ -1,4 +1,7 @@
 # Application templates
+
+<a href="https://doi.org/10.5281/zenodo.6080490"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.6080490.svg" alt="DOI"></a>
+
 Repository of TOSCA components and Application Templates for LEXIS.
 
 ## Acknowledgement
