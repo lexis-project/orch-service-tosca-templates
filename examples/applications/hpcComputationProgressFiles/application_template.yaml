@@ -1,0 +1,574 @@
+tosca_definitions_version: alien_dsl_3_0_0
+
+metadata:
+#  template_name: public.HPCComputationProgressFilesTemplate
+  template_name: org.lexis.wp7.TestHPCComputationProgressFilesTemplate
+  template_version: 0.1.0-SNAPSHOT
+  template_author: lexis
+
+description: "LEXIS HPC Computation template storing progress files regurlay updated during computation"
+
+imports:
+  - yorc-types:1.1.0
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien-base-types:3.0.0
+  - org.lexis.common.heappe-types:1.0.8
+  - org.lexis.common.ddi-types:1.0.4
+  - org.lexis.common.dynamic-orchestration-types:1.0.4
+  - org.lexis.common.datatransfer:0.1.8-SNAPSHOT
+
+topology_template:
+  inputs:
+    token:
+      type: string
+      description: "OpenID Connect token"
+      required: true
+    project_id:
+      type: string
+      description: "LEXIS project identifier"
+      required: true
+#    project_name:
+#      type: string
+#      description: "LEXIS project short name"
+#      required: true
+    computation_dataset_path_input_path:
+      type: string
+      description: Dataset containing input data
+      required: true
+    computation_ddi_project_path:
+      type: string
+      description: "Path where to transfer the computation results in DDI"
+      required: true
+    computation_heappe_command_template_name:
+      type: string
+      description: HEAppE Command Template Name
+      required: false
+      default: GenericCommandTemplate
+    computation_heappe_job:
+      type: org.lexis.common.heappe.types.JobSpecification
+      description: Description of the HEAppE job/tasks
+      required: false
+      default:
+        Name: GenericJob
+        Project: "Set by orchestrator"
+        ClusterId: 1
+        Tasks:
+          - Name: GenericCommandTemplate
+            ClusterNodeTypeId: 1
+            CommandTemplateId: 1
+            TemplateParameterValues:
+              - CommandParameterIdentifier: userScriptPath
+                ParameterValue: ""
+            WalltimeLimit: 3600
+            MinCores: 1
+            MaxCores: 1
+            Priority: 4
+            StandardOutputFile: "stdout"
+            StandardErrorFile: "stderr"
+            ProgressFile: "stdprog"
+            LogFile: "stdlog"
+    computation_hpc_subdirectory_to_stage:
+      description: Relative path to a subddirectoy on the HPC job cluster file system, to stage
+      type: string
+      required: false
+    computation_decrypt_dataset_input:
+      type: boolean
+      description: Should the input dataset be decrypted
+      default: false
+      required: false
+    computation_uncompress_dataset_input:
+      type: boolean
+      description: Should the input dataset be uncompressed
+      default: false
+      required: false
+    computation_metadata_dataset_result:
+      type: org.lexis.common.ddi.types.Metadata
+      description: Metadata for the computation results dataset to create in DDI
+      default:
+        creator:
+          - "HPC Computation worflow"
+        contributor:
+          - "HPC Computation worflow"
+        publisher:
+          - "HPC Computation worflow"
+        resourceType: "Dataset"
+        title: "HPC Computation workflow results"
+      required: false
+    computation_encrypt_dataset_result:
+      type: boolean
+      description: Encrypt the result dataset
+      default: false
+      required: false
+    computation_compress_dataset_result:
+      type: boolean
+      description: Compress the result dataset
+      default: false
+      required: false
+    computation_result_dataset_replication_sites:
+      description: "List of sites where the result dataset should be available - WARNING: a replicated dataset can't be deleted - (example of values: it4i, lrz)"
+      type: list
+      entry_schema:
+        type: string
+      required: false
+      default: []
+    computation_progress_file_patterns:
+      type: list
+      entry_schema:
+        type: string
+      description: |
+        List of progress file patterns to store while the job is running, like mydir/f.*.dat to store mydir/f1.dat and mydir/f2.dat 
+      required: false
+      default:
+        - "progress.*"
+    computation_metadata_dataset_progress_files:
+      type: org.lexis.common.ddi.types.Metadata
+      description: Metadata for the computation progress files dataset to create in DDI
+      default:
+        creator:
+          - "HPC Computation worflow"
+        contributor:
+          - "HPC Computation worflow"
+        publisher:
+          - "HPC Computation worflow"
+        resourceType: "Dataset"
+        title: "HPC Computation workflow progress files"
+      required: false
+  node_templates:
+    # Validation of the token provided in input
+    # Exchanging this token to have an access and refresh tokens
+    # for any component needing it in the workflow
+    ValidateExchangeToken:
+      type: org.lexis.common.dynamic.orchestration.nodes.ValidateAndExchangeToken
+      properties:
+        token: {get_input: token}
+        project_id: { get_input: project_id }
+
+    # Job gathering info on the input dataset:
+    # - on which locations it is available
+    # - size
+    # - number of files
+    # to take placement decisions on computing resources using this dataset
+    InputDatasetInfoJob:
+      type: org.lexis.common.ddi.nodes.GetDDIDatasetInfoJob
+      properties:
+        token: {get_input: token}
+        dataset_path: {get_input: computation_dataset_path_input_path}
+    # Find the best HPC location depending on the input dataset and needed HPC resources
+    FindHPCLocationJob:
+      type: org.lexis.common.dynamic.orchestration.nodes.SetLocationsJob
+      metadata:
+        task: dynamic_orchestration
+      properties:
+        token: { get_input: token}
+        project_id: { get_input: project_id }
+      requirements:
+        - InputDataset:
+            type_requirement: input_dataset
+            node: InputDatasetInfoJob
+            capability: org.lexis.common.ddi.capabilities.DatasetInfo
+            relationship: org.lexis.common.dynamic.orchestration.relationships.Dataset
+        - HPCResourceHPCJob:
+            type_requirement: heappe_job
+            node: HEAppEJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.dynamic.orchestration.relationships.HeappeJob
+    # HEAppE job performing the HPC computation
+    HEAppEJob:
+      type: org.lexis.common.heappe.nodes.Job
+      metadata:
+        task: computation
+      properties:
+        token: { get_input: token }
+        listChangedFilesWhileRunning: false
+        JobSpecification: { get_input: computation_heappe_job }
+    # Storing progress filew while the job is running
+    StoreProgressFiles:
+      type: org.lexis.common.ddi.nodes.StoreRunningHPCJobFilesToDDIJob
+      properties:
+        token: { get_input: token }
+        metadata: { get_input: computation_metadata_dataset_progress_files }
+# TODO: uncomment
+#        project: { get_input: project_name }
+        project: "wp7"
+        last_modification_elapsed_time_minutes: 2
+        task_name: { get_input: computation_heappe_command_template_name }
+        keep_directory_tree: true
+        needed_files_patterns: { get_input: computation_progress_file_patterns }
+      requirements:
+        - job:
+            type_requirement: job
+            node: HEAppEJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.ddi.relationships.SendJobOutputs
+    # Transfer the input dataset to the job task input directory
+    DDIToHPCTaskJob:
+      type: org.lexis.common.ddi.nodes.DDIToHPCTaskJob
+      metadata:
+        task: preprocessing
+      properties:
+        token: { get_input: token }
+        decrypt: {get_input: computation_decrypt_dataset_input}
+        uncompress: {get_input: computation_uncompress_dataset_input}
+        ddi_dataset_path: { get_input: computation_dataset_path_input_path }
+        task_name: { get_input: computation_heappe_command_template_name }
+      requirements:
+        - job:
+            type_requirement: job
+            node: HEAppEJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.heappe.relationships.SendInputsToJob
+    # Transfer HEAppE job results to DDI
+    HPCToDDIJob:
+      type: org.lexis.common.ddi.nodes.HPCToDDIJob
+      metadata:
+        task: computation
+      properties:
+        token: { get_input: token }
+        encrypt: {get_input: computation_encrypt_dataset_result}
+        compress: {get_input: computation_compress_dataset_result}
+        metadata: { get_input: computation_metadata_dataset_result }
+        ddi_path: { get_input: computation_ddi_project_path }
+        task_name: { get_input: computation_heappe_command_template_name }
+        source_subdirectory: { get_input: computation_hpc_subdirectory_to_stage }
+      requirements:
+        - job:
+            type_requirement: job
+            node: HEAppEJob
+            capability: org.lexis.common.heappe.capabilities.HeappeJob
+            relationship: org.lexis.common.ddi.relationships.SendJobOutputs
+    # Replicate result dataset to other sites if requested
+    ReplicateDatasetJob:
+      type: org.lexis.common.ddi.nodes.ReplicateDatasetJob
+      metadata:
+        task: computation
+      properties:
+        token: { get_input: token }
+        replication_sites: {get_input: computation_result_dataset_replication_sites}
+      requirements:
+        - dataset_provider:
+            type_requirement: dataset_provider
+            node: HPCToDDIJob
+            capability: org.lexis.common.ddi.capabilities.DataTransferDDI
+            relationship: tosca.relationships.DependsOn
+  outputs:
+    computation_dataset_result_path:
+      description: DDI path to computation results
+      value: { get_attribute: [ HPCToDDIJob, destination_path ] }
+    computation_dataset_progress_files_path:
+      description: DDI path to progress files dataset
+      value: { get_attribute: [ StoreProgressFiles, destination_path ] }
+  workflows:
+    # At deployment time, validating the input token and exchanging it
+    # to get an access/refresh token for the orchestrator
+    install:
+      steps:
+        ValidateExchangeToken_start:
+          target: ValidateExchangeToken
+          activities:
+            - call_operation: Standard.start
+          on_success:
+            - ValidateExchangeToken_started
+        ValidateExchangeToken_started:
+          target: ValidateExchangeToken
+          activities:
+            - set_state: started
+    Run:
+      steps:
+        # Submit DDI job to get info on dataset (DDI location where it is available, size...)
+        InputDatasetInfoJob_submit:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - InputDatasetInfoJob_run
+        InputDatasetInfoJob_run:
+          target: InputDatasetInfoJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - InputDatasetInfoJob_executed
+        InputDatasetInfoJob_executed:
+          target: InputDatasetInfoJob
+          activities:
+            - set_state: executed
+          on_success:
+            - FindHPCLocationJob_submit
+        # Submit the computation to find the best location from these inputs
+        FindHPCLocationJob_submit:
+          target: FindHPCLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - FindHPCLocationJob_run
+        FindHPCLocationJob_run:
+          target: FindHPCLocationJob
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - FindHPCLocationJob_executed
+        FindHPCLocationJob_executed:
+          target: FindHPCLocationJob
+          activities:
+            - set_state: executed
+          on_success:
+            - HEAppEJob_create
+        HEAppEJob_create:
+          target: HEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - HEAppEJob_enable_file_transfer
+        HEAppEJob_enable_file_transfer:
+          target: HEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+          on_success:
+            - DDIToHPCTaskJob_create
+        DDIToHPCTaskJob_create:
+          target: DDIToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - DDIToHPCTaskJob_submit
+        DDIToHPCTaskJob_submit:
+          target: DDIToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - DDIToHPCTaskJob_submitted
+        DDIToHPCTaskJob_submitted:
+          target: DDIToHPCTaskJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - DDIToHPCTaskJob_run
+        DDIToHPCTaskJob_run:
+          target: DDIToHPCTaskJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - DDIToHPCTaskJob_executed
+        DDIToHPCTaskJob_executed:
+          target: DDIToHPCTaskJob
+          activities:
+            - set_state: executed
+          on_success:
+            - HEAppEJob_submit
+        HEAppEJob_submit:
+          target: HEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - HEAppEJob_submitted
+        HEAppEJob_submitted:
+          target: HEAppEJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - HEAppEJob_run
+            - StoreProgressFiles_create
+        HEAppEJob_run:
+          target: HEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - HEAppEJob_executed
+        HEAppEJob_executed:
+          target: HEAppEJob
+          activities:
+            - set_state: executed
+          on_success:
+            - HPCToDDIJob_create
+        StoreProgressFiles_create:
+          target: StoreProgressFiles
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - StoreProgressFiles_submit
+        StoreProgressFiles_submit:
+          target: StoreProgressFiles
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - StoreProgressFiles_run
+        StoreProgressFiles_run:
+          target: StoreProgressFiles
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - StoreProgressFiles_executed
+        StoreProgressFiles_executed:
+          target: StoreProgressFiles
+          activities:
+            - set_state: executed
+          on_success:
+            - ReplicateDatasetJob_create
+        # Transfer HPC results to DDI
+        HPCToDDIJob_create:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - HPCToDDIJob_submit
+        HPCToDDIJob_submit:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - HPCToDDIJob_run
+        HPCToDDIJob_run:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - HPCToDDIJob_executed
+        HPCToDDIJob_executed:
+          target: HPCToDDIJob
+          activities:
+            - set_state: executed
+          on_success:
+            - ReplicateDatasetJob_create
+        # Replicate dataset to other sites
+        ReplicateDatasetJob_create:
+          target: ReplicateDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ReplicateDatasetJob_submit
+        ReplicateDatasetJob_submit:
+          target: ReplicateDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - ReplicateDatasetJob_run
+        ReplicateDatasetJob_run:
+          target: ReplicateDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - ReplicateDatasetJob_executed
+        ReplicateDatasetJob_executed:
+          target: ReplicateDatasetJob
+          activities:
+            - set_state: executed
+          on_success:
+            - HEAppEJob_disable_file_transfer
+        HEAppEJob_disable_file_transfer:
+          target: HEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+          on_success:
+            - HEAppEJob_delete
+        HEAppEJob_delete:
+          target: HEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+    uninstall:
+      steps:
+        HEAppEJob_delete:
+          target: HEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+    testEnableFT:
+      steps:
+        HEAppEJob_enable_file_transfer:
+          target: HEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.enable_file_transfer
+    testDisableFT:
+      steps:
+        HEAppEJob_disable_file_transfer:
+          target: HEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: custom.disable_file_transfer
+    testDeleteJob:
+      steps:
+        HEAppEJob_delete:
+          target: HEAppEJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.delete
+    testHPCToDDI:
+      steps:
+        HPCToDDIJob_create:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - HPCToDDIJob_submit
+        HPCToDDIJob_submit:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - HPCToDDIJob_submitted
+        HPCToDDIJob_submitted:
+          target: HPCToDDIJob
+          activities:
+            - set_state: submitted
+          on_success:
+            - HPCToDDIJob_run
+        HPCToDDIJob_run:
+          target: HPCToDDIJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - HPCToDDIJob_executed
+        HPCToDDIJob_executed:
+          target: HPCToDDIJob
+          activities:
+            - set_state: executed
+    testReplicate:
+      steps:
+        ReplicateDatasetJob_create:
+          target: ReplicateDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: Standard.create
+          on_success:
+            - ReplicateDatasetJob_submit
+        ReplicateDatasetJob_submit:
+          target: ReplicateDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.submit
+          on_success:
+            - ReplicateDatasetJob_run
+        ReplicateDatasetJob_run:
+          target: ReplicateDatasetJob
+          operation_host: ORCHESTRATOR
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Runnable.run
+          on_success:
+            - ReplicateDatasetJob_executed
+        ReplicateDatasetJob_executed:
+          target: ReplicateDatasetJob
+          activities:
+            - set_state: executed
+
