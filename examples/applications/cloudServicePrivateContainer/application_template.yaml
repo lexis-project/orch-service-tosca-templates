@@ -15,10 +15,10 @@ imports:
   - yorc-openstack-types:3.1.0
   - docker-types:3.0.0
   - org.ystia.docker.ansible:3.0.0-SNAPSHOT
-  - org.ystia.docker.containers.docker.generic:3.0.0-SNAPSHOT
-  - org.lexis.common.ddi-types:1.0.3
-  - org.lexis.common.dynamic-orchestration-types:1.0.3
-  - org.lexis.common.datatransfer:0.1.7-SNAPSHOT
+  - org.ystia.docker.containers.docker.generic:3.0.1-SNAPSHOT
+  - org.lexis.common.ddi-types:1.0.4
+  - org.lexis.common.dynamic-orchestration-types:1.0.4
+  - org.lexis.common.datatransfer:0.1.8-SNAPSHOT
   - org.lexis.common.extaccess:0.1.0
 
 topology_template:
