@@ -4,6 +4,10 @@
 
 Repository of TOSCA components and Application Templates for LEXIS.
 
+## Annoucement
+This repository is **no longer actively maintained**, the LEXIS Platform source codes are now located at: https://opencode.it4i.eu/lexis-platform.
+
+
 ## Acknowledgement
 This code repository is a result / contains results of the LEXIS project. The project has received funding from the European Union’s Horizon 2020 Research and Innovation programme (2014-2020) under grant agreement No. 825532.
 
